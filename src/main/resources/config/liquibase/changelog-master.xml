@@ -5,8 +5,7 @@
     xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
         https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
 
-    <include file="config/liquibase/001-initial-schema.xml"/>
-    <include file="config/liquibase/002-seed-data.xml"/>
-    <include file="config/liquibase/003-add-evaluation-source.xml"/>
+    <include file="config/liquibase/010-openplan-overlay-schema.xml"/>
+    <include file="config/liquibase/011-overlay-seed-data.xml"/>
 
 </databaseChangeLog>

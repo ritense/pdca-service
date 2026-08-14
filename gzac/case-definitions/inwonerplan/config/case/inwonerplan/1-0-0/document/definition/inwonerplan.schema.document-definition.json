@@ -1,0 +1,32 @@
+{
+    "$id": "inwonerplan.schema",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Inwonerplan (PDCA)",
+    "type": "object",
+    "properties": {
+        "bsn": {
+            "type": "string",
+            "description": "BSN van de inwoner (subject van het plan in Open Plan)"
+        },
+        "naam": {
+            "type": "string",
+            "description": "Naam van de inwoner"
+        },
+        "toelichting": {
+            "type": "string",
+            "description": "Toelichting bij de aanvraag"
+        },
+        "planId": {
+            "type": "string",
+            "description": "UUID van het plan in Open Plan (gevuld door het create-plan taakformulier)"
+        },
+        "planTitel": {
+            "type": "string",
+            "description": "Titel van het plan in Open Plan"
+        },
+        "planStatus": {
+            "type": "string",
+            "description": "Status van het plan in Open Plan (actief/afgerond/geannuleerd)"
+        }
+    }
+}

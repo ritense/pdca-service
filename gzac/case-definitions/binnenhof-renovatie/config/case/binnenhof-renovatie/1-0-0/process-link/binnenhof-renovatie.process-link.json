@@ -1,0 +1,20 @@
+[
+    {
+        "activityId": "start-event",
+        "activityType": "bpmn:StartEvent:start",
+        "processLinkType": "form",
+        "formDefinitionName": "binnenhof-aanvraag"
+    },
+    {
+        "activityId": "plan-aanmaken",
+        "activityType": "bpmn:UserTask:create",
+        "processLinkType": "form",
+        "formDefinitionName": "plan-aanmaken"
+    },
+    {
+        "activityId": "pdca-cyclus",
+        "activityType": "bpmn:UserTask:create",
+        "processLinkType": "form",
+        "formDefinitionName": "pdca-cyclus"
+    }
+]

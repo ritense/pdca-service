@@ -30,8 +30,7 @@ import java.util.UUID
 @Service
 @Transactional
 class ActionService(
-    private val actionRepository: ActionRepository,
-    private val goalService: GoalService
+    private val actionRepository: ActionRepository
 ) {
 
     fun getById(id: UUID): Action {
@@ -39,16 +38,15 @@ class ActionService(
             .orElseThrow { ResponseStatusException(HttpStatus.NOT_FOUND, "Action not found with id: $id") }
     }
 
-    fun findByGoalId(goalId: UUID): List<Action> {
-        return actionRepository.findByGoalId(goalId)
+    fun findByDoelUuid(doelUuid: UUID): List<Action> {
+        return actionRepository.findByDoelUuid(doelUuid)
     }
 
-    fun findByGoalIds(goalIds: List<UUID>): List<Action> {
-        return actionRepository.findByGoalIdIn(goalIds)
+    fun findByDoelUuids(doelUuids: Collection<UUID>): List<Action> {
+        return actionRepository.findByDoelUuidIn(doelUuids)
     }
 
     fun create(action: Action): Action {
-        goalService.getById(action.goalId)
         return actionRepository.save(action)
     }
 
@@ -71,19 +69,6 @@ class ActionService(
     fun delete(id: UUID) {
         val existing = getById(id)
         actionRepository.delete(existing)
-    }
-
-    fun submitForReview(id: UUID): Action {
-        val action = getById(id)
-        if (action.status != ActionStatus.IN_PROGRESS) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Action must be IN_PROGRESS to submit for review. Current status: ${action.status}"
-            )
-        }
-        action.status = ActionStatus.PENDING_REVIEW
-        action.updatedAt = LocalDateTime.now()
-        return actionRepository.save(action)
     }
 
     fun approve(id: UUID): Action {

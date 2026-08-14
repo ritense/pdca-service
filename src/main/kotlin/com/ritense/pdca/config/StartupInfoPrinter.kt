@@ -10,46 +10,40 @@ class StartupInfoPrinter(private val env: Environment) {
 
     @EventListener(ApplicationReadyEvent::class)
     fun onReady() {
-        val port = env.getProperty("server.port", "8090")
+        val port = env.getProperty("server.port", "7500")
         val base = "http://localhost:$port"
 
         println("""
 
-            ┌──────────────────────────────────────────────────────────────────┐
-            │  PDCA App running at $base                              │
-            ├──────────────────────────────────────────────────────────────────┤
-            │                                                                  │
-            │  To connect to GZAC, register as external plugin:                │
-            │                                                                  │
-            │  1. Open GZAC admin → Plugin Management → Add App                │
-            │  2. Fill in:                                                      │
-            │     • Name:     PDCA Planbeheer                                  │
-            │     • Base URL: $base                                    │
-            │     • Secret:   (anything — HMAC not enforced in prototype)        │
-            │  3. Save → GZAC will discover the plugin automatically           │
-            │  4. Create a plugin configuration for the discovered plugin       │
-            │  5. Add external plugin case tabs to your case definitions:       │
-            │     • inwonerplan → plan-overview, plan-goals, plan-evaluations  │
-            │     • binnenhof-renovatie → same tabs                            │
-            │                                                                  │
-            │  Standalone API:                                                 │
-            │    Plans:     $base/api/v1/plans/11111111-1111-1111-1111-111111111111
-            │    Goals:     $base/api/v1/plans/11111111-1111-1111-1111-111111111111/goals
-            │    Binnenhof: $base/api/v1/plans/33333333-3333-3333-3333-333333333333
-            │    Persons:   $base/api/v1/mock/persons/445775187
-            │    Objects:   $base/api/v1/mock/objects/binnenhof-001
-            │    Products:  $base/api/v1/mock/products
-            │    Phases:    $base/api/v1/admin/phase-configs
+            ┌──────────────────────────────────────────────────────────────────────────┐
+            │  PDCA App running at $base
+            ├──────────────────────────────────────────────────────────────────────────┤
+            │
+            │  Registers (Maykin, via docker compose):
+            │    Open Plan API:     $base/openplan/plannen/api/v0/plan
+            │                       (direct: http://localhost:7501, admin/admin)
+            │    Open Product API:  $base/openproduct/producttypen/api/v1/producttypen
+            │                       (direct: http://localhost:7502, admin/admin)
+            │    Demo plan Erika:   $base/openplan/plannen/api/v0/plan/11111111-1111-1111-1111-111111111111
+            │    Demo plan Binnenhof: .../plan/33333333-3333-3333-3333-333333333333
+            │
+            │  PDCA overlay API (fase/voortgang/acties, keyed by register uuid):
+            │    Plandetails:   $base/api/v1/pdca/plandetails
+            │    Doeldetails:   $base/api/v1/pdca/doeldetails?planUuid=...
+            │    Acties:        $base/api/v1/pdca/acties?planUuid=...
+            │    Betrokkenen:   $base/api/v1/pdca/betrokkenen?planUuid=...
+            │    Phases:        $base/api/v1/admin/phase-configs
+            │    BRP/object stub: $base/api/v1/registers/personen/111222333
+            │
+            │  Plugin host:
             │    Health:    $base/health
             │    Manifest:  $base/api/host/plugins
-            │                                                                  │
-            │  Bundles (open in browser):                                       │
-            │    Overview:    $base/bundles/plan-overview.js
-            │    Goals:       $base/bundles/plan-goals.js
-            │    Evaluations: $base/bundles/plan-evaluations.js
-            │    Admin:       $base/bundles/pdca-admin.js
-            │                                                                  │
-            └──────────────────────────────────────────────────────────────────┘
+            │    Bundles:   $base/bundles/react/plan-overview.html
+            │
+            │  To connect to GZAC: register this app by URL ($base) as an
+            │  external plugin; case tabs plan-overview / plan-goals / plan-evaluations.
+            │
+            └──────────────────────────────────────────────────────────────────────────┘
 
         """.trimIndent())
     }

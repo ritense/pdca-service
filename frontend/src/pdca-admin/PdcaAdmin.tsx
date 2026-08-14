@@ -5,7 +5,7 @@ import {
 } from '@carbon/react';
 import { Add, Edit, TrashCan } from '@carbon/react/icons';
 import { onInit, resizeIframe } from '../shared/bridge';
-import { api, PhaseConfig } from '../shared/api';
+import { pdca, PhaseConfig } from '../shared/api';
 import { evalTypeLabel } from '../shared/labels';
 
 const ALL_EVAL_TYPES = ['INTAKE', 'PROGRESS', 'EVALUATION', 'INSPECTION', 'CRISIS'];
@@ -27,7 +27,7 @@ export function PdcaAdmin() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await api.phaseConfigs.list();
+      const data = await pdca.phaseConfigs.list();
       setConfigs(data);
       setLoading(false);
     } catch (e: any) { setError(e.message); setLoading(false); }
@@ -53,13 +53,13 @@ export function PdcaAdmin() {
     if (!formKey || phases.length === 0) { alert('Vul dossiertype en fasen in'); return; }
     try {
       if (editKey) {
-        await api.phaseConfigs.update(editKey, {
+        await pdca.phaseConfigs.update(editKey, {
           caseDefinitionKey: formKey,
           phases: JSON.stringify(phases),
           evaluationTypes: JSON.stringify(evalTypes),
         });
       } else {
-        await api.phaseConfigs.create({
+        await pdca.phaseConfigs.create({
           caseDefinitionKey: formKey,
           phases: JSON.stringify(phases),
           evaluationTypes: JSON.stringify(evalTypes),
@@ -71,7 +71,7 @@ export function PdcaAdmin() {
 
   const handleDelete = async (key: string) => {
     if (!confirm(`Configuratie voor "${key}" verwijderen?`)) return;
-    try { await api.phaseConfigs.delete(key); showToast('Configuratie verwijderd'); await loadData(); }
+    try { await pdca.phaseConfigs.delete(key); showToast('Configuratie verwijderd'); await loadData(); }
     catch (e: any) { alert('Fout: ' + e.message); }
   };
 

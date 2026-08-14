@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose *)",
+      "Read(//private/tmp/**)",
+      "Bash(curl -s -H \"Authorization: Token pdca-openproduct-dev-token-0123456789abc\" \"http://localhost:8004/producttypen/api/v1/producttypen?page_size=3\")",
+      "Bash(curl -s -H \"Authorization: Token pdca-openplan-dev-token-0123456789abcdef\" \"http://localhost:8003/plannen/api/v0/plan\")",
+      "Bash(curl -s -X POST -H 'Authorization: Token pdca-openplan-dev-token-0123456789abcdef' -H 'Content-Type: application/json' -d '{\"type\":\"werk\"}' http://localhost:8003/plannen/api/v0/plantype)",
+      "Bash(curl -s -X POST -H 'Authorization: Token pdca-openplan-dev-token-0123456789abcdef' -H 'Content-Type: application/json' -d '{\"titel\":\"PDCA Prototype\"}' http://localhost:8003/plannen/api/v0/overkoepelendplan)",
+      "Bash(curl -s -X POST -H 'Authorization: Token pdca-openplan-dev-token-0123456789abcdef' -H 'Content-Type: application/json' -d '{\"bsn\":\"445775187\",\"klant\":\"urn:pdca:openklant:klant:445775187\",\"persoonsprofiel\":\"urn:pdca:profielen:persoonsprofiel:445775187\"}' http://localhost:8003/plannen/api/v0/persoon)",
+      "Bash(curl -s -X POST -H 'Authorization: Token pdca-openplan-dev-token-0123456789abcdef' -H 'Content-Type: application/json' -d '{\"bsn\":\"111222333\",\"klant\":\"urn:pdca:openklant:klant:111222333\",\"persoonsprofiel\":\"urn:pdca:profielen:persoonsprofiel:111222333\"}' http://localhost:8003/plannen/api/v0/persoon)",
+      "Bash(curl -s -X DELETE -H 'Authorization: Token pdca-openplan-dev-token-0123456789abcdef' http://localhost:8003/plannen/api/v0/instrument/d571a663-1898-4253-827f-9f199c00b760 -o /dev/null -w 'instrument: %{http_code}\\\\n')",
+      "Bash(curl -s -X DELETE -H 'Authorization: Token pdca-openplan-dev-token-0123456789abcdef' http://localhost:8003/plannen/api/v0/doel/209a27e6-9eb3-410f-8091-6eddbb3ebe43 -o /dev/null -w 'doel: %{http_code}\\\\n')",
+      "Bash(curl -s -X DELETE -H 'Authorization: Token pdca-openplan-dev-token-0123456789abcdef' http://localhost:8003/plannen/api/v0/plan/8ce80ac1-9d7a-47e7-a4a9-211aac3e9a3c -o /dev/null -w 'plan: %{http_code}\\\\n')",
+      "Bash(curl -s -H 'Authorization: Token pdca-openplan-dev-token-0123456789abcdef' http://localhost:8003/plannen/api/v0/plan)",
+      "Bash(python3 -c \"import json,sys; print\\('contactmomenten left:', json.load\\(sys.stdin\\)['count']\\)\")",
+      "Bash(rm -f src/main/kotlin/com/ritense/pdca/openplan/OpenPlanMapping.kt src/main/kotlin/com/ritense/pdca/domain/GoalDetails.kt src/main/kotlin/com/ritense/pdca/domain/EvaluationDetails.kt src/main/kotlin/com/ritense/pdca/domain/InstrumentDetails.kt src/main/kotlin/com/ritense/pdca/repository/GoalDetailsRepository.kt src/main/kotlin/com/ritense/pdca/repository/EvaluationDetailsRepository.kt src/main/kotlin/com/ritense/pdca/repository/InstrumentDetailsRepository.kt src/main/kotlin/com/ritense/pdca/service/PlanService.kt src/main/kotlin/com/ritense/pdca/service/GoalService.kt src/main/kotlin/com/ritense/pdca/service/InstrumentService.kt src/main/kotlin/com/ritense/pdca/service/EvaluationService.kt src/main/kotlin/com/ritense/pdca/service/InvolvedPartyService.kt src/main/kotlin/com/ritense/pdca/web/rest/PlanResource.kt src/main/kotlin/com/ritense/pdca/web/rest/GoalResource.kt src/main/kotlin/com/ritense/pdca/web/rest/InstrumentResource.kt src/main/kotlin/com/ritense/pdca/web/rest/EvaluationResource.kt src/main/kotlin/com/ritense/pdca/web/rest/InvolvedPartyResource.kt src/main/kotlin/com/ritense/pdca/web/rest/ActionResource.kt src/main/kotlin/com/ritense/pdca/web/rest/dto/PlanDtos.kt src/main/kotlin/com/ritense/pdca/web/rest/dto/GoalDtos.kt src/main/kotlin/com/ritense/pdca/web/rest/dto/InstrumentDtos.kt src/main/kotlin/com/ritense/pdca/web/rest/dto/EvaluationDtos.kt src/main/kotlin/com/ritense/pdca/web/rest/dto/InvolvedPartyDtos.kt src/main/kotlin/com/ritense/pdca/web/rest/dto/ActionDtos.kt src/main/kotlin/com/ritense/pdca/domain/PlanDetails.kt src/main/kotlin/com/ritense/pdca/repository/PlanDetailsRepository.kt)",
+      "Bash(rm -rf src/main/kotlin/com/ritense/pdca/mock)",
+      "Bash(rm -rf src/main/kotlin/com/ritense/pdca/openplan src/main/kotlin/com/ritense/pdca/openproduct)",
+      "Bash(rm -f src/main/kotlin/com/ritense/pdca/registers/RegisterErrors.kt src/main/kotlin/com/ritense/pdca/service/CascadeService.kt)"
+    ]
+  }
+}

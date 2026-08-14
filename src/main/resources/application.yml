@@ -1,11 +1,14 @@
+# Ports 7500-7503 are deliberately outside every range used by the Valtimo
+# project and its dependencies (GZAC stack 8001-8012/8080/8081, plugin host
+# 8090-8108, module databases 33xx/543xx, opensearch 3920x, rabbitmq 4567x/5567x).
 server:
-  port: 8090
+  port: 7500
 
 spring:
   application:
     name: pdca-app
   datasource:
-    url: jdbc:postgresql://${PDCA_DB_HOST:localhost}:${PDCA_DB_PORT:54322}/pdca
+    url: jdbc:postgresql://${PDCA_DB_HOST:localhost}:${PDCA_DB_PORT:7503}/pdca
     username: ${PDCA_DB_USER:pdca}
     password: ${PDCA_DB_PASS:pdca}
     driver-class-name: org.postgresql.Driver
@@ -18,6 +21,23 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
   liquibase:
     change-log: classpath:config/liquibase/changelog-master.xml
+
+pdca:
+  # Maykin Open Plan — system of record for plannen, doelen, instrumenten,
+  # personen and contactmomenten. Runs locally via docker compose (port 7501).
+  openplan:
+    base-url: ${OPENPLAN_URL:http://localhost:7501}
+    token: ${OPENPLAN_TOKEN:pdca-openplan-dev-token-0123456789abcdef}
+  # Maykin Open Product — producttypen catalog backing the instrument picker.
+  # Runs locally via docker compose (port 7502).
+  openproduct:
+    base-url: ${OPENPRODUCT_URL:http://localhost:7502}
+    token: ${OPENPRODUCT_TOKEN:pdca-openproduct-dev-token-0123456789abc}
+  # Namespace used for URNs this app mints (plan.zaak, plan.domeinregister,
+  # instrument.product, persoon.klant, ...): urn:<namespace>:<component>:<resource>:<id>
+  urn-namespace: pdca
+  # Create demo plans in Open Plan on first boot when the register is empty.
+  seed-demo-data: ${PDCA_SEED_DEMO_DATA:true}
 
 logging:
   level:

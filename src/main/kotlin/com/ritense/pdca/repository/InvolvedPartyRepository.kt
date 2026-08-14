@@ -22,5 +22,7 @@ import java.util.UUID
 
 interface InvolvedPartyRepository : JpaRepository<InvolvedParty, UUID> {
 
-    fun findByPlanId(planId: UUID): List<InvolvedParty>
+    fun findByPlanUuid(planUuid: UUID): List<InvolvedParty>
+
+    fun deleteByPlanUuid(planUuid: UUID)
 }

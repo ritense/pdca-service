@@ -22,7 +22,7 @@ import java.util.UUID
 
 interface ActionRepository : JpaRepository<Action, UUID> {
 
-    fun findByGoalId(goalId: UUID): List<Action>
+    fun findByDoelUuid(doelUuid: UUID): List<Action>
 
-    fun findByGoalIdIn(goalIds: List<UUID>): List<Action>
+    fun findByDoelUuidIn(doelUuids: Collection<UUID>): List<Action>
 }

@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PDCA overlay schema. Plans, doelen, instrumenten, contactmomenten and
+  personen live in Open Plan; producttypen in Open Product. These tables only
+  hold the PDCA process data those registers do not model, keyed by register
+  uuid. See docker/openplan/init.py for the matching register seed.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <!-- Migrate away from the pre-integration schema (local plan/goal/... tables). -->
+    <changeSet id="010-00-drop-legacy-tables" author="pdca">
+        <sql>
+            DROP TABLE IF EXISTS evaluation CASCADE;
+            DROP TABLE IF EXISTS instrument CASCADE;
+            DROP TABLE IF EXISTS goal CASCADE;
+            DROP TABLE IF EXISTS plan CASCADE;
+            DROP TABLE IF EXISTS action CASCADE;
+            DROP TABLE IF EXISTS involved_party CASCADE;
+            DROP TABLE IF EXISTS phase_config CASCADE;
+        </sql>
+    </changeSet>
+
+    <changeSet id="010-01-create-plan-details" author="pdca">
+        <createTable tableName="plan_details">
+            <column name="plan_uuid" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="persoon_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="case_definition_key" type="VARCHAR(255)"/>
+            <column name="start_situatie" type="TEXT"/>
+            <column name="gewenste_situatie" type="TEXT"/>
+            <column name="streef_einddatum" type="DATE"/>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="010-02-create-doel-details" author="pdca">
+        <createTable tableName="doel_details">
+            <column name="doel_uuid" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="plan_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="fase" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="voortgang_score" type="INT"/>
+            <column name="voortgang_toelichting" type="TEXT"/>
+            <column name="sortering" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="010-03-create-contactmoment-details" author="pdca">
+        <createTable tableName="contactmoment_details">
+            <column name="contactmoment_uuid" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="plan_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="evaluatie_type" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="geplande_datum" type="DATE"/>
+            <column name="deelnemers" type="TEXT"/>
+            <column name="doel_voortgang" type="TEXT"/>
+            <column name="actiepunten" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="010-04-create-action" author="pdca">
+        <createTable tableName="action">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="doel_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="title" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="TEXT"/>
+            <column name="status" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="assignee_type" type="VARCHAR(50)"/>
+            <column name="assignee_name" type="VARCHAR(255)"/>
+            <column name="priority" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="start_date" type="DATE"/>
+            <column name="due_date" type="DATE"/>
+            <column name="contactmoment_uuid" type="UUID"/>
+            <column name="completed_date" type="DATE"/>
+            <column name="result" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="010-05-create-involved-party" author="pdca">
+        <createTable tableName="involved_party">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="plan_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="role" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="email" type="VARCHAR(255)"/>
+            <column name="phone" type="VARCHAR(255)"/>
+            <column name="organization" type="VARCHAR(255)"/>
+            <column name="is_primary" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="010-06-create-phase-config" author="pdca">
+        <createTable tableName="phase_config">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="case_definition_key" type="VARCHAR(255)">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="phases" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="evaluation_types" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="010-07-create-indexes" author="pdca">
+        <createIndex tableName="doel_details" indexName="idx_doel_details_plan">
+            <column name="plan_uuid"/>
+        </createIndex>
+        <createIndex tableName="contactmoment_details" indexName="idx_contactmoment_details_plan">
+            <column name="plan_uuid"/>
+        </createIndex>
+        <createIndex tableName="action" indexName="idx_action_doel">
+            <column name="doel_uuid"/>
+        </createIndex>
+        <createIndex tableName="involved_party" indexName="idx_involved_party_plan">
+            <column name="plan_uuid"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

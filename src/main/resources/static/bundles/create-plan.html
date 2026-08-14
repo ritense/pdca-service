@@ -49,7 +49,7 @@
 <div class="form-group">
   <label id="subjectIdLabel">BSN of Object ID</label>
   <div class="subject-lookup">
-    <input type="text" id="subjectId" placeholder="Bijv. 445775187">
+    <input type="text" id="subjectId" placeholder="Bijv. 111222333">
     <button class="btn btn-secondary btn-sm" onclick="lookupSubject()">Zoek</button>
   </div>
   <div class="subject-preview" id="subjectPreview"></div>
@@ -92,7 +92,12 @@
 </div>
 
 <script>
-var API='http://localhost:8090';
+// Direct integration: the plan is created in Open Plan (via the token proxy at
+// /openplan), only fase-config link + situaties go to the PDCA overlay.
+var API=location.origin.indexOf('http')===0?location.origin:'http://localhost:7500';
+var OPENPLAN=API+'/openplan/plannen/api/v0';
+// Object plans get this administrative contactpersoon (doelen require a persoon).
+var OBJECT_CONTACT_BSN='234567892';
 var context={};
 
 window.addEventListener('message',function(e){
@@ -114,7 +119,7 @@ function lookupSubject(){
   var id=document.getElementById('subjectId').value.trim();
   if(!id){document.getElementById('subjectError').textContent='Voer een ID in';return}
   var type=getSubjectType();
-  var url=type==='PERSON'?API+'/api/v1/mock/persons/'+id:API+'/api/v1/mock/objects/'+id;
+  var url=type==='PERSON'?API+'/api/v1/registers/personen/'+id:API+'/api/v1/registers/objecten/'+id;
   fetch(url).then(function(r){
     if(!r.ok)throw new Error('Niet gevonden');
     return r.json();
@@ -133,31 +138,70 @@ function lookupSubject(){
   });
 }
 
+function getJson(url){return fetch(url).then(function(r){if(!r.ok)throw new Error('HTTP '+r.status);return r.json()})}
+function sendJson(url,method,body){
+  return fetch(url,{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error('HTTP '+r.status+': '+t)});return r.json()});
+}
+
+// Get-or-create an Open Plan persoon by bsn (no server-side bsn filter).
+function ensurePersoon(bsn){
+  return getJson(OPENPLAN+'/persoon').then(function(page){
+    var bestaand=(page.results||[]).filter(function(p){return p.bsn===bsn})[0];
+    if(bestaand)return bestaand;
+    return sendJson(OPENPLAN+'/persoon','POST',{
+      bsn:bsn,
+      klant:'urn:pdca:openklant:klant:'+bsn,
+      persoonsprofiel:'urn:pdca:profielen:persoonsprofiel:'+bsn
+    });
+  });
+}
+
 function submitPlan(){
-  var body={
-    subjectType:getSubjectType(),
-    subjectId:document.getElementById('subjectId').value.trim(),
-    title:document.getElementById('title').value.trim(),
-    mainGoal:document.getElementById('mainGoal').value.trim(),
-    startSituation:document.getElementById('startSituation').value.trim(),
-    desiredSituation:document.getElementById('desiredSituation').value.trim(),
-    startDate:document.getElementById('startDate').value||null,
-    targetEndDate:document.getElementById('targetEndDate').value||null,
-    status:'ACTIVE',
-    caseDefinitionKey:getSubjectType()==='PERSON'?'inwonerplan':'binnenhof-renovatie'
-  };
-  if(!body.subjectId||!body.title){alert('Vul minimaal Subject ID en Titel in');return}
-  fetch(API+'/api/v1/plans',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
-  .then(function(r){return r.json()})
-  .then(function(plan){
+  var subjectType=getSubjectType();
+  var subjectId=document.getElementById('subjectId').value.trim();
+  var titel=document.getElementById('title').value.trim();
+  if(!subjectId||!titel){alert('Vul minimaal Subject ID en Titel in');return}
+  var startDate=document.getElementById('startDate').value||new Date().toISOString().split('T')[0];
+  var persoonBsn=subjectType==='PERSON'?subjectId:OBJECT_CONTACT_BSN;
+  var domeinregister=subjectType==='PERSON'
+    ?'urn:pdca:brp:persoon:'+subjectId
+    :'urn:pdca:objecten:object:'+subjectId;
+
+  Promise.all([
+    ensurePersoon(persoonBsn),
+    getJson(OPENPLAN+'/plantype'),
+    getJson(OPENPLAN+'/overkoepelendplan')
+  ]).then(function(res){
+    var persoon=res[0];
+    var plantype=(res[1].results||[])[0];
+    var overkoepelend=(res[2].results||[])[0];
+    if(!plantype||!overkoepelend)throw new Error('Open Plan mist plantype/overkoepelend plan (draai docker compose init)');
+    return sendJson(OPENPLAN+'/plan','POST',{
+      titel:titel,
+      notitie:document.getElementById('mainGoal').value.trim(),
+      startdatum:startDate+'T00:00:00Z',
+      plantypeUuid:plantype.uuid,
+      overkoepelendPlanUuid:overkoepelend.uuid,
+      domeinregister:domeinregister
+    }).then(function(plan){
+      return sendJson(API+'/api/v1/pdca/plandetails/'+plan.uuid,'PUT',{
+        persoonUuid:persoon.uuid,
+        caseDefinitionKey:subjectType==='PERSON'?'inwonerplan':'binnenhof-renovatie',
+        startSituatie:document.getElementById('startSituation').value.trim()||null,
+        gewensteSituatie:document.getElementById('desiredSituation').value.trim()||null,
+        streefEinddatum:document.getElementById('targetEndDate').value||null
+      }).then(function(){return plan});
+    });
+  }).then(function(plan){
     document.getElementById('successMsg').style.display='block';
     window.parent.postMessage({source:'valtimo-plugin',event:'submitTask',payload:{data:{
-      planId:plan.id,
-      planTitle:plan.title,
+      planId:plan.uuid,
+      planTitle:plan.titel,
       planStatus:plan.status,
-      subjectBsn:body.subjectType==='PERSON'?body.subjectId:undefined,
-      objectId:body.subjectType==='OBJECT'?body.subjectId:undefined,
-      subjectName:body.title
+      subjectBsn:subjectType==='PERSON'?subjectId:undefined,
+      objectId:subjectType==='OBJECT'?subjectId:undefined,
+      subjectName:titel
     }},'*');
   }).catch(function(err){alert('Fout bij aanmaken: '+err.message)});
 }

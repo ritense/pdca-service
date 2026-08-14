@@ -1,29 +1,35 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Theme, Button, Tag, Modal, TextInput, TextArea, Select, SelectItem,
-  Loading, InlineNotification, ProgressBar, Tile,
+  Loading, InlineNotification, ProgressBar,
 } from '@carbon/react';
 import { Add, Edit, TrashCan, ChevronRight, Checkmark, Close } from '@carbon/react/icons';
 import { onInit, resizeIframe } from '../shared/bridge';
-import { api, Plan, Goal, Action, Instrument, StamtabelEntry, ProductRecord } from '../shared/api';
-import { statusLabel, goalTypeLabel, priorityLabel, assigneeTypeLabel, formatDate } from '../shared/labels';
+import {
+  openplan, openproduct, pdca, urn, deleteDoelCascade, productTypeByUrn,
+  Plan, PlanDetails, Doel, DoelDetails, DoelType, InstrumentType, Instrument, Actie, ProductType,
+} from '../shared/api';
+import { statusLabel, doelStatusLabel, doelStatusTag, doelTypeLabel, priorityLabel, formatDate } from '../shared/labels';
 
 export function PlanGoals() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [actions, setActions] = useState<Action[]>([]);
-  const [instruments, setInstruments] = useState<Instrument[]>([]);
+  const [details, setDetails] = useState<PlanDetails | null>(null);
+  const [doelen, setDoelen] = useState<Doel[]>([]);
+  const [doelDetails, setDoelDetails] = useState<DoelDetails[]>([]);
+  const [acties, setActies] = useState<Actie[]>([]);
+  const [instrumenten, setInstrumenten] = useState<Instrument[]>([]);
   const [phases, setPhases] = useState<string[]>([]);
-  const [goalTypes, setGoalTypes] = useState<StamtabelEntry[]>([]);
-  const [products, setProducts] = useState<ProductRecord[]>([]);
+  const [doeltypen, setDoeltypen] = useState<DoelType[]>([]);
+  const [instrumenttypen, setInstrumenttypen] = useState<InstrumentType[]>([]);
+  const [producttypen, setProducttypen] = useState<ProductType[]>([]);
   const [phaseFilter, setPhaseFilter] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [goalModal, setGoalModal] = useState(false);
   const [actionModal, setActionModal] = useState<string | null>(null);
   const [instrumentModal, setInstrumentModal] = useState<string | null>(null);
-  const [editGoal, setEditGoal] = useState<Goal | null>(null);
+  const [editDoel, setEditDoel] = useState<Doel | null>(null);
   const cdkRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -33,31 +39,41 @@ export function PlanGoals() {
     });
   }, []);
 
-  useEffect(() => { resizeIframe(); }, [loading, goals, expanded]);
+  useEffect(() => { resizeIframe(); }, [loading, doelen, expanded]);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      let plans = await api.plans.list();
-      if (cdkRef.current) plans = plans.filter(p => p.caseDefinitionKey === cdkRef.current);
-      plans = plans.filter(p => p.status === 'ACTIVE' || p.status === 'DRAFT');
-      if (plans.length === 0) { setError('Geen plan gevonden'); setLoading(false); return; }
-      const p = plans[0];
-      setPlan(p);
-
-      const [g, a, i, gt, pr] = await Promise.all([
-        api.goals.listByPlan(p.id),
-        api.actions.listByPlan(p.id),
-        api.instruments.listByPlan(p.id),
-        api.mock.goalTypes().catch(() => []),
-        api.mock.products().catch(() => []),
+      const [plannen, alleDetails] = await Promise.all([
+        openplan.plannen.list({ status: 'actief' }),
+        pdca.plandetails.list(),
       ]);
-      setGoals(g); setActions(a); setInstruments(i);
-      setGoalTypes(gt); setProducts(pr);
+      const detailsByUuid = new Map(alleDetails.map(d => [d.planUuid, d]));
+      let candidates = plannen;
+      if (cdkRef.current) {
+        candidates = plannen.filter(p => detailsByUuid.get(p.uuid)?.caseDefinitionKey === cdkRef.current);
+      }
+      if (candidates.length === 0) { setError('Geen actief plan gevonden'); setLoading(false); return; }
+      const p = candidates[0];
+      const pDetails = detailsByUuid.get(p.uuid) ?? null;
+      setPlan(p);
+      setDetails(pDetails);
 
-      if (p.caseDefinitionKey) {
+      const [g, gd, a, dt, it, pt] = await Promise.all([
+        openplan.doelen.listByPlan(p.uuid),
+        pdca.doeldetails.listByPlan(p.uuid).catch(() => [] as DoelDetails[]),
+        pdca.acties.listByPlan(p.uuid).catch(() => [] as Actie[]),
+        openplan.doeltypen.list().catch(() => [] as DoelType[]),
+        openplan.instrumenttypen.list().catch(() => [] as InstrumentType[]),
+        openproduct.producttypen.list().catch(() => [] as ProductType[]),
+      ]);
+      const i = await openplan.instrumenten.listByDoelen(g.map(d => d.uuid)).catch(() => [] as Instrument[]);
+      setDoelen(g); setDoelDetails(gd); setActies(a); setInstrumenten(i);
+      setDoeltypen(dt); setInstrumenttypen(it); setProducttypen(pt);
+
+      if (pDetails?.caseDefinitionKey) {
         try {
-          const cfg = await api.phaseConfigs.get(p.caseDefinitionKey);
+          const cfg = await pdca.phaseConfigs.get(pDetails.caseDefinitionKey);
           setPhases(JSON.parse(cfg.phases));
         } catch { setPhases([]); }
       }
@@ -67,13 +83,16 @@ export function PlanGoals() {
 
   const reload = useCallback(async () => {
     if (!plan) return;
-    const [g, a, i] = await Promise.all([
-      api.goals.listByPlan(plan.id),
-      api.actions.listByPlan(plan.id),
-      api.instruments.listByPlan(plan.id),
+    const [g, gd, a] = await Promise.all([
+      openplan.doelen.listByPlan(plan.uuid),
+      pdca.doeldetails.listByPlan(plan.uuid).catch(() => [] as DoelDetails[]),
+      pdca.acties.listByPlan(plan.uuid).catch(() => [] as Actie[]),
     ]);
-    setGoals(g); setActions(a); setInstruments(i);
+    const i = await openplan.instrumenten.listByDoelen(g.map(d => d.uuid)).catch(() => [] as Instrument[]);
+    setDoelen(g); setDoelDetails(gd); setActies(a); setInstrumenten(i);
   }, [plan]);
+
+  const detailsByDoel = useMemo(() => new Map(doelDetails.map(d => [d.doelUuid, d])), [doelDetails]);
 
   const toggle = (id: string) => setExpanded(prev => {
     const next = new Set(prev);
@@ -81,72 +100,102 @@ export function PlanGoals() {
     return next;
   });
 
-  const goalsByPhase = (goals: Goal[]) => {
-    const filtered = phaseFilter ? goals.filter(g => g.phase === phaseFilter) : goals;
-    const grouped: Record<string, Goal[]> = {};
-    const order = phases.length ? phases : [...new Set(filtered.map(g => g.phase))];
-    order.forEach(p => { grouped[p] = []; });
-    filtered.forEach(g => {
-      if (!grouped[g.phase]) grouped[g.phase] = [];
-      grouped[g.phase].push(g);
+  const doelenByFase = () => {
+    const withFase = doelen.map(d => ({ doel: d, fase: detailsByDoel.get(d.uuid)?.fase || 'Overig' }));
+    const filtered = phaseFilter ? withFase.filter(x => x.fase === phaseFilter) : withFase;
+    const grouped: Record<string, Doel[]> = {};
+    const order = phases.length ? [...phases] : [...new Set(filtered.map(x => x.fase))];
+    order.forEach(f => { grouped[f] = []; });
+    filtered.forEach(({ doel, fase }) => {
+      (grouped[fase] = grouped[fase] || []).push(doel);
     });
-    return { grouped, order: order.filter(p => grouped[p]?.length > 0) };
+    Object.values(grouped).forEach(list =>
+      list.sort((a, b) => (detailsByDoel.get(a.uuid)?.sortering ?? 999) - (detailsByDoel.get(b.uuid)?.sortering ?? 999)));
+    return { grouped, order: Object.keys(grouped).filter(f => grouped[f]?.length > 0) };
   };
 
-  const actionsFor = (goalId: string) => actions.filter(a => a.goalId === goalId);
-  const instrumentsFor = (goalId: string) => instruments.filter(i => i.goalId === goalId);
+  const actiesVoor = (doelUuid: string) => acties.filter(a => a.doelUuid === doelUuid);
+  const instrumentenVoor = (doelUuid: string) => instrumenten.filter(i => i.doelen.some(d => d.uuid === doelUuid));
 
-  const handleSaveGoal = async (data: any) => {
-    if (editGoal) {
-      await api.goals.update(editGoal.id, data);
-    } else if (plan) {
-      await api.goals.create(plan.id, { ...data, status: 'PLANNED' });
-    }
-    setGoalModal(false); setEditGoal(null); await reload();
+  // Doel create/update: direct Open Plan call + fase in the PDCA overlay.
+  const handleSaveDoel = async (data: { titel: string; beschrijving: string; fase: string; doeltypeUuid?: string }) => {
+    try {
+      if (editDoel) {
+        await openplan.doelen.update(editDoel.uuid, {
+          titel: data.titel,
+          beschrijving: data.beschrijving,
+          ...(data.doeltypeUuid ? { doeltypeUuid: data.doeltypeUuid } : {}),
+        });
+        await pdca.doeldetails.upsert(editDoel.uuid, { fase: data.fase });
+      } else if (plan && details) {
+        const doel = await openplan.doelen.create({
+          plannenUuids: [plan.uuid],
+          persoonUuid: details.persoonUuid,
+          doeltypeUuid: data.doeltypeUuid || doeltypen[0]?.uuid,
+          titel: data.titel,
+          beschrijving: data.beschrijving,
+          startdatum: new Date().toISOString(),
+        });
+        await pdca.doeldetails.upsert(doel.uuid, { planUuid: plan.uuid, fase: data.fase });
+      }
+      setGoalModal(false); setEditDoel(null); await reload();
+    } catch (e: any) { setError('Doel opslaan mislukt: ' + e.message); }
   };
 
-  const handleDeleteGoal = async (id: string) => {
-    if (!confirm('Doel verwijderen?')) return;
-    await api.goals.delete(id);
+  const handleDeleteDoel = async (uuid: string) => {
+    if (!confirm('Doel verwijderen (inclusief instrumenten en acties)?')) return;
+    try { await deleteDoelCascade(uuid); await reload(); }
+    catch (e: any) { setError('Verwijderen mislukt: ' + e.message); }
+  };
+
+  // Behaald/niet behaald: Open Plan status afgerond + resultaat.
+  const handleDoelResultaat = async (uuid: string, resultaat: 'behaald' | 'gefaald') => {
+    await openplan.doelen.update(uuid, { status: 'afgerond', resultaat, einddatum: new Date().toISOString() });
     await reload();
   };
 
-  const handleGoalStatus = async (id: string, status: string) => {
-    await api.goals.update(id, { status });
-    await reload();
-  };
-
-  const handleSaveAction = async (goalId: string, data: any) => {
-    await api.actions.create(goalId, { ...data, status: 'PLANNED' });
+  const handleSaveActie = async (doelUuid: string, data: any) => {
+    await pdca.acties.create({ doelUuid, ...data });
     setActionModal(null); await reload();
   };
 
-  const handleActionStatus = async (id: string, action: string) => {
-    if (action === 'approve') await api.actions.approve(id);
-    else if (action === 'reject') await api.actions.reject(id);
-    else await api.actions.update(id, { status: action });
+  const handleActieStatus = async (id: string, action: string) => {
+    if (action === 'approve') await pdca.acties.approve(id);
+    else if (action === 'reject') await pdca.acties.reject(id);
+    else await pdca.acties.update(id, { status: action });
     await reload();
   };
 
-  const handleSaveInstrument = async (goalId: string, data: any) => {
-    await api.instruments.create(goalId, { ...data, status: 'PLANNED' });
-    setInstrumentModal(null); await reload();
+  const handleSaveInstrument = async (doelUuid: string, data: { titel: string; producttype?: ProductType }) => {
+    try {
+      await openplan.instrumenten.create({
+        titel: data.titel,
+        startdatum: new Date().toISOString(),
+        doelenUuids: [doelUuid],
+        ontwikkelwensenUuids: [],
+        instrumenttypeUuid: instrumenttypen[0]?.uuid,
+        // Instrument -> producttype link is a URN by producttype code.
+        ...(data.producttype ? { product: urn('openproduct', 'producttype', data.producttype.code) } : {}),
+      });
+      setInstrumentModal(null); await reload();
+    } catch (e: any) { setError('Instrument opslaan mislukt: ' + e.message); }
   };
 
-  const handleInstrumentStatus = async (id: string, status: string) => {
-    await api.instruments.update(id, { status });
+  const handleInstrumentAfronden = async (uuid: string) => {
+    await openplan.instrumenten.update(uuid, { status: 'afgerond', resultaat: 'behaald', einddatum: new Date().toISOString() });
     await reload();
   };
 
   if (loading) return <Theme theme="g10"><div className="pdca-container"><Loading withOverlay={false} /></div></Theme>;
-  if (error) return <Theme theme="g10"><div className="pdca-container"><InlineNotification kind="error" title={error} /></div></Theme>;
+  if (error && !plan) return <Theme theme="g10"><div className="pdca-container"><InlineNotification kind="error" title={error} /></div></Theme>;
   if (!plan) return null;
 
-  const { grouped, order } = goalsByPhase(goals);
+  const { grouped, order } = doelenByFase();
 
   return (
     <Theme theme="g10">
       <div className="pdca-container">
+        {error && <InlineNotification kind="error" title="Fout" subtitle={error} lowContrast onCloseButtonClick={() => setError(null)} />}
         <div className="pdca-phase-bar">
           <span className="pdca-section-title" style={{margin: 0}}>Fase:</span>
           <Button size="sm" kind={!phaseFilter ? 'primary' : 'ghost'} onClick={() => setPhaseFilter(null)}>Alle</Button>
@@ -154,52 +203,56 @@ export function PlanGoals() {
             <Button key={p} size="sm" kind={phaseFilter === p ? 'primary' : 'ghost'} onClick={() => setPhaseFilter(p)}>{p}</Button>
           ))}
           <div style={{flex: 1}} />
-          <Button size="sm" renderIcon={Add} onClick={() => { setEditGoal(null); setGoalModal(true); }}>Doel toevoegen</Button>
+          <Button size="sm" renderIcon={Add} onClick={() => { setEditDoel(null); setGoalModal(true); }}>Doel toevoegen</Button>
         </div>
 
         {order.length === 0 && <div className="pdca-empty"><p>Geen doelen gevonden</p></div>}
 
-        {order.map(phase => (
-          <div key={phase} className="pdca-phase-group">
+        {order.map(fase => (
+          <div key={fase} className="pdca-phase-group">
             <div className="pdca-phase-group-header">
-              <h3>{phase}</h3>
-              <Tag size="sm" type="gray">{grouped[phase].length} doelen</Tag>
+              <h3>{fase}</h3>
+              <Tag size="sm" type="gray">{grouped[fase].length} doelen</Tag>
             </div>
-            {grouped[phase].map(goal => {
-              const ga = actionsFor(goal.id);
-              const gi = instrumentsFor(goal.id);
-              const isOpen = expanded.has(goal.id);
-              const pct = goal.progressScore || 0;
+            {grouped[fase].map(doel => {
+              const dd = detailsByDoel.get(doel.uuid);
+              const da = actiesVoor(doel.uuid);
+              const di = instrumentenVoor(doel.uuid);
+              const isOpen = expanded.has(doel.uuid);
+              const pct = dd?.voortgangScore || 0;
               return (
-                <div key={goal.id} className={`pdca-goal-card status-${goal.status}`}>
-                  <div className="pdca-goal-header" onClick={() => toggle(goal.id)}>
+                <div key={doel.uuid} className={`pdca-goal-card status-${doel.status}`}>
+                  <div className="pdca-goal-header" onClick={() => toggle(doel.uuid)}>
                     <div style={{display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0}}>
                       <ChevronRight size={16} style={{transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0}} />
-                      <span style={{fontWeight: 500}}>{goal.title}</span>
-                      {goal.goalType && <Tag size="sm" type="purple">{goalTypeLabel(goal.goalType)}</Tag>}
+                      <span style={{fontWeight: 500}}>{doel.titel}</span>
+                      {doel.doeltype && (
+                        <Tag size="sm" type="purple">
+                          {doelTypeLabel(doeltypen.find(t => t.uuid === doel.doeltype!.uuid))}
+                        </Tag>
+                      )}
                     </div>
                     <div style={{display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0}}>
                       <div className="pdca-progress-mini">
                         <div className={`pdca-progress-mini-fill ${pct >= 75 ? 'high' : pct >= 40 ? 'mid' : ''}`} style={{width: `${pct}%`}} />
                       </div>
                       <span style={{fontSize: 11, color: 'var(--cds-text-secondary)'}}>{pct}%</span>
-                      <Tag size="sm" type={goal.status === 'ACHIEVED' ? 'green' : goal.status === 'NOT_ACHIEVED' ? 'red' : goal.status === 'ACTIVE' ? 'blue' : 'gray'}>
-                        {statusLabel(goal.status)}
+                      <Tag size="sm" type={doelStatusTag(doel.status, doel.resultaat) as any}>
+                        {doelStatusLabel(doel.status, doel.resultaat)}
                       </Tag>
                     </div>
                   </div>
                   {isOpen && (
                     <div className="pdca-goal-body" style={{ padding: '1rem 1.25rem 1.25rem 3.25rem' }}>
-                      {goal.description && <p style={{color: 'var(--cds-text-secondary)', fontSize: 13, marginBottom: 16}}>{goal.description}</p>}
+                      {doel.beschrijving && <p style={{color: 'var(--cds-text-secondary)', fontSize: 13, marginBottom: 16}}>{doel.beschrijving}</p>}
 
                       <div style={{display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center'}}>
-                        {goal.status === 'PLANNED' && <Button size="sm" kind="primary" onClick={() => handleGoalStatus(goal.id, 'ACTIVE')}>Activeren</Button>}
-                        {goal.status === 'ACTIVE' && <>
-                          <Button size="sm" kind="primary" onClick={() => handleGoalStatus(goal.id, 'ACHIEVED')}>Behaald</Button>
-                          <Button size="sm" kind="danger" onClick={() => handleGoalStatus(goal.id, 'NOT_ACHIEVED')}>Niet behaald</Button>
+                        {doel.status === 'actief' && <>
+                          <Button size="sm" kind="primary" onClick={() => handleDoelResultaat(doel.uuid, 'behaald')}>Behaald</Button>
+                          <Button size="sm" kind="danger" onClick={() => handleDoelResultaat(doel.uuid, 'gefaald')}>Niet behaald</Button>
                         </>}
-                        <Button size="sm" kind="ghost" renderIcon={Edit} onClick={() => { setEditGoal(goal); setGoalModal(true); }}>Bewerken</Button>
-                        <Button size="sm" kind="danger--ghost" renderIcon={TrashCan} onClick={() => handleDeleteGoal(goal.id)}>Verwijderen</Button>
+                        <Button size="sm" kind="ghost" renderIcon={Edit} onClick={() => { setEditDoel(doel); setGoalModal(true); }}>Bewerken</Button>
+                        <Button size="sm" kind="danger--ghost" renderIcon={TrashCan} onClick={() => handleDeleteDoel(doel.uuid)}>Verwijderen</Button>
                       </div>
 
                       <div style={{marginBottom: 20}}>
@@ -207,56 +260,60 @@ export function PlanGoals() {
                           <span style={{fontSize: 12, fontWeight: 500, color: 'var(--cds-text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px'}}>Voortgang</span>
                           <span style={{fontSize: 13, fontWeight: 600, color: 'var(--cds-text-primary)'}}>{pct}%</span>
                         </div>
-                        <ProgressBar value={pct} max={100} size="small" hideLabel />
+                        <ProgressBar label="" value={pct} max={100} size="small" hideLabel />
+                        {dd?.voortgangToelichting && <p style={{fontSize: 12, color: 'var(--cds-text-secondary)', marginTop: 4}}>{dd.voortgangToelichting}</p>}
                       </div>
 
                       <div className="pdca-section-block">
                         <div className="pdca-section-title">
-                          <span>Acties ({ga.length})</span>
-                          <Button size="sm" kind="ghost" renderIcon={Add} onClick={() => setActionModal(goal.id)}>Actie toevoegen</Button>
+                          <span>Acties ({da.length})</span>
+                          <Button size="sm" kind="ghost" renderIcon={Add} onClick={() => setActionModal(doel.uuid)}>Actie toevoegen</Button>
                         </div>
-                        {ga.map(action => (
-                          <div key={action.id} className="pdca-action-row">
+                        {da.map(actie => (
+                          <div key={actie.id} className="pdca-action-row">
                             <div style={{display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0}}>
-                              <span>{action.title}</span>
-                              {action.assigneeName && <span style={{fontSize: 11, color: 'var(--cds-text-secondary)'}}>— {action.assigneeName}</span>}
+                              <span>{actie.title}</span>
+                              {actie.assigneeName && <span style={{fontSize: 11, color: 'var(--cds-text-secondary)'}}>— {actie.assigneeName}</span>}
+                              {actie.dueDate && <span style={{fontSize: 11, color: 'var(--cds-text-secondary)'}}>({formatDate(actie.dueDate)})</span>}
                             </div>
                             <div style={{display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0}}>
-                              {action.priority && <Tag size="sm" type={action.priority === 'HIGH' ? 'red' : 'gray'}>{priorityLabel(action.priority)}</Tag>}
-                              <Tag size="sm" type={action.status === 'COMPLETED' ? 'green' : action.status === 'PENDING_REVIEW' ? 'warm-gray' : action.status === 'IN_PROGRESS' ? 'blue' : 'gray'}>
-                                {statusLabel(action.status)}
+                              {actie.priority && <Tag size="sm" type={actie.priority === 'HIGH' ? 'red' : 'gray'}>{priorityLabel(actie.priority)}</Tag>}
+                              <Tag size="sm" type={actie.status === 'COMPLETED' ? 'green' : actie.status === 'PENDING_REVIEW' ? 'warm-gray' : actie.status === 'IN_PROGRESS' ? 'blue' : 'gray'}>
+                                {statusLabel(actie.status)}
                               </Tag>
-                              {action.status === 'PLANNED' && <Button size="sm" kind="ghost" onClick={() => handleActionStatus(action.id, 'IN_PROGRESS')}>Start</Button>}
-                              {action.status === 'IN_PROGRESS' && <Button size="sm" kind="ghost" onClick={() => handleActionStatus(action.id, 'PENDING_REVIEW')}>Ter beoordeling</Button>}
-                              {action.status === 'PENDING_REVIEW' && <>
-                                <Button size="sm" kind="primary" renderIcon={Checkmark} onClick={() => handleActionStatus(action.id, 'approve')}>Goedkeuren</Button>
-                                <Button size="sm" kind="danger" renderIcon={Close} onClick={() => handleActionStatus(action.id, 'reject')}>Afkeuren</Button>
+                              {actie.status === 'PLANNED' && <Button size="sm" kind="ghost" onClick={() => handleActieStatus(actie.id, 'IN_PROGRESS')}>Start</Button>}
+                              {actie.status === 'IN_PROGRESS' && <Button size="sm" kind="ghost" onClick={() => handleActieStatus(actie.id, 'PENDING_REVIEW')}>Ter beoordeling</Button>}
+                              {actie.status === 'PENDING_REVIEW' && <>
+                                <Button size="sm" kind="primary" renderIcon={Checkmark} onClick={() => handleActieStatus(actie.id, 'approve')}>Goedkeuren</Button>
+                                <Button size="sm" kind="danger" renderIcon={Close} onClick={() => handleActieStatus(actie.id, 'reject')}>Afkeuren</Button>
                               </>}
                             </div>
                           </div>
                         ))}
-                        {ga.length === 0 && <p style={{fontSize: 12, color: 'var(--cds-text-helper)', fontStyle: 'italic'}}>Geen acties</p>}
+                        {da.length === 0 && <p style={{fontSize: 12, color: 'var(--cds-text-helper)', fontStyle: 'italic'}}>Geen acties</p>}
                       </div>
 
                       <div className="pdca-section-block">
                         <div className="pdca-section-title">
-                          <span>Instrumenten ({gi.length})</span>
-                          <Button size="sm" kind="ghost" renderIcon={Add} onClick={() => setInstrumentModal(goal.id)}>Instrument toevoegen</Button>
+                          <span>Instrumenten ({di.length})</span>
+                          <Button size="sm" kind="ghost" renderIcon={Add} onClick={() => setInstrumentModal(doel.uuid)}>Instrument toevoegen</Button>
                         </div>
-                        {gi.map(inst => (
-                          <div key={inst.id} className="pdca-action-row">
-                            <div style={{display: 'flex', alignItems: 'center', gap: 8, flex: 1}}>
-                              <span>{inst.title}</span>
-                              {inst.providerName && <span style={{fontSize: 11, color: 'var(--cds-text-secondary)'}}>— {inst.providerName}</span>}
+                        {di.map(inst => {
+                          const pt = productTypeByUrn(producttypen, inst.product);
+                          return (
+                            <div key={inst.uuid} className="pdca-action-row">
+                              <div style={{display: 'flex', alignItems: 'center', gap: 8, flex: 1}}>
+                                <span>{inst.titel}</span>
+                                {pt && <span style={{fontSize: 11, color: 'var(--cds-text-secondary)'}}>— {pt.organisaties[0]?.naam || pt.code}{pt.themas[0] ? ` · ${pt.themas[0].naam}` : ''}</span>}
+                              </div>
+                              <div style={{display: 'flex', alignItems: 'center', gap: 6}}>
+                                <Tag size="sm" type={doelStatusTag(inst.status, inst.resultaat) as any}>{doelStatusLabel(inst.status, inst.resultaat)}</Tag>
+                                {inst.status === 'actief' && <Button size="sm" kind="ghost" onClick={() => handleInstrumentAfronden(inst.uuid)}>Afronden</Button>}
+                              </div>
                             </div>
-                            <div style={{display: 'flex', alignItems: 'center', gap: 6}}>
-                              <Tag size="sm" type={inst.status === 'COMPLETED' ? 'green' : inst.status === 'ACTIVE' ? 'blue' : 'gray'}>{statusLabel(inst.status)}</Tag>
-                              {inst.status === 'PLANNED' && <Button size="sm" kind="ghost" onClick={() => handleInstrumentStatus(inst.id, 'ACTIVE')}>Activeren</Button>}
-                              {inst.status === 'ACTIVE' && <Button size="sm" kind="ghost" onClick={() => handleInstrumentStatus(inst.id, 'COMPLETED')}>Afronden</Button>}
-                            </div>
-                          </div>
-                        ))}
-                        {gi.length === 0 && <p style={{fontSize: 12, color: 'var(--cds-text-helper)', fontStyle: 'italic'}}>Geen instrumenten</p>}
+                          );
+                        })}
+                        {di.length === 0 && <p style={{fontSize: 12, color: 'var(--cds-text-helper)', fontStyle: 'italic'}}>Geen instrumenten</p>}
                       </div>
                     </div>
                   )}
@@ -266,52 +323,54 @@ export function PlanGoals() {
           </div>
         ))}
 
-        <GoalModal open={goalModal} goal={editGoal} phases={phases} goalTypes={goalTypes}
-          onClose={() => { setGoalModal(false); setEditGoal(null); }} onSave={handleSaveGoal} />
-        <ActionModal open={!!actionModal} goalId={actionModal}
-          onClose={() => setActionModal(null)} onSave={handleSaveAction} />
-        <InstrumentModal open={!!instrumentModal} goalId={instrumentModal} products={products}
+        <DoelModal open={goalModal} doel={editDoel} fase={editDoel ? detailsByDoel.get(editDoel.uuid)?.fase : undefined}
+          phases={phases} doeltypen={doeltypen}
+          onClose={() => { setGoalModal(false); setEditDoel(null); }} onSave={handleSaveDoel} />
+        <ActieModal open={!!actionModal} doelUuid={actionModal}
+          onClose={() => setActionModal(null)} onSave={handleSaveActie} />
+        <InstrumentModal open={!!instrumentModal} doelUuid={instrumentModal} producttypen={producttypen}
           onClose={() => setInstrumentModal(null)} onSave={handleSaveInstrument} />
       </div>
     </Theme>
   );
 }
 
-function GoalModal({ open, goal, phases, goalTypes, onClose, onSave }: {
-  open: boolean; goal: Goal | null; phases: string[]; goalTypes: StamtabelEntry[];
-  onClose: () => void; onSave: (data: any) => void;
+function DoelModal({ open, doel, fase, phases, doeltypen, onClose, onSave }: {
+  open: boolean; doel: Doel | null; fase?: string; phases: string[]; doeltypen: DoelType[];
+  onClose: () => void; onSave: (data: { titel: string; beschrijving: string; fase: string; doeltypeUuid?: string }) => void;
 }) {
-  const [title, setTitle] = useState('');
-  const [desc, setDesc] = useState('');
-  const [phase, setPhase] = useState('');
-  const [goalType, setGoalType] = useState('');
+  const [titel, setTitel] = useState('');
+  const [beschrijving, setBeschrijving] = useState('');
+  const [selectedFase, setSelectedFase] = useState('');
+  const [doeltypeUuid, setDoeltypeUuid] = useState('');
   useEffect(() => {
     if (open) {
-      setTitle(goal?.title || ''); setDesc(goal?.description || '');
-      setPhase(goal?.phase || phases[0] || ''); setGoalType(goal?.goalType || '');
+      setTitel(doel?.titel || ''); setBeschrijving(doel?.beschrijving || '');
+      setSelectedFase(fase || phases[0] || 'Overig'); setDoeltypeUuid(doel?.doeltype?.uuid || '');
     }
-  }, [open, goal]);
+  }, [open, doel]);
   return (
-    <Modal open={open} modalHeading={goal ? 'Doel bewerken' : 'Doel toevoegen'}
+    <Modal open={open} modalHeading={doel ? 'Doel bewerken' : 'Doel toevoegen'}
       primaryButtonText="Opslaan" secondaryButtonText="Annuleren"
-      onRequestClose={onClose} onRequestSubmit={() => onSave({ title, description: desc, phase, goalType: goalType || undefined })}>
+      onRequestClose={onClose}
+      onRequestSubmit={() => onSave({ titel, beschrijving, fase: selectedFase, doeltypeUuid: doeltypeUuid || undefined })}>
       <div className="pdca-modal-form">
-        <Select id="goal-phase" labelText="Fase" value={phase} onChange={(e: any) => setPhase(e.target.value)}>
-          {phases.map(p => <SelectItem key={p} value={p} text={p} />)}
+        <Select id="doel-fase" labelText="Fase" value={selectedFase} onChange={(e: any) => setSelectedFase(e.target.value)}>
+          {(phases.length ? phases : ['Overig']).map(p => <SelectItem key={p} value={p} text={p} />)}
         </Select>
-        <TextInput id="goal-title" labelText="Titel" value={title} onChange={(e: any) => setTitle(e.target.value)} />
-        <TextArea id="goal-desc" labelText="Beschrijving" value={desc} onChange={(e: any) => setDesc(e.target.value)} />
-        <Select id="goal-type" labelText="Doeltype" value={goalType} onChange={(e: any) => setGoalType(e.target.value)}>
-          <SelectItem value="" text="-- Kies type --" />
-          {goalTypes.map(t => <SelectItem key={t.code} value={t.code} text={t.label} />)}
+        <TextInput id="doel-titel" labelText="Titel" value={titel} onChange={(e: any) => setTitel(e.target.value)} />
+        <TextArea id="doel-beschrijving" labelText="Beschrijving" value={beschrijving} onChange={(e: any) => setBeschrijving(e.target.value)} />
+        <Select id="doel-type" labelText="Doeltype (Open Plan)" value={doeltypeUuid} onChange={(e: any) => setDoeltypeUuid(e.target.value)}>
+          <SelectItem value="" text="-- Kies doeltype --" />
+          {doeltypen.map(t => <SelectItem key={t.uuid} value={t.uuid} text={doelTypeLabel(t)} />)}
         </Select>
       </div>
     </Modal>
   );
 }
 
-function ActionModal({ open, goalId, onClose, onSave }: {
-  open: boolean; goalId: string | null; onClose: () => void; onSave: (goalId: string, data: any) => void;
+function ActieModal({ open, doelUuid, onClose, onSave }: {
+  open: boolean; doelUuid: string | null; onClose: () => void; onSave: (doelUuid: string, data: any) => void;
 }) {
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
@@ -322,52 +381,57 @@ function ActionModal({ open, goalId, onClose, onSave }: {
   useEffect(() => { if (open) { setTitle(''); setDesc(''); setAssigneeName(''); setDueDate(''); } }, [open]);
   return (
     <Modal open={open} modalHeading="Actie toevoegen" primaryButtonText="Opslaan" secondaryButtonText="Annuleren"
-      onRequestClose={onClose} onRequestSubmit={() => goalId && onSave(goalId, { title, description: desc, assigneeType, assigneeName, priority, dueDate: dueDate || undefined })}>
+      onRequestClose={onClose} onRequestSubmit={() => doelUuid && onSave(doelUuid, { title, description: desc, assigneeType, assigneeName, priority, dueDate: dueDate || undefined })}>
       <div className="pdca-modal-form">
-        <TextInput id="action-title" labelText="Titel" value={title} onChange={(e: any) => setTitle(e.target.value)} />
-        <TextArea id="action-desc" labelText="Beschrijving" value={desc} onChange={(e: any) => setDesc(e.target.value)} />
-        <Select id="action-assignee-type" labelText="Uitvoerder type" value={assigneeType} onChange={(e: any) => setAssigneeType(e.target.value)}>
+        <TextInput id="actie-title" labelText="Titel" value={title} onChange={(e: any) => setTitle(e.target.value)} />
+        <TextArea id="actie-desc" labelText="Beschrijving" value={desc} onChange={(e: any) => setDesc(e.target.value)} />
+        <Select id="actie-assignee-type" labelText="Uitvoerder type" value={assigneeType} onChange={(e: any) => setAssigneeType(e.target.value)}>
           <SelectItem value="PROFESSIONAL" text="Behandelaar" />
           <SelectItem value="SUBJECT" text="Inwoner / Eigenaar" />
           <SelectItem value="PROVIDER" text="Aanbieder" />
         </Select>
-        <TextInput id="action-assignee" labelText="Naam uitvoerder" value={assigneeName} onChange={(e: any) => setAssigneeName(e.target.value)} />
-        <Select id="action-priority" labelText="Prioriteit" value={priority} onChange={(e: any) => setPriority(e.target.value)}>
+        <TextInput id="actie-assignee" labelText="Naam uitvoerder" value={assigneeName} onChange={(e: any) => setAssigneeName(e.target.value)} />
+        <Select id="actie-priority" labelText="Prioriteit" value={priority} onChange={(e: any) => setPriority(e.target.value)}>
           <SelectItem value="NORMAL" text="Normaal" />
           <SelectItem value="HIGH" text="Hoog" />
           <SelectItem value="LOW" text="Laag" />
         </Select>
-        <TextInput id="action-due" labelText="Deadline" type="date" value={dueDate} onChange={(e: any) => setDueDate(e.target.value)} />
+        <TextInput id="actie-due" labelText="Deadline" type="date" value={dueDate} onChange={(e: any) => setDueDate(e.target.value)} />
       </div>
     </Modal>
   );
 }
 
-function InstrumentModal({ open, goalId, products, onClose, onSave }: {
-  open: boolean; goalId: string | null; products: ProductRecord[]; onClose: () => void;
-  onSave: (goalId: string, data: any) => void;
+function InstrumentModal({ open, doelUuid, producttypen, onClose, onSave }: {
+  open: boolean; doelUuid: string | null; producttypen: ProductType[]; onClose: () => void;
+  onSave: (doelUuid: string, data: { titel: string; producttype?: ProductType }) => void;
 }) {
-  const [title, setTitle] = useState('');
-  const [provider, setProvider] = useState('');
-  const [category, setCategory] = useState('');
-  const [productId, setProductId] = useState('');
-  useEffect(() => { if (open) { setTitle(''); setProvider(''); setCategory(''); setProductId(''); } }, [open]);
-  const onProductSelect = (id: string) => {
-    setProductId(id);
-    const p = products.find(pr => pr.id === id);
-    if (p) { setTitle(p.naam); setProvider(p.aanbieder); setCategory(p.categorie); }
+  const [titel, setTitel] = useState('');
+  const [productUuid, setProductUuid] = useState('');
+  useEffect(() => { if (open) { setTitel(''); setProductUuid(''); } }, [open]);
+  const selected = producttypen.find(p => p.uuid === productUuid);
+  const onProductSelect = (uuid: string) => {
+    setProductUuid(uuid);
+    const pt = producttypen.find(p => p.uuid === uuid);
+    if (pt) setTitel(pt.naam);
   };
   return (
     <Modal open={open} modalHeading="Instrument toevoegen" primaryButtonText="Opslaan" secondaryButtonText="Annuleren"
-      onRequestClose={onClose} onRequestSubmit={() => goalId && onSave(goalId, { title, providerName: provider, category, externalProductId: productId || undefined })}>
+      onRequestClose={onClose} onRequestSubmit={() => doelUuid && onSave(doelUuid, { titel, producttype: selected })}>
       <div className="pdca-modal-form">
-        <Select id="inst-product" labelText="Uit catalogus" value={productId} onChange={(e: any) => onProductSelect(e.target.value)}>
-          <SelectItem value="" text="-- Selecteer product (optioneel) --" />
-          {products.map(p => <SelectItem key={p.id} value={p.id} text={`${p.naam} (${p.aanbieder})`} />)}
+        <Select id="inst-product" labelText="Producttype uit Open Product" value={productUuid} onChange={(e: any) => onProductSelect(e.target.value)}>
+          <SelectItem value="" text="-- Selecteer producttype (optioneel) --" />
+          {producttypen.map(p => (
+            <SelectItem key={p.uuid} value={p.uuid} text={`${p.naam}${p.organisaties[0] ? ` (${p.organisaties[0].naam})` : ''}`} />
+          ))}
         </Select>
-        <TextInput id="inst-title" labelText="Titel" value={title} onChange={(e: any) => setTitle(e.target.value)} />
-        <TextInput id="inst-provider" labelText="Aanbieder" value={provider} onChange={(e: any) => setProvider(e.target.value)} />
-        <TextInput id="inst-category" labelText="Categorie" value={category} onChange={(e: any) => setCategory(e.target.value)} />
+        {selected && (
+          <p style={{fontSize: 12, color: 'var(--cds-text-secondary)'}}>
+            {selected.samenvatting}
+            {selected.parameters.find(p => p.naam === 'duur') ? ` · Duur: ${selected.parameters.find(p => p.naam === 'duur')!.waarde}` : ''}
+          </p>
+        )}
+        <TextInput id="inst-titel" labelText="Titel" value={titel} onChange={(e: any) => setTitel(e.target.value)} />
       </div>
     </Modal>
   );

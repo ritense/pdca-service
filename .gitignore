@@ -40,3 +40,6 @@ pdca-database-data/
 
 # PDCA sensitive material (kept out of version control)
 pdca_material/
+
+# Riptide artifacts (cloud-synced)
+.humanlayer/tasks/

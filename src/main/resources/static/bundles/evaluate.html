@@ -87,9 +87,14 @@
 </div>
 
 <script>
-var API='http://localhost:8090';
+// Direct integration: doelen komen uit Open Plan, de evaluatie wordt als
+// contactmoment in Open Plan geregistreerd; type/doelvoortgang/actiepunten
+// gaan naar de PDCA overlay.
+var API=location.origin.indexOf('http')===0?location.origin:'http://localhost:7500';
+var OPENPLAN=API+'/openplan/plannen/api/v0';
 var planId=null;
 var goals=[];
+var goalDetails={};
 
 window.addEventListener('message',function(e){
   if(e.data&&e.data.source==='valtimo-host'&&e.data.event==='init'){init()}
@@ -97,16 +102,20 @@ window.addEventListener('message',function(e){
 window.parent.postMessage({source:'valtimo-plugin',event:'ready'},'*');
 
 function init(){
-  fetch(API+'/api/v1/plans').then(function(r){return r.json()}).then(function(plans){
-    var active=plans.filter(function(p){return p.status==='ACTIVE'||p.status==='DRAFT'});
+  fetch(OPENPLAN+'/plan?status=actief').then(function(r){return r.json()}).then(function(page){
+    var active=page.results||[];
     if(active.length===0){document.getElementById('planTitle').textContent='Geen plan gevonden';return Promise.reject('no plan')}
     return active[0];
   }).then(function(plan){
-    planId=plan.id;
-    document.getElementById('planTitle').textContent=plan.title;
-    return fetch(API+'/api/v1/plans/'+planId+'/goals');
-  }).then(function(r){return r.json()}).then(function(data){
-    goals=data.filter(function(g){return g.status!=='CANCELLED'});
+    planId=plan.uuid;
+    document.getElementById('planTitle').textContent=plan.titel;
+    return Promise.all([
+      fetch(OPENPLAN+'/doel?plannen__uuid='+planId).then(function(r){return r.json()}),
+      fetch(API+'/api/v1/pdca/doeldetails?planUuid='+planId).then(function(r){return r.ok?r.json():[]})
+    ]);
+  }).then(function(res){
+    goals=(res[0].results||[]).filter(function(g){return g.status!=='geannuleerd'});
+    (res[1]||[]).forEach(function(d){goalDetails[d.doelUuid]=d});
     renderGoalProgress();
   }).catch(function(err){document.getElementById('goalProgressList').innerHTML='<div style="color:#da1e28">Fout bij laden: '+err.message+'</div>'});
 }
@@ -116,13 +125,14 @@ function renderGoalProgress(){
   if(goals.length===0){el.innerHTML='<div style="color:#a8a8a8;font-style:italic">Geen doelen om te evalueren</div>';return}
   var html='';
   goals.forEach(function(g,i){
+    var d=goalDetails[g.uuid]||{};
     html+='<div class="goal-progress">';
-    html+='<div class="goal-name">'+esc(g.title)+'</div>';
+    html+='<div class="goal-name">'+esc(g.titel)+'</div>';
     html+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
-    html+='<input type="range" id="score_'+i+'" min="0" max="100" value="'+(g.progressScore||0)+'" oninput="updateScoreDisplay('+i+')" style="flex:1">';
-    html+='<span id="scoreVal_'+i+'" style="min-width:40px;font-weight:600;text-align:right">'+(g.progressScore||0)+'%</span>';
+    html+='<input type="range" id="score_'+i+'" min="0" max="100" value="'+(d.voortgangScore||0)+'" oninput="updateScoreDisplay('+i+')" style="flex:1">';
+    html+='<span id="scoreVal_'+i+'" style="min-width:40px;font-weight:600;text-align:right">'+(d.voortgangScore||0)+'%</span>';
     html+='</div>';
-    html+='<div class="goal-explanation"><input type="text" id="explanation_'+i+'" placeholder="Toelichting" value="'+(g.progressExplanation?esc(g.progressExplanation):'')+'"></div>';
+    html+='<div class="goal-explanation"><input type="text" id="explanation_'+i+'" placeholder="Toelichting" value="'+(d.voortgangToelichting?esc(d.voortgangToelichting):'')+'"></div>';
     html+='</div>';
   });
   el.innerHTML=html;
@@ -140,39 +150,44 @@ function submitEval(){
     var score=scoreEl?parseInt(scoreEl.value):null;
     var explanation=document.getElementById('explanation_'+i).value.trim();
     if(score||explanation){
-      goalProgress.push({goalId:g.id,score:score,explanation:explanation});
+      goalProgress.push({doelUuid:g.uuid,score:score,toelichting:explanation});
     }
   });
 
   var ap=document.getElementById('actionPoints').value.trim();
   var actionPointsList=ap?ap.split('\n').filter(function(l){return l.trim()}).map(function(l){return l.replace(/^[-*]\s*/,'')}):[];
+  var date=document.getElementById('evalDate').value||new Date().toISOString().split('T')[0];
 
-  var body={
-    evalType:document.getElementById('evalType').value,
-    scheduledDate:document.getElementById('evalDate').value||null,
-    actualDate:document.getElementById('evalDate').value||null,
-    status:'COMPLETED',
-    summary:document.getElementById('summary').value.trim()||null,
-    participants:document.getElementById('participants').value.trim()||null,
-    goalProgress:JSON.stringify(goalProgress),
-    actionPoints:JSON.stringify(actionPointsList)
-  };
-
-  fetch(API+'/api/v1/plans/'+planId+'/evaluations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+  fetch(OPENPLAN+'/contactmoment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    planUuid:planId,
+    datum:date+'T12:00:00Z',
+    status:'afgerond',
+    notitie:document.getElementById('summary').value.trim()||''
+  })})
   .then(function(r){if(!r.ok)throw new Error('Server error');return r.json()})
-  .then(function(ev){
+  .then(function(cm){
+    return fetch(API+'/api/v1/pdca/contactmomentdetails/'+cm.uuid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      planUuid:planId,
+      evaluatieType:document.getElementById('evalType').value,
+      geplandeDatum:date,
+      deelnemers:document.getElementById('participants').value.trim()||null,
+      doelVoortgang:JSON.stringify(goalProgress),
+      actiepunten:JSON.stringify(actionPointsList)
+    })}).then(function(){return cm});
+  })
+  .then(function(cm){
     goalProgress.forEach(function(gp){
       if(gp.score){
-        fetch(API+'/api/v1/goals/'+gp.goalId,{
-          method:'PATCH',
+        fetch(API+'/api/v1/pdca/doeldetails/'+gp.doelUuid,{
+          method:'PUT',
           headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({progressScore:gp.score,progressExplanation:gp.explanation})
+          body:JSON.stringify({planUuid:planId,voortgangScore:gp.score,voortgangToelichting:gp.toelichting||null})
         });
       }
     });
     document.getElementById('successMsg').style.display='block';
     setTimeout(function(){
-      window.parent.postMessage({source:'valtimo-plugin',event:'submitTask',payload:{data:{evaluationId:ev.id}},'*');
+      window.parent.postMessage({source:'valtimo-plugin',event:'submitTask',payload:{data:{evaluationId:cm.uuid}},'*');
     },1000);
   }).catch(function(err){alert('Fout bij opslaan: '+err.message)});
 }

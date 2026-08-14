@@ -1,0 +1,20 @@
+{
+    "searchFields": [
+        {
+            "key": "bsn",
+            "path": "doc:bsn",
+            "dataType": "text",
+            "fieldType": "single",
+            "matchType": "like",
+            "title": "BSN"
+        },
+        {
+            "key": "naam",
+            "path": "doc:naam",
+            "dataType": "text",
+            "fieldType": "single",
+            "matchType": "like",
+            "title": "Naam"
+        }
+    ]
+}
