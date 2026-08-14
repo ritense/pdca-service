@@ -27,11 +27,13 @@ import {
   openplan,
   pdca,
   registers,
+  urn,
   urnId,
   Plan,
   PlanDetails,
   Doel,
   DoelDetails,
+  DoelType,
   Actie,
   Contactmoment,
   ContactmomentDetails,
@@ -40,7 +42,7 @@ import {
   BrpPersoon,
   ObjectRecord,
 } from '../shared/api';
-import { statusLabel, evalTypeLabel, formatDate } from '../shared/labels';
+import { statusLabel, evalTypeLabel, formatDate, doelCategorie, ordenCategorieen } from '../shared/labels';
 import '../shared/styles.css';
 
 type SubjectData =
@@ -93,7 +95,9 @@ export function PlanOverview() {
   const [cmDetails, setCmDetails] = useState<ContactmomentDetails[]>([]);
   const [betrokkenen, setBetrokkenen] = useState<Betrokkene[]>([]);
   const [subject, setSubject] = useState<SubjectData>(null);
-  const [phases, setPhases] = useState<string[]>([]);
+  const [categorieOrdening, setCategorieOrdening] = useState<string[]>([]);
+  const [planStatusOpties, setPlanStatusOpties] = useState<string[]>([]);
+  const [doeltypen, setDoeltypen] = useState<DoelType[]>([]);
   const [relatietypen, setRelatietypen] = useState<RelatieType[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -135,7 +139,7 @@ export function PlanOverview() {
 
   async function loadPlanData(selected: Plan, selectedDetails: PlanDetails | null) {
     try {
-      const [doelenRes, doelDetailsRes, actiesRes, cmRes, cmDetailsRes, betrokkenenRes, rollenRes, subjectRes] =
+      const [doelenRes, doelDetailsRes, actiesRes, cmRes, cmDetailsRes, betrokkenenRes, rollenRes, doeltypenRes, subjectRes] =
         await Promise.all([
           openplan.doelen.listByPlan(selected.uuid),
           pdca.doeldetails.listByPlan(selected.uuid).catch(() => [] as DoelDetails[]),
@@ -144,14 +148,17 @@ export function PlanOverview() {
           pdca.contactmomentdetails.listByPlan(selected.uuid).catch(() => [] as ContactmomentDetails[]),
           pdca.betrokkenen.listByPlan(selected.uuid).catch(() => [] as Betrokkene[]),
           openplan.relatietypen.list().catch(() => [] as RelatieType[]),
+          openplan.doeltypen.list().catch(() => [] as DoelType[]),
           loadSubject(selected),
         ]);
 
-      let phasesRes: string[] = [];
+      let ordeningRes: string[] = [];
+      let statusOptiesRes: string[] = [];
       if (selectedDetails?.caseDefinitionKey) {
         try {
           const cfg = await pdca.phaseConfigs.get(selectedDetails.caseDefinitionKey);
-          phasesRes = JSON.parse(cfg.phases || '[]');
+          ordeningRes = JSON.parse(cfg.categorieOrdening || '[]');
+          statusOptiesRes = JSON.parse(cfg.planStatussen || '[]');
         } catch { /* no config */ }
       }
 
@@ -164,8 +171,10 @@ export function PlanOverview() {
       setCmDetails(cmDetailsRes);
       setBetrokkenen(betrokkenenRes);
       setRelatietypen(rollenRes);
+      setDoeltypen(doeltypenRes);
       setSubject(subjectRes);
-      setPhases(phasesRes);
+      setCategorieOrdening(ordeningRes);
+      setPlanStatusOpties(statusOptiesRes.length ? statusOptiesRes : ['Concept', 'Vastgesteld', 'In uitvoering']);
       setLoading(false);
     } catch (err: any) {
       setError('Fout bij laden van plangegevens: ' + err.message);
@@ -189,24 +198,25 @@ export function PlanOverview() {
     return { progressPct, actieveDoelen, totalDoelen: doelen.length, openActies, afgerondeEvaluaties };
   }, [doelen, doelDetails, acties, contactmomenten]);
 
-  const phaseProgress = useMemo(() => {
-    if (doelDetails.length === 0) return [];
+  // Voortgang gegroepeerd op doelcategorie (register), geordend via de
+  // optionele categorie-ordening uit de configuratie.
+  const categorieProgress = useMemo(() => {
+    if (doelen.length === 0) return [];
     const grouped: Record<string, DoelDetails[]> = {};
-    doelDetails.forEach(d => {
-      const fase = d.fase || 'Overig';
-      (grouped[fase] = grouped[fase] || []).push(d);
+    doelen.forEach(doel => {
+      const categorie = doelCategorie(doel, doeltypen);
+      const dd = detailsByDoel.get(doel.uuid);
+      (grouped[categorie] = grouped[categorie] || []);
+      if (dd) grouped[categorie].push(dd);
     });
-    const ordered = phases.length > 0
-      ? [...phases.filter(p => grouped[p]), ...Object.keys(grouped).filter(p => !phases.includes(p))]
-      : Object.keys(grouped);
-    return ordered.map(fase => {
-      const scored = grouped[fase].filter(d => typeof d.voortgangScore === 'number' && d.voortgangScore! > 0);
+    return ordenCategorieen(Object.keys(grouped), categorieOrdening).map(categorie => {
+      const scored = grouped[categorie].filter(d => typeof d.voortgangScore === 'number' && d.voortgangScore! > 0);
       const pct = scored.length > 0
         ? Math.round(scored.reduce((s, d) => s + d.voortgangScore!, 0) / scored.length)
         : 0;
-      return { fase, pct };
+      return { categorie, pct };
     });
-  }, [doelDetails, phases]);
+  }, [doelen, doeltypen, doelDetails, categorieOrdening]);
 
   const recentEvals = useMemo(() =>
     [...contactmomenten].sort((a, b) => (b.datum || '').localeCompare(a.datum || '')).slice(0, 3),
@@ -230,8 +240,21 @@ export function PlanOverview() {
     }
   }, [plan, showSuccess]);
 
-  // notitie lives on the Open Plan plan; situaties in the PDCA overlay.
+  // Configureerbare planstatus (Concept, Vastgesteld, ...) — overlay.
+  const handleWeergaveStatus = useCallback(async (weergaveStatus: string) => {
+    if (!plan || !weergaveStatus) return;
+    try {
+      const updated = await pdca.plandetails.upsert(plan.uuid, { weergaveStatus });
+      setDetails(updated);
+      showSuccess('Planstatus gewijzigd naar ' + weergaveStatus);
+    } catch (err: any) {
+      setError('Planstatus wijzigen mislukt: ' + err.message);
+    }
+  }, [plan, showSuccess]);
+
+  // notitie/regievoerder live on the Open Plan plan; situaties in the PDCA overlay.
   const editableFields = [
+    { key: 'medewerker', label: 'Regievoerder / behandelaar (eigenaar)', emptyText: 'Nog geen regievoerder', value: urnId(plan?.medewerker) || '' },
     { key: 'notitie', label: 'Hoofddoel / notitie', emptyText: 'Geen notitie', value: plan?.notitie },
     { key: 'startSituatie', label: 'Startsituatie', emptyText: 'Niet ingevuld', value: details?.startSituatie },
     { key: 'gewensteSituatie', label: 'Gewenste situatie', emptyText: 'Niet ingevuld', value: details?.gewensteSituatie },
@@ -247,6 +270,12 @@ export function PlanOverview() {
     try {
       if (editingField === 'notitie') {
         const updated = await openplan.plannen.update(plan.uuid, { notitie: editValue.trim() });
+        setPlan(updated);
+      } else if (editingField === 'medewerker') {
+        const value = editValue.trim();
+        const updated = await openplan.plannen.update(plan.uuid, {
+          medewerker: value ? urn('medewerkers', 'medewerker', value.replace(/\s+/g, '.').toLowerCase()) : '',
+        });
         setPlan(updated);
       } else {
         const updated = await pdca.plandetails.upsert(plan.uuid, { [editingField]: editValue.trim() } as any);
@@ -316,9 +345,11 @@ export function PlanOverview() {
     { key: 'actions', header: '' },
   ];
 
+  // Eigenaarschap ligt bij de regievoerder (plan.medewerker); betrokkenen
+  // zijn overige contactpersonen zonder primair-markering.
   const partyRows = betrokkenen.map(p => ({
     id: p.id,
-    name: p.name + (p.isPrimary ? ' (Primair)' : ''),
+    name: p.name,
     role: p.role,
     contact: [p.email, p.phone].filter(Boolean).join(' / '),
     actions: p.id,
@@ -353,21 +384,36 @@ export function PlanOverview() {
           <h1>{plan.titel}</h1>
           <div className="pdca-meta">
             <div className="pdca-status-control">
-              <Tag type={STATUS_TAG_TYPE[plan.status] as any || 'gray'}>{statusLabel(plan.status)}</Tag>
-              {plan.status === 'actief' && (
+              {plan.status === 'actief' ? (
                 <>
+                  <Tag type="blue">{details?.weergaveStatus || 'Concept'}</Tag>
+                  <Select
+                    id="plan-weergave-status"
+                    size="sm"
+                    labelText=""
+                    hideLabel
+                    value={details?.weergaveStatus || ''}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleWeergaveStatus(e.target.value)}
+                  >
+                    <SelectItem value="" text="Status wijzigen..." />
+                    {planStatusOpties.map(s => <SelectItem key={s} value={s} text={s} />)}
+                  </Select>
                   <Button size="sm" kind="tertiary" onClick={() => handleStatusChange('afgerond')}>Afronden</Button>
                   <Button size="sm" kind="danger--tertiary" onClick={() => handleStatusChange('geannuleerd')}>Annuleren</Button>
                 </>
-              )}
-              {plan.status !== 'actief' && (
-                <Button size="sm" kind="tertiary" onClick={() => handleStatusChange('actief')}>Heractiveren</Button>
+              ) : (
+                <>
+                  <Tag type={STATUS_TAG_TYPE[plan.status] as any || 'gray'}>{statusLabel(plan.status)}</Tag>
+                  <Button size="sm" kind="tertiary" onClick={() => handleStatusChange('actief')}>Heractiveren</Button>
+                </>
               )}
             </div>
+            {urnId(plan.medewerker) && <Tag size="sm" type="green">Regievoerder: {urnId(plan.medewerker)}</Tag>}
             {plan.plantype && <Tag size="sm" type="cool-gray">plantype: {plan.plantype.type}</Tag>}
             {plan.startdatum && <span>Start: {formatDate(plan.startdatum)}</span>}
             {details?.streefEinddatum && <span>Streefdatum: {formatDate(details.streefEinddatum)}</span>}
             {plan.einddatum && <span>Einde: {formatDate(plan.einddatum)}</span>}
+            {urnId(plan.zaak) && <span>Voortgekomen uit zaak: <code style={{fontSize: 11}}>{urnId(plan.zaak)}</code></span>}
           </div>
         </div>
 
@@ -474,17 +520,17 @@ export function PlanOverview() {
               </div>
             </Tile>
 
-            {/* Phase progress */}
-            {phaseProgress.length > 0 && (
+            {/* Voortgang per categorie (optionele fasering via configuratie) */}
+            {categorieProgress.length > 0 && (
               <Tile className="pdca-card">
                 <div className="pdca-card-header">
-                  <h4>Voortgang per fase</h4>
+                  <h4>Voortgang per categorie</h4>
                 </div>
                 <div className="pdca-card-body">
-                  {phaseProgress.map(({ fase, pct }) => (
-                    <div key={fase} className="pdca-phase-item">
+                  {categorieProgress.map(({ categorie, pct }) => (
+                    <div key={categorie} className="pdca-phase-item">
                       <div className="pdca-phase-label">
-                        <span className="pdca-phase-name">{fase}</span>
+                        <span className="pdca-phase-name">{categorie}</span>
                         <span className="pdca-phase-pct">{pct}%</span>
                       </div>
                       <ProgressBar label="" hideLabel value={pct} max={100} size="small" />

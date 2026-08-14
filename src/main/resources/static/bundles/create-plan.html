@@ -177,17 +177,21 @@ function submitPlan(){
     var plantype=(res[1].results||[])[0];
     var overkoepelend=(res[2].results||[])[0];
     if(!plantype||!overkoepelend)throw new Error('Open Plan mist plantype/overkoepelend plan (draai docker compose init)');
-    return sendJson(OPENPLAN+'/plan','POST',{
+    var body={
       titel:titel,
       notitie:document.getElementById('mainGoal').value.trim(),
       startdatum:startDate+'T00:00:00Z',
       plantypeUuid:plantype.uuid,
       overkoepelendPlanUuid:overkoepelend.uuid,
       domeinregister:domeinregister
-    }).then(function(plan){
+    };
+    // Referentie naar de zaak waar het plan uit voortkomt (GZAC-context).
+    if(context&&context.documentId){body.zaak='urn:pdca:zaaksysteem:zaak:'+context.documentId}
+    return sendJson(OPENPLAN+'/plan','POST',body).then(function(plan){
       return sendJson(API+'/api/v1/pdca/plandetails/'+plan.uuid,'PUT',{
         persoonUuid:persoon.uuid,
         caseDefinitionKey:subjectType==='PERSON'?'inwonerplan':'binnenhof-renovatie',
+        weergaveStatus:'Concept',
         startSituatie:document.getElementById('startSituation').value.trim()||null,
         gewensteSituatie:document.getElementById('desiredSituation').value.trim()||null,
         streefEinddatum:document.getElementById('targetEndDate').value||null

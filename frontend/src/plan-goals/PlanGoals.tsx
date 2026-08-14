@@ -3,13 +3,18 @@ import {
   Theme, Button, Tag, Modal, TextInput, TextArea, Select, SelectItem,
   Loading, InlineNotification, ProgressBar,
 } from '@carbon/react';
-import { Add, Edit, TrashCan, ChevronRight, Checkmark, Close } from '@carbon/react/icons';
+import { Add, Edit, TrashCan, ChevronRight, Checkmark, Close, StopOutline } from '@carbon/react/icons';
 import { onInit, resizeIframe } from '../shared/bridge';
 import {
-  openplan, openproduct, pdca, urn, deleteDoelCascade, productTypeByUrn,
-  Plan, PlanDetails, Doel, DoelDetails, DoelType, InstrumentType, Instrument, Actie, ProductType,
+  openplan, openproduct, pdca, urn, deleteDoelCascade, afbreekDoelCascade, afbreekInstrument, productTypeByUrn,
+  Plan, PlanDetails, Doel, DoelDetails, DoelType, InstrumentType, Instrument, InstrumentDetails, Actie, ProductType,
 } from '../shared/api';
-import { statusLabel, doelStatusLabel, doelStatusTag, doelTypeLabel, priorityLabel, formatDate } from '../shared/labels';
+import {
+  statusLabel, doelStatusLabel, doelStatusTag, doelTypeLabel, doelCategorie, ordenCategorieen,
+  priorityLabel, formatDate,
+} from '../shared/labels';
+
+type AfbreekTarget = { kind: 'doel' | 'instrument'; uuid: string; titel: string } | null;
 
 export function PlanGoals() {
   const [loading, setLoading] = useState(true);
@@ -20,15 +25,18 @@ export function PlanGoals() {
   const [doelDetails, setDoelDetails] = useState<DoelDetails[]>([]);
   const [acties, setActies] = useState<Actie[]>([]);
   const [instrumenten, setInstrumenten] = useState<Instrument[]>([]);
-  const [phases, setPhases] = useState<string[]>([]);
+  const [instrumentDetails, setInstrumentDetails] = useState<InstrumentDetails[]>([]);
+  const [categorieOrdening, setCategorieOrdening] = useState<string[]>([]);
   const [doeltypen, setDoeltypen] = useState<DoelType[]>([]);
   const [instrumenttypen, setInstrumenttypen] = useState<InstrumentType[]>([]);
   const [producttypen, setProducttypen] = useState<ProductType[]>([]);
-  const [phaseFilter, setPhaseFilter] = useState<string | null>(null);
+  const [categorieFilter, setCategorieFilter] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [voortgangOpen, setVoortgangOpen] = useState<Set<string>>(new Set());
   const [goalModal, setGoalModal] = useState(false);
   const [actionModal, setActionModal] = useState<string | null>(null);
   const [instrumentModal, setInstrumentModal] = useState<string | null>(null);
+  const [afbreekTarget, setAfbreekTarget] = useState<AfbreekTarget>(null);
   const [editDoel, setEditDoel] = useState<Doel | null>(null);
   const cdkRef = useRef<string | null>(null);
 
@@ -39,7 +47,7 @@ export function PlanGoals() {
     });
   }, []);
 
-  useEffect(() => { resizeIframe(); }, [loading, doelen, expanded]);
+  useEffect(() => { resizeIframe(); }, [loading, doelen, expanded, voortgangOpen]);
 
   const loadData = useCallback(async () => {
     try {
@@ -59,23 +67,24 @@ export function PlanGoals() {
       setPlan(p);
       setDetails(pDetails);
 
-      const [g, gd, a, dt, it, pt] = await Promise.all([
+      const [g, gd, a, idet, dt, it, pt] = await Promise.all([
         openplan.doelen.listByPlan(p.uuid),
         pdca.doeldetails.listByPlan(p.uuid).catch(() => [] as DoelDetails[]),
         pdca.acties.listByPlan(p.uuid).catch(() => [] as Actie[]),
+        pdca.instrumentdetails.listByPlan(p.uuid).catch(() => [] as InstrumentDetails[]),
         openplan.doeltypen.list().catch(() => [] as DoelType[]),
         openplan.instrumenttypen.list().catch(() => [] as InstrumentType[]),
         openproduct.producttypen.list().catch(() => [] as ProductType[]),
       ]);
       const i = await openplan.instrumenten.listByDoelen(g.map(d => d.uuid)).catch(() => [] as Instrument[]);
-      setDoelen(g); setDoelDetails(gd); setActies(a); setInstrumenten(i);
+      setDoelen(g); setDoelDetails(gd); setActies(a); setInstrumenten(i); setInstrumentDetails(idet);
       setDoeltypen(dt); setInstrumenttypen(it); setProducttypen(pt);
 
       if (pDetails?.caseDefinitionKey) {
         try {
           const cfg = await pdca.phaseConfigs.get(pDetails.caseDefinitionKey);
-          setPhases(JSON.parse(cfg.phases));
-        } catch { setPhases([]); }
+          setCategorieOrdening(JSON.parse(cfg.categorieOrdening || '[]'));
+        } catch { setCategorieOrdening([]); }
       }
       setLoading(false);
     } catch (e: any) { setError(e.message); setLoading(false); }
@@ -83,42 +92,47 @@ export function PlanGoals() {
 
   const reload = useCallback(async () => {
     if (!plan) return;
-    const [g, gd, a] = await Promise.all([
+    const [g, gd, a, idet] = await Promise.all([
       openplan.doelen.listByPlan(plan.uuid),
       pdca.doeldetails.listByPlan(plan.uuid).catch(() => [] as DoelDetails[]),
       pdca.acties.listByPlan(plan.uuid).catch(() => [] as Actie[]),
+      pdca.instrumentdetails.listByPlan(plan.uuid).catch(() => [] as InstrumentDetails[]),
     ]);
     const i = await openplan.instrumenten.listByDoelen(g.map(d => d.uuid)).catch(() => [] as Instrument[]);
-    setDoelen(g); setDoelDetails(gd); setActies(a); setInstrumenten(i);
+    setDoelen(g); setDoelDetails(gd); setActies(a); setInstrumenten(i); setInstrumentDetails(idet);
   }, [plan]);
 
   const detailsByDoel = useMemo(() => new Map(doelDetails.map(d => [d.doelUuid, d])), [doelDetails]);
+  const detailsByInstrument = useMemo(() => new Map(instrumentDetails.map(d => [d.instrumentUuid, d])), [instrumentDetails]);
 
-  const toggle = (id: string) => setExpanded(prev => {
+  const toggle = (id: string, set: React.Dispatch<React.SetStateAction<Set<string>>>) => set(prev => {
     const next = new Set(prev);
     next.has(id) ? next.delete(id) : next.add(id);
     return next;
   });
 
-  const doelenByFase = () => {
-    const withFase = doelen.map(d => ({ doel: d, fase: detailsByDoel.get(d.uuid)?.fase || 'Overig' }));
-    const filtered = phaseFilter ? withFase.filter(x => x.fase === phaseFilter) : withFase;
+  // Doelen gegroepeerd op doelcategorie (register); fasering = optionele ordening.
+  const doelenPerCategorie = () => {
+    const withCategorie = doelen.map(d => ({ doel: d, categorie: doelCategorie(d, doeltypen) }));
+    const filtered = categorieFilter ? withCategorie.filter(x => x.categorie === categorieFilter) : withCategorie;
     const grouped: Record<string, Doel[]> = {};
-    const order = phases.length ? [...phases] : [...new Set(filtered.map(x => x.fase))];
-    order.forEach(f => { grouped[f] = []; });
-    filtered.forEach(({ doel, fase }) => {
-      (grouped[fase] = grouped[fase] || []).push(doel);
+    filtered.forEach(({ doel, categorie }) => {
+      (grouped[categorie] = grouped[categorie] || []).push(doel);
     });
     Object.values(grouped).forEach(list =>
       list.sort((a, b) => (detailsByDoel.get(a.uuid)?.sortering ?? 999) - (detailsByDoel.get(b.uuid)?.sortering ?? 999)));
-    return { grouped, order: Object.keys(grouped).filter(f => grouped[f]?.length > 0) };
+    return { grouped, order: ordenCategorieen(Object.keys(grouped), categorieOrdening) };
   };
+
+  const alleCategorieen = useMemo(
+    () => ordenCategorieen([...new Set(doelen.map(d => doelCategorie(d, doeltypen)))], categorieOrdening),
+    [doelen, doeltypen, categorieOrdening]
+  );
 
   const actiesVoor = (doelUuid: string) => acties.filter(a => a.doelUuid === doelUuid);
   const instrumentenVoor = (doelUuid: string) => instrumenten.filter(i => i.doelen.some(d => d.uuid === doelUuid));
 
-  // Doel create/update: direct Open Plan call + fase in the PDCA overlay.
-  const handleSaveDoel = async (data: { titel: string; beschrijving: string; fase: string; doeltypeUuid?: string }) => {
+  const handleSaveDoel = async (data: { titel: string; beschrijving: string; doeltypeUuid?: string }) => {
     try {
       if (editDoel) {
         await openplan.doelen.update(editDoel.uuid, {
@@ -126,7 +140,6 @@ export function PlanGoals() {
           beschrijving: data.beschrijving,
           ...(data.doeltypeUuid ? { doeltypeUuid: data.doeltypeUuid } : {}),
         });
-        await pdca.doeldetails.upsert(editDoel.uuid, { fase: data.fase });
       } else if (plan && details) {
         const doel = await openplan.doelen.create({
           plannenUuids: [plan.uuid],
@@ -136,7 +149,7 @@ export function PlanGoals() {
           beschrijving: data.beschrijving,
           startdatum: new Date().toISOString(),
         });
-        await pdca.doeldetails.upsert(doel.uuid, { planUuid: plan.uuid, fase: data.fase });
+        await pdca.doeldetails.upsert(doel.uuid, { planUuid: plan.uuid, uitvoeringsStatus: 'GEPLAND' });
       }
       setGoalModal(false); setEditDoel(null); await reload();
     } catch (e: any) { setError('Doel opslaan mislukt: ' + e.message); }
@@ -148,10 +161,30 @@ export function PlanGoals() {
     catch (e: any) { setError('Verwijderen mislukt: ' + e.message); }
   };
 
-  // Behaald/niet behaald: Open Plan status afgerond + resultaat.
-  const handleDoelResultaat = async (uuid: string, resultaat: 'behaald' | 'gefaald') => {
-    await openplan.doelen.update(uuid, { status: 'afgerond', resultaat, einddatum: new Date().toISOString() });
+  const handleStartDoel = async (uuid: string) => {
+    if (!plan) return;
+    await pdca.doeldetails.upsert(uuid, { planUuid: plan.uuid, uitvoeringsStatus: 'GESTART' });
     await reload();
+  };
+
+  const handleAfrondenDoel = async (uuid: string) => {
+    await openplan.doelen.update(uuid, { status: 'afgerond', resultaat: 'behaald', einddatum: new Date().toISOString() });
+    await reload();
+  };
+
+  // Afbreken met verplichte reden; bij een doel worden gekoppelde actieve
+  // voorzieningen mee afgebroken.
+  const handleAfbreken = async (reden: string) => {
+    if (!afbreekTarget || !plan) return;
+    try {
+      if (afbreekTarget.kind === 'doel') {
+        await afbreekDoelCascade(afbreekTarget.uuid, plan.uuid, reden);
+      } else {
+        await afbreekInstrument(afbreekTarget.uuid, plan.uuid, reden);
+      }
+      setAfbreekTarget(null);
+      await reload();
+    } catch (e: any) { setError('Afbreken mislukt: ' + e.message); }
   };
 
   const handleSaveActie = async (doelUuid: string, data: any) => {
@@ -174,7 +207,6 @@ export function PlanGoals() {
         doelenUuids: [doelUuid],
         ontwikkelwensenUuids: [],
         instrumenttypeUuid: instrumenttypen[0]?.uuid,
-        // Instrument -> producttype link is a URN by producttype code.
         ...(data.producttype ? { product: urn('openproduct', 'producttype', data.producttype.code) } : {}),
       });
       setInstrumentModal(null); await reload();
@@ -186,21 +218,34 @@ export function PlanGoals() {
     await reload();
   };
 
+  const handleVoortgangSave = async (instrumentUuid: string, uren: number | null, score: number | null, toelichting: string) => {
+    if (!plan) return;
+    try {
+      await pdca.instrumentdetails.upsert(instrumentUuid, {
+        planUuid: plan.uuid,
+        urenBesteed: uren ?? undefined,
+        effectiviteitScore: score ?? undefined,
+        effectiviteitToelichting: toelichting || undefined,
+      });
+      await reload();
+    } catch (e: any) { setError('Voortgang opslaan mislukt: ' + e.message); }
+  };
+
   if (loading) return <Theme theme="g10"><div className="pdca-container"><Loading withOverlay={false} /></div></Theme>;
   if (error && !plan) return <Theme theme="g10"><div className="pdca-container"><InlineNotification kind="error" title={error} /></div></Theme>;
   if (!plan) return null;
 
-  const { grouped, order } = doelenByFase();
+  const { grouped, order } = doelenPerCategorie();
 
   return (
     <Theme theme="g10">
       <div className="pdca-container">
         {error && <InlineNotification kind="error" title="Fout" subtitle={error} lowContrast onCloseButtonClick={() => setError(null)} />}
         <div className="pdca-phase-bar">
-          <span className="pdca-section-title" style={{margin: 0}}>Fase:</span>
-          <Button size="sm" kind={!phaseFilter ? 'primary' : 'ghost'} onClick={() => setPhaseFilter(null)}>Alle</Button>
-          {phases.map(p => (
-            <Button key={p} size="sm" kind={phaseFilter === p ? 'primary' : 'ghost'} onClick={() => setPhaseFilter(p)}>{p}</Button>
+          <span className="pdca-section-title" style={{margin: 0}}>Categorie:</span>
+          <Button size="sm" kind={!categorieFilter ? 'primary' : 'ghost'} onClick={() => setCategorieFilter(null)}>Alle</Button>
+          {alleCategorieen.map(c => (
+            <Button key={c} size="sm" kind={categorieFilter === c ? 'primary' : 'ghost'} onClick={() => setCategorieFilter(c)}>{c}</Button>
           ))}
           <div style={{flex: 1}} />
           <Button size="sm" renderIcon={Add} onClick={() => { setEditDoel(null); setGoalModal(true); }}>Doel toevoegen</Button>
@@ -208,21 +253,22 @@ export function PlanGoals() {
 
         {order.length === 0 && <div className="pdca-empty"><p>Geen doelen gevonden</p></div>}
 
-        {order.map(fase => (
-          <div key={fase} className="pdca-phase-group">
+        {order.map(categorie => (
+          <div key={categorie} className="pdca-phase-group">
             <div className="pdca-phase-group-header">
-              <h3>{fase}</h3>
-              <Tag size="sm" type="gray">{grouped[fase].length} doelen</Tag>
+              <h3>{categorie}</h3>
+              <Tag size="sm" type="gray">{grouped[categorie].length} doelen</Tag>
             </div>
-            {grouped[fase].map(doel => {
+            {grouped[categorie].map(doel => {
               const dd = detailsByDoel.get(doel.uuid);
               const da = actiesVoor(doel.uuid);
               const di = instrumentenVoor(doel.uuid);
               const isOpen = expanded.has(doel.uuid);
               const pct = dd?.voortgangScore || 0;
+              const uitvoeringsStatus = dd?.uitvoeringsStatus;
               return (
                 <div key={doel.uuid} className={`pdca-goal-card status-${doel.status}`}>
-                  <div className="pdca-goal-header" onClick={() => toggle(doel.uuid)}>
+                  <div className="pdca-goal-header" onClick={() => toggle(doel.uuid, setExpanded)}>
                     <div style={{display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0}}>
                       <ChevronRight size={16} style={{transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0}} />
                       <span style={{fontWeight: 500}}>{doel.titel}</span>
@@ -237,20 +283,29 @@ export function PlanGoals() {
                         <div className={`pdca-progress-mini-fill ${pct >= 75 ? 'high' : pct >= 40 ? 'mid' : ''}`} style={{width: `${pct}%`}} />
                       </div>
                       <span style={{fontSize: 11, color: 'var(--cds-text-secondary)'}}>{pct}%</span>
-                      <Tag size="sm" type={doelStatusTag(doel.status, doel.resultaat) as any}>
-                        {doelStatusLabel(doel.status, doel.resultaat)}
+                      <Tag size="sm" type={doelStatusTag(doel.status, doel.resultaat, uitvoeringsStatus) as any}>
+                        {doelStatusLabel(doel.status, doel.resultaat, uitvoeringsStatus)}
                       </Tag>
                     </div>
                   </div>
                   {isOpen && (
                     <div className="pdca-goal-body" style={{ padding: '1rem 1.25rem 1.25rem 3.25rem' }}>
                       {doel.beschrijving && <p style={{color: 'var(--cds-text-secondary)', fontSize: 13, marginBottom: 16}}>{doel.beschrijving}</p>}
+                      {doel.status === 'geannuleerd' && doel.toelichtingResultaat && (
+                        <InlineNotification kind="warning" title="Afgebroken" subtitle={doel.toelichtingResultaat} lowContrast hideCloseButton style={{marginBottom: 16}} />
+                      )}
 
                       <div style={{display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center'}}>
-                        {doel.status === 'actief' && <>
-                          <Button size="sm" kind="primary" onClick={() => handleDoelResultaat(doel.uuid, 'behaald')}>Behaald</Button>
-                          <Button size="sm" kind="danger" onClick={() => handleDoelResultaat(doel.uuid, 'gefaald')}>Niet behaald</Button>
-                        </>}
+                        {doel.status === 'actief' && uitvoeringsStatus !== 'GESTART' && (
+                          <Button size="sm" kind="primary" onClick={() => handleStartDoel(doel.uuid)}>Starten</Button>
+                        )}
+                        {doel.status === 'actief' && uitvoeringsStatus === 'GESTART' && (
+                          <Button size="sm" kind="primary" renderIcon={Checkmark} onClick={() => handleAfrondenDoel(doel.uuid)}>Afronden</Button>
+                        )}
+                        {doel.status === 'actief' && (
+                          <Button size="sm" kind="danger--tertiary" renderIcon={StopOutline}
+                            onClick={() => setAfbreekTarget({ kind: 'doel', uuid: doel.uuid, titel: doel.titel })}>Afbreken</Button>
+                        )}
                         <Button size="sm" kind="ghost" renderIcon={Edit} onClick={() => { setEditDoel(doel); setGoalModal(true); }}>Bewerken</Button>
                         <Button size="sm" kind="danger--ghost" renderIcon={TrashCan} onClick={() => handleDeleteDoel(doel.uuid)}>Verwijderen</Button>
                       </div>
@@ -295,21 +350,39 @@ export function PlanGoals() {
 
                       <div className="pdca-section-block">
                         <div className="pdca-section-title">
-                          <span>Instrumenten ({di.length})</span>
+                          <span>Instrumenten / voorzieningen ({di.length})</span>
                           <Button size="sm" kind="ghost" renderIcon={Add} onClick={() => setInstrumentModal(doel.uuid)}>Instrument toevoegen</Button>
                         </div>
                         {di.map(inst => {
                           const pt = productTypeByUrn(producttypen, inst.product);
+                          const idet = detailsByInstrument.get(inst.uuid);
+                          const vOpen = voortgangOpen.has(inst.uuid);
                           return (
-                            <div key={inst.uuid} className="pdca-action-row">
-                              <div style={{display: 'flex', alignItems: 'center', gap: 8, flex: 1}}>
-                                <span>{inst.titel}</span>
-                                {pt && <span style={{fontSize: 11, color: 'var(--cds-text-secondary)'}}>— {pt.organisaties[0]?.naam || pt.code}{pt.themas[0] ? ` · ${pt.themas[0].naam}` : ''}</span>}
+                            <div key={inst.uuid} style={{borderBottom: '1px solid var(--cds-border-subtle)'}}>
+                              <div className="pdca-action-row" style={{borderBottom: 'none'}}>
+                                <div style={{display: 'flex', alignItems: 'center', gap: 8, flex: 1}}>
+                                  <span>{inst.titel}</span>
+                                  {pt && <span style={{fontSize: 11, color: 'var(--cds-text-secondary)'}}>— {pt.organisaties[0]?.naam || pt.code}{pt.themas[0] ? ` · ${pt.themas[0].naam}` : ''}</span>}
+                                  {idet?.urenBesteed != null && <Tag size="sm" type="cool-gray">{idet.urenBesteed} uur</Tag>}
+                                  {idet?.effectiviteitScore != null && <Tag size="sm" type="teal">effectiviteit {idet.effectiviteitScore}/5</Tag>}
+                                </div>
+                                <div style={{display: 'flex', alignItems: 'center', gap: 6}}>
+                                  <Tag size="sm" type={doelStatusTag(inst.status, inst.resultaat) as any}>{doelStatusLabel(inst.status, inst.resultaat)}</Tag>
+                                  <Button size="sm" kind="ghost" onClick={() => toggle(inst.uuid, setVoortgangOpen)}>Voortgang</Button>
+                                  {inst.status === 'actief' && <Button size="sm" kind="ghost" onClick={() => handleInstrumentAfronden(inst.uuid)}>Afronden</Button>}
+                                  {inst.status === 'actief' && (
+                                    <Button size="sm" kind="danger--ghost" renderIcon={StopOutline} iconDescription="Afbreken" hasIconOnly
+                                      onClick={() => setAfbreekTarget({ kind: 'instrument', uuid: inst.uuid, titel: inst.titel })} />
+                                  )}
+                                </div>
                               </div>
-                              <div style={{display: 'flex', alignItems: 'center', gap: 6}}>
-                                <Tag size="sm" type={doelStatusTag(inst.status, inst.resultaat) as any}>{doelStatusLabel(inst.status, inst.resultaat)}</Tag>
-                                {inst.status === 'actief' && <Button size="sm" kind="ghost" onClick={() => handleInstrumentAfronden(inst.uuid)}>Afronden</Button>}
-                              </div>
+                              {idet?.afbreekReden && (
+                                <p style={{fontSize: 12, color: 'var(--cds-text-error, #da1e28)', margin: '0 0 8px 0'}}>Afbreekreden: {idet.afbreekReden}</p>
+                              )}
+                              {vOpen && (
+                                <VoortgangForm instrument={inst} details={idet}
+                                  onSave={(uren, score, toelichting) => handleVoortgangSave(inst.uuid, uren, score, toelichting)} />
+                              )}
                             </div>
                           );
                         })}
@@ -323,45 +396,87 @@ export function PlanGoals() {
           </div>
         ))}
 
-        <DoelModal open={goalModal} doel={editDoel} fase={editDoel ? detailsByDoel.get(editDoel.uuid)?.fase : undefined}
-          phases={phases} doeltypen={doeltypen}
+        <DoelModal open={goalModal} doel={editDoel} doeltypen={doeltypen}
           onClose={() => { setGoalModal(false); setEditDoel(null); }} onSave={handleSaveDoel} />
         <ActieModal open={!!actionModal} doelUuid={actionModal}
           onClose={() => setActionModal(null)} onSave={handleSaveActie} />
         <InstrumentModal open={!!instrumentModal} doelUuid={instrumentModal} producttypen={producttypen}
           onClose={() => setInstrumentModal(null)} onSave={handleSaveInstrument} />
+        <AfbreekModal target={afbreekTarget} onClose={() => setAfbreekTarget(null)} onSubmit={handleAfbreken} />
       </div>
     </Theme>
   );
 }
 
-function DoelModal({ open, doel, fase, phases, doeltypen, onClose, onSave }: {
-  open: boolean; doel: Doel | null; fase?: string; phases: string[]; doeltypen: DoelType[];
-  onClose: () => void; onSave: (data: { titel: string; beschrijving: string; fase: string; doeltypeUuid?: string }) => void;
+/** Uren + effectiviteit per instrument (PDCA overlay). */
+function VoortgangForm({ instrument, details, onSave }: {
+  instrument: Instrument; details?: InstrumentDetails;
+  onSave: (uren: number | null, score: number | null, toelichting: string) => void;
+}) {
+  const [uren, setUren] = useState<string>(details?.urenBesteed?.toString() ?? '');
+  const [score, setScore] = useState<string>(details?.effectiviteitScore?.toString() ?? '');
+  const [toelichting, setToelichting] = useState(details?.effectiviteitToelichting ?? '');
+  return (
+    <div style={{background: 'var(--cds-layer-02)', padding: 12, margin: '0 0 8px 0', display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap'}}>
+      <TextInput id={`uren-${instrument.uuid}`} labelText="Bestede uren" type="number" style={{maxWidth: 120}}
+        value={uren} onChange={(e: any) => setUren(e.target.value)} />
+      <Select id={`score-${instrument.uuid}`} labelText="Effectiviteit" value={score} onChange={(e: any) => setScore(e.target.value)}>
+        <SelectItem value="" text="-" />
+        {[1, 2, 3, 4, 5].map(n => <SelectItem key={n} value={String(n)} text={`${n} - ${['geen effect', 'weinig effect', 'neutraal', 'effectief', 'zeer effectief'][n - 1]}`} />)}
+      </Select>
+      <TextInput id={`toel-${instrument.uuid}`} labelText="Toelichting" style={{minWidth: 240}}
+        value={toelichting} onChange={(e: any) => setToelichting(e.target.value)} />
+      <Button size="sm" onClick={() => onSave(uren ? parseInt(uren, 10) : null, score ? parseInt(score, 10) : null, toelichting)}>Opslaan</Button>
+    </div>
+  );
+}
+
+/** Afbreken vereist altijd een reden (doel: cascade naar gekoppelde voorzieningen). */
+function AfbreekModal({ target, onClose, onSubmit }: {
+  target: AfbreekTarget; onClose: () => void; onSubmit: (reden: string) => void;
+}) {
+  const [reden, setReden] = useState('');
+  useEffect(() => { if (target) setReden(''); }, [target]);
+  return (
+    <Modal open={!!target} danger modalHeading={`${target?.kind === 'doel' ? 'Doel' : 'Instrument'} afbreken`}
+      primaryButtonText="Afbreken" secondaryButtonText="Annuleren" primaryButtonDisabled={!reden.trim()}
+      onRequestClose={onClose} onRequestSubmit={() => reden.trim() && onSubmit(reden.trim())}>
+      <div className="pdca-modal-form">
+        <p style={{marginBottom: 12}}>
+          Je staat op het punt <strong>{target?.titel}</strong> af te breken.
+          {target?.kind === 'doel' && ' Gekoppelde actieve voorzieningen worden ook afgebroken.'}
+        </p>
+        <TextArea id="afbreek-reden" labelText="Reden (verplicht)" value={reden}
+          onChange={(e: any) => setReden(e.target.value)} placeholder="Waarom wordt dit afgebroken?" />
+      </div>
+    </Modal>
+  );
+}
+
+function DoelModal({ open, doel, doeltypen, onClose, onSave }: {
+  open: boolean; doel: Doel | null; doeltypen: DoelType[];
+  onClose: () => void; onSave: (data: { titel: string; beschrijving: string; doeltypeUuid?: string }) => void;
 }) {
   const [titel, setTitel] = useState('');
   const [beschrijving, setBeschrijving] = useState('');
-  const [selectedFase, setSelectedFase] = useState('');
   const [doeltypeUuid, setDoeltypeUuid] = useState('');
   useEffect(() => {
     if (open) {
       setTitel(doel?.titel || ''); setBeschrijving(doel?.beschrijving || '');
-      setSelectedFase(fase || phases[0] || 'Overig'); setDoeltypeUuid(doel?.doeltype?.uuid || '');
+      setDoeltypeUuid(doel?.doeltype?.uuid || '');
     }
   }, [open, doel]);
   return (
     <Modal open={open} modalHeading={doel ? 'Doel bewerken' : 'Doel toevoegen'}
       primaryButtonText="Opslaan" secondaryButtonText="Annuleren"
       onRequestClose={onClose}
-      onRequestSubmit={() => onSave({ titel, beschrijving, fase: selectedFase, doeltypeUuid: doeltypeUuid || undefined })}>
+      onRequestSubmit={() => onSave({ titel, beschrijving, doeltypeUuid: doeltypeUuid || undefined })}>
       <div className="pdca-modal-form">
-        <Select id="doel-fase" labelText="Fase" value={selectedFase} onChange={(e: any) => setSelectedFase(e.target.value)}>
-          {(phases.length ? phases : ['Overig']).map(p => <SelectItem key={p} value={p} text={p} />)}
-        </Select>
         <TextInput id="doel-titel" labelText="Titel" value={titel} onChange={(e: any) => setTitel(e.target.value)} />
         <TextArea id="doel-beschrijving" labelText="Beschrijving" value={beschrijving} onChange={(e: any) => setBeschrijving(e.target.value)} />
-        <Select id="doel-type" labelText="Doeltype (Open Plan)" value={doeltypeUuid} onChange={(e: any) => setDoeltypeUuid(e.target.value)}>
-          <SelectItem value="" text="-- Kies doeltype --" />
+        <Select id="doel-type" labelText="Thema / categorie" value={doeltypeUuid} onChange={(e: any) => setDoeltypeUuid(e.target.value)}
+          helperText="Doelen worden in de PDCA-weergave gegroepeerd op deze categorie">
+          <SelectItem value="" text="-- Kies categorie --" />
           {doeltypen.map(t => <SelectItem key={t.uuid} value={t.uuid} text={doelTypeLabel(t)} />)}
         </Select>
       </div>

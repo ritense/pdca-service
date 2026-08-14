@@ -18,9 +18,13 @@ statuses `actief`/`afgerond`/`geannuleerd`, resultaat `behaald`/`gefaald`, pagin
 ```
 
 The Spring Boot backend itself only keeps what the registers don't model, keyed by register uuid
-(`/api/v1/pdca/*`): fase/voortgang per doel, evaluatietype + doelvoortgang + actiepunten per
-contactmoment, acties, betrokkenen and phase-configs. Cross-register references are URNs, e.g.
-`instrument.product = urn:pdca:openproduct:producttype:<code>` and
+(`/api/v1/pdca/*`): uitvoeringsstatus (gepland/gestart) + voortgang per doel, configurable plan
+display statuses (Concept, Vastgesteld, ...), uren/effectiviteit/afbreekreden per instrument,
+evaluatietype + doelvoortgang + actiepunten per contactmoment, acties, betrokkenen and the case
+config (optional doelcategorie-ordening = fasering, evaluation types, plan statuses). Doelen are
+grouped by their **doelcategorie from the register**; the plan owner is the regievoerder
+(`plan.medewerker` URN) and `plan.zaak` references the originating GZAC case. Cross-register
+references are URNs, e.g. `instrument.product = urn:pdca:openproduct:producttype:<code>` and
 `plan.domeinregister = urn:pdca:brp:persoon:<bsn>`.
 
 The app still speaks the Valtimo external-plugin **"URL app" contract** (discovery at

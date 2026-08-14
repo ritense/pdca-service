@@ -40,9 +40,16 @@ data class PlanDetails(
     @Column(name = "persoon_uuid", nullable = false)
     val persoonUuid: UUID,
 
-    /** GZAC case definition driving the phase configuration. */
+    /** GZAC case definition driving the PDCA configuration. */
     @Column(name = "case_definition_key")
     var caseDefinitionKey: String? = null,
+
+    /**
+     * Configurable plan display status (e.g. Concept, Vastgesteld) shown while
+     * the register status is `actief`; valid values come from the case config.
+     */
+    @Column(name = "weergave_status")
+    var weergaveStatus: String? = null,
 
     @Column(name = "start_situatie", columnDefinition = "TEXT")
     var startSituatie: String? = null,

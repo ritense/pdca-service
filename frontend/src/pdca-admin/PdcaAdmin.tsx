@@ -17,7 +17,8 @@ export function PdcaAdmin() {
   const [modal, setModal] = useState(false);
   const [editKey, setEditKey] = useState<string | null>(null);
   const [formKey, setFormKey] = useState('');
-  const [formPhases, setFormPhases] = useState('');
+  const [formCategorieen, setFormCategorieen] = useState('');
+  const [formPlanStatussen, setFormPlanStatussen] = useState('');
   const [formEvalTypes, setFormEvalTypes] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
 
@@ -34,7 +35,8 @@ export function PdcaAdmin() {
   }, []);
 
   const openCreate = () => {
-    setEditKey(null); setFormKey(''); setFormPhases('');
+    setEditKey(null); setFormKey(''); setFormCategorieen('');
+    setFormPlanStatussen('Concept, Vastgesteld, In uitvoering');
     setFormEvalTypes(new Set(['INTAKE', 'PROGRESS', 'EVALUATION']));
     setModal(true);
   };
@@ -42,26 +44,31 @@ export function PdcaAdmin() {
   const openEdit = (cfg: PhaseConfig) => {
     setEditKey(cfg.caseDefinitionKey);
     setFormKey(cfg.caseDefinitionKey);
-    setFormPhases(JSON.parse(cfg.phases).join(', '));
+    setFormCategorieen(JSON.parse(cfg.categorieOrdening || '[]').join(', '));
+    setFormPlanStatussen(JSON.parse(cfg.planStatussen || '[]').join(', '));
     setFormEvalTypes(new Set(JSON.parse(cfg.evaluationTypes)));
     setModal(true);
   };
 
   const handleSave = async () => {
-    const phases = formPhases.split(',').map(s => s.trim()).filter(Boolean);
+    // Fasering is optioneel: een lege categorie-ordening betekent alfabetische weergave.
+    const categorieen = formCategorieen.split(',').map(s => s.trim()).filter(Boolean);
+    const planStatussen = formPlanStatussen.split(',').map(s => s.trim()).filter(Boolean);
     const evalTypes = Array.from(formEvalTypes);
-    if (!formKey || phases.length === 0) { alert('Vul dossiertype en fasen in'); return; }
+    if (!formKey) { alert('Vul een dossiertype in'); return; }
     try {
       if (editKey) {
         await pdca.phaseConfigs.update(editKey, {
           caseDefinitionKey: formKey,
-          phases: JSON.stringify(phases),
+          categorieOrdening: JSON.stringify(categorieen),
+          planStatussen: JSON.stringify(planStatussen),
           evaluationTypes: JSON.stringify(evalTypes),
         });
       } else {
         await pdca.phaseConfigs.create({
           caseDefinitionKey: formKey,
-          phases: JSON.stringify(phases),
+          categorieOrdening: JSON.stringify(categorieen),
+          planStatussen: JSON.stringify(planStatussen),
           evaluationTypes: JSON.stringify(evalTypes),
         });
       }
@@ -90,7 +97,7 @@ export function PdcaAdmin() {
 
   const headers = [
     { key: 'caseDefinitionKey', header: 'Dossiertype' },
-    { key: 'phases', header: 'Fasen' },
+    { key: 'categorieOrdening', header: 'Categorie-ordening' },
     { key: 'evaluationTypes', header: 'Evaluatietypen' },
     { key: 'actions', header: 'Acties' },
   ];
@@ -98,7 +105,7 @@ export function PdcaAdmin() {
   const rows = configs.map(cfg => ({
     id: cfg.caseDefinitionKey,
     caseDefinitionKey: cfg.caseDefinitionKey,
-    phases: cfg.phases,
+    categorieOrdening: cfg.categorieOrdening,
     evaluationTypes: cfg.evaluationTypes,
     actions: cfg,
   }));
@@ -109,7 +116,7 @@ export function PdcaAdmin() {
         {toast && <InlineNotification kind="success" title={toast} style={{marginBottom: 16}} onClose={() => setToast(null)} />}
 
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24}}>
-          <h1 style={{fontSize: '1.75rem', fontWeight: 600}}>PDCA Beheer — Faseconfiguratie</h1>
+          <h1 style={{fontSize: '1.75rem', fontWeight: 600}}>PDCA Beheer — Dossierconfiguratie</h1>
           <Button renderIcon={Add} onClick={openCreate}>Nieuwe configuratie</Button>
         </div>
 
@@ -123,21 +130,29 @@ export function PdcaAdmin() {
               <thead>
                 <tr>
                   <th style={{textAlign: 'left', padding: '12px 16px', borderBottom: '2px solid var(--cds-border-subtle)', fontSize: 12, fontWeight: 600, color: 'var(--cds-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5}}>Dossiertype</th>
-                  <th style={{textAlign: 'left', padding: '12px 16px', borderBottom: '2px solid var(--cds-border-subtle)', fontSize: 12, fontWeight: 600, color: 'var(--cds-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5}}>Fasen</th>
+                  <th style={{textAlign: 'left', padding: '12px 16px', borderBottom: '2px solid var(--cds-border-subtle)', fontSize: 12, fontWeight: 600, color: 'var(--cds-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5}}>Categorie-ordening (fasering)</th>
+                  <th style={{textAlign: 'left', padding: '12px 16px', borderBottom: '2px solid var(--cds-border-subtle)', fontSize: 12, fontWeight: 600, color: 'var(--cds-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5}}>Planstatussen</th>
                   <th style={{textAlign: 'left', padding: '12px 16px', borderBottom: '2px solid var(--cds-border-subtle)', fontSize: 12, fontWeight: 600, color: 'var(--cds-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5}}>Evaluatietypen</th>
                   <th style={{textAlign: 'right', padding: '12px 16px', borderBottom: '2px solid var(--cds-border-subtle)', fontSize: 12, fontWeight: 600, color: 'var(--cds-text-secondary)', textTransform: 'uppercase', letterSpacing: 0.5}}>Acties</th>
                 </tr>
               </thead>
               <tbody>
                 {configs.map(cfg => {
-                  const ph = JSON.parse(cfg.phases) as string[];
+                  const ph = JSON.parse(cfg.categorieOrdening || '[]') as string[];
+                  const ps = JSON.parse(cfg.planStatussen || '[]') as string[];
                   const et = JSON.parse(cfg.evaluationTypes) as string[];
                   return (
                     <tr key={cfg.caseDefinitionKey} style={{borderBottom: '1px solid var(--cds-border-subtle)'}}>
                       <td style={{padding: '12px 16px', fontWeight: 500}}>{cfg.caseDefinitionKey}</td>
                       <td style={{padding: '12px 16px'}}>
                         <div style={{display: 'flex', gap: 4, flexWrap: 'wrap'}}>
-                          {ph.map(p => <Tag key={p} size="sm" type="blue">{p}</Tag>)}
+                          {ph.length === 0 ? <span style={{fontSize: 12, color: 'var(--cds-text-helper)', fontStyle: 'italic'}}>alfabetisch</span>
+                            : ph.map(p => <Tag key={p} size="sm" type="blue">{p}</Tag>)}
+                        </div>
+                      </td>
+                      <td style={{padding: '12px 16px'}}>
+                        <div style={{display: 'flex', gap: 4, flexWrap: 'wrap'}}>
+                          {ps.map(p => <Tag key={p} size="sm" type="teal">{p}</Tag>)}
                         </div>
                       </td>
                       <td style={{padding: '12px 16px'}}>
@@ -164,16 +179,21 @@ export function PdcaAdmin() {
             <TextInput id="cfg-key" labelText="Dossiertype (case definition key)"
               value={formKey} onChange={(e: any) => setFormKey(e.target.value)}
               disabled={!!editKey} placeholder="bijv. jeugdzorg-traject" />
-            <TextInput id="cfg-phases" labelText="Fasen (komma-gescheiden)"
-              value={formPhases} onChange={(e: any) => setFormPhases(e.target.value)}
-              placeholder="Analyse, Uitvoering, Evaluatie" helperText="Volgorde bepaalt weergave" />
-            {formPhases && (
+            <TextInput id="cfg-categorieen" labelText="Categorie-ordening (komma-gescheiden, optioneel)"
+              value={formCategorieen} onChange={(e: any) => setFormCategorieen(e.target.value)}
+              placeholder="Verkenning, Uitvoering, Nazorg"
+              helperText="Doelcategorieen uit Open Plan; volgorde bepaalt de weergave. Leeg = alfabetisch." />
+            {formCategorieen && (
               <div style={{display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 16}}>
-                {formPhases.split(',').map(s => s.trim()).filter(Boolean).map((p, i) => (
+                {formCategorieen.split(',').map(s => s.trim()).filter(Boolean).map((p, i) => (
                   <Tag key={i} size="sm" type="blue">{p}</Tag>
                 ))}
               </div>
             )}
+            <TextInput id="cfg-planstatussen" labelText="Planstatussen (komma-gescheiden)"
+              value={formPlanStatussen} onChange={(e: any) => setFormPlanStatussen(e.target.value)}
+              placeholder="Concept, Vastgesteld, In uitvoering"
+              helperText="Instelbare weergavestatussen voor het plan" />
             <p style={{fontSize: 12, fontWeight: 600, color: 'var(--cds-text-secondary)', marginBottom: 8}}>Evaluatietypen</p>
             <div style={{display: 'flex', flexWrap: 'wrap', gap: 16}}>
               {ALL_EVAL_TYPES.map(t => (

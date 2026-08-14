@@ -16,6 +16,9 @@
 
 package com.ritense.pdca.web.rest.dto
 
+import com.ritense.pdca.domain.UitvoeringsStatus
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
 import java.time.LocalDate
 import java.util.UUID
 
@@ -24,6 +27,7 @@ import java.util.UUID
 data class PlanDetailsRequest(
     val persoonUuid: UUID? = null,
     val caseDefinitionKey: String? = null,
+    val weergaveStatus: String? = null,
     val startSituatie: String? = null,
     val gewensteSituatie: String? = null,
     val streefEinddatum: LocalDate? = null
@@ -31,7 +35,7 @@ data class PlanDetailsRequest(
 
 data class DoelDetailsRequest(
     val planUuid: UUID? = null,
-    val fase: String? = null,
+    val uitvoeringsStatus: UitvoeringsStatus? = null,
     val voortgangScore: Int? = null,
     val voortgangToelichting: String? = null,
     val sortering: Int? = null
@@ -44,4 +48,14 @@ data class ContactmomentDetailsRequest(
     val deelnemers: String? = null,
     val doelVoortgang: String? = null,
     val actiepunten: String? = null
+)
+
+data class InstrumentDetailsRequest(
+    val planUuid: UUID? = null,
+    val urenBesteed: Int? = null,
+    @field:Min(1)
+    @field:Max(5)
+    val effectiviteitScore: Int? = null,
+    val effectiviteitToelichting: String? = null,
+    val afbreekReden: String? = null
 )

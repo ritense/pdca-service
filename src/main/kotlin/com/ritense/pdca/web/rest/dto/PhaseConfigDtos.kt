@@ -20,30 +20,38 @@ import com.ritense.pdca.domain.PhaseConfig
 import java.time.LocalDateTime
 import java.util.UUID
 
+/**
+ * PDCA case configuration: optional ordering of doelcategorieën (fasering),
+ * evaluation types and configurable plan display statuses — all JSON arrays.
+ */
 data class CreatePhaseConfigRequest(
     val caseDefinitionKey: String,
-    val phases: String,
-    val evaluationTypes: String
+    val categorieOrdening: String,
+    val evaluationTypes: String,
+    val planStatussen: String? = null
 )
 
 data class UpdatePhaseConfigRequest(
-    val phases: String? = null,
-    val evaluationTypes: String? = null
+    val categorieOrdening: String? = null,
+    val evaluationTypes: String? = null,
+    val planStatussen: String? = null
 )
 
 data class PhaseConfigResponse(
     val id: UUID,
     val caseDefinitionKey: String,
-    val phases: String,
+    val categorieOrdening: String,
     val evaluationTypes: String,
+    val planStatussen: String?,
     val createdAt: LocalDateTime,
     val updatedAt: LocalDateTime
 ) {
     constructor(config: PhaseConfig) : this(
         id = config.id,
         caseDefinitionKey = config.caseDefinitionKey,
-        phases = config.phases,
+        categorieOrdening = config.categorieOrdening,
         evaluationTypes = config.evaluationTypes,
+        planStatussen = config.planStatussen,
         createdAt = config.createdAt,
         updatedAt = config.updatedAt
     )

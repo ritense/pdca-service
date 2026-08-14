@@ -18,15 +18,19 @@ package com.ritense.pdca.web.rest
 
 import com.ritense.pdca.domain.ContactmomentDetails
 import com.ritense.pdca.domain.DoelDetails
+import com.ritense.pdca.domain.InstrumentDetails
 import com.ritense.pdca.domain.PlanDetails
+import com.ritense.pdca.domain.UitvoeringsStatus
 import com.ritense.pdca.repository.ActionRepository
 import com.ritense.pdca.repository.ContactmomentDetailsRepository
 import com.ritense.pdca.repository.DoelDetailsRepository
+import com.ritense.pdca.repository.InstrumentDetailsRepository
 import com.ritense.pdca.repository.InvolvedPartyRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
 import com.ritense.pdca.service.PhaseConfigService
 import com.ritense.pdca.web.rest.dto.ContactmomentDetailsRequest
 import com.ritense.pdca.web.rest.dto.DoelDetailsRequest
+import com.ritense.pdca.web.rest.dto.InstrumentDetailsRequest
 import com.ritense.pdca.web.rest.dto.PlanDetailsRequest
 import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
@@ -50,8 +54,9 @@ import java.util.UUID
  * contactmomenten, personen, doeltypen, relatietypen and producttypen are
  * consumed directly from Open Plan / Open Product through the
  * [com.ritense.pdca.registers.RegisterProxyController]; this resource only
- * stores what those registers do not model (fase, voortgang, evaluatietype,
- * doelvoortgang, actiepunten) plus the GZAC case link.
+ * stores what those registers do not model (uitvoeringsstatus, voortgang,
+ * weergavestatus, uren/effectiviteit, evaluatietype, doelvoortgang,
+ * actiepunten) plus the GZAC case link.
  *
  * The DELETE endpoints clean up local overlay rows after the caller removed
  * the register resource through the proxy.
@@ -63,6 +68,7 @@ class PdcaResource(
     private val planDetailsRepository: PlanDetailsRepository,
     private val doelDetailsRepository: DoelDetailsRepository,
     private val contactmomentDetailsRepository: ContactmomentDetailsRepository,
+    private val instrumentDetailsRepository: InstrumentDetailsRepository,
     private val actionRepository: ActionRepository,
     private val involvedPartyRepository: InvolvedPartyRepository,
     private val phaseConfigService: PhaseConfigService
@@ -93,12 +99,15 @@ class PdcaResource(
                 ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "No PhaseConfig found for caseDefinitionKey: $key")
         }
         val existing = planDetailsRepository.findById(planUuid).orElse(null)
+        request.weergaveStatus?.let { validateWeergaveStatus(existing?.caseDefinitionKey ?: request.caseDefinitionKey, it) }
+
         val details = if (existing == null) {
             PlanDetails(
                 planUuid = planUuid,
                 persoonUuid = request.persoonUuid
                     ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "persoonUuid is required when creating plandetails"),
                 caseDefinitionKey = request.caseDefinitionKey,
+                weergaveStatus = request.weergaveStatus,
                 startSituatie = request.startSituatie,
                 gewensteSituatie = request.gewensteSituatie,
                 streefEinddatum = request.streefEinddatum
@@ -106,6 +115,7 @@ class PdcaResource(
         } else {
             existing.apply {
                 caseDefinitionKey = request.caseDefinitionKey ?: caseDefinitionKey
+                weergaveStatus = request.weergaveStatus ?: weergaveStatus
                 startSituatie = request.startSituatie ?: startSituatie
                 gewensteSituatie = request.gewensteSituatie ?: gewensteSituatie
                 streefEinddatum = request.streefEinddatum ?: streefEinddatum
@@ -122,6 +132,7 @@ class PdcaResource(
         actionRepository.deleteAll(actionRepository.findByDoelUuidIn(doelUuids))
         doelDetailsRepository.deleteByPlanUuid(planUuid)
         contactmomentDetailsRepository.deleteByPlanUuid(planUuid)
+        instrumentDetailsRepository.deleteByPlanUuid(planUuid)
         involvedPartyRepository.deleteByPlanUuid(planUuid)
         planDetailsRepository.deleteById(planUuid)
         return ResponseEntity.noContent().build()
@@ -141,7 +152,6 @@ class PdcaResource(
         val existing = doelDetailsRepository.findById(doelUuid).orElse(null)
         val planUuid = existing?.planUuid ?: request.planUuid
             ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "planUuid is required when creating doeldetails")
-        request.fase?.let { validateFase(planUuid, it) }
 
         val details = if (existing == null) {
             val sortering = request.sortering
@@ -149,15 +159,14 @@ class PdcaResource(
             DoelDetails(
                 doelUuid = doelUuid,
                 planUuid = planUuid,
-                fase = request.fase
-                    ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "fase is required when creating doeldetails"),
+                uitvoeringsStatus = request.uitvoeringsStatus ?: UitvoeringsStatus.GEPLAND,
                 voortgangScore = request.voortgangScore,
                 voortgangToelichting = request.voortgangToelichting,
                 sortering = sortering
             )
         } else {
             existing.apply {
-                fase = request.fase ?: fase
+                uitvoeringsStatus = request.uitvoeringsStatus ?: uitvoeringsStatus
                 voortgangScore = request.voortgangScore ?: voortgangScore
                 voortgangToelichting = request.voortgangToelichting ?: voortgangToelichting
                 sortering = request.sortering ?: sortering
@@ -172,6 +181,48 @@ class PdcaResource(
     fun deleteDoelDetails(@PathVariable(name = "doelUuid") doelUuid: UUID): ResponseEntity<Unit> {
         actionRepository.deleteAll(actionRepository.findByDoelUuid(doelUuid))
         doelDetailsRepository.deleteById(doelUuid)
+        return ResponseEntity.noContent().build()
+    }
+
+    // --------------------------------------------------- instrumentdetails
+
+    @GetMapping("/instrumentdetails")
+    fun listInstrumentDetails(@RequestParam(name = "planUuid") planUuid: UUID): List<InstrumentDetails> =
+        instrumentDetailsRepository.findByPlanUuid(planUuid)
+
+    @PutMapping("/instrumentdetails/{instrumentUuid}")
+    fun upsertInstrumentDetails(
+        @PathVariable(name = "instrumentUuid") instrumentUuid: UUID,
+        @Valid @RequestBody request: InstrumentDetailsRequest
+    ): InstrumentDetails {
+        val existing = instrumentDetailsRepository.findById(instrumentUuid).orElse(null)
+        val planUuid = existing?.planUuid ?: request.planUuid
+            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "planUuid is required when creating instrumentdetails")
+
+        val details = if (existing == null) {
+            InstrumentDetails(
+                instrumentUuid = instrumentUuid,
+                planUuid = planUuid,
+                urenBesteed = request.urenBesteed,
+                effectiviteitScore = request.effectiviteitScore,
+                effectiviteitToelichting = request.effectiviteitToelichting,
+                afbreekReden = request.afbreekReden
+            )
+        } else {
+            existing.apply {
+                urenBesteed = request.urenBesteed ?: urenBesteed
+                effectiviteitScore = request.effectiviteitScore ?: effectiviteitScore
+                effectiviteitToelichting = request.effectiviteitToelichting ?: effectiviteitToelichting
+                afbreekReden = request.afbreekReden ?: afbreekReden
+                updatedAt = LocalDateTime.now()
+            }
+        }
+        return instrumentDetailsRepository.save(details)
+    }
+
+    @DeleteMapping("/instrumentdetails/{instrumentUuid}")
+    fun deleteInstrumentDetails(@PathVariable(name = "instrumentUuid") instrumentUuid: UUID): ResponseEntity<Unit> {
+        instrumentDetailsRepository.deleteById(instrumentUuid)
         return ResponseEntity.noContent().build()
     }
 
@@ -223,11 +274,14 @@ class PdcaResource(
 
     // ------------------------------------------------------------- helpers
 
-    private fun validateFase(planUuid: UUID, fase: String) {
-        val caseDefinitionKey = planDetailsRepository.findById(planUuid).orElse(null)?.caseDefinitionKey ?: return
-        val validFases = phaseConfigService.getPhases(caseDefinitionKey)
-        if (fase !in validFases) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid fase '$fase'. Valid fases: $validFases")
+    private fun validateWeergaveStatus(caseDefinitionKey: String?, weergaveStatus: String) {
+        if (caseDefinitionKey == null) return
+        val validStatussen = phaseConfigService.getPlanStatussen(caseDefinitionKey) ?: return
+        if (weergaveStatus !in validStatussen) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Invalid weergaveStatus '$weergaveStatus'. Valid: $validStatussen"
+            )
         }
     }
 

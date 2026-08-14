@@ -18,14 +18,18 @@ package com.ritense.pdca.domain
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.time.LocalDateTime
 import java.util.UUID
 
 /**
- * PDCA process overlay for a doel in Open Plan (pk = Open Plan doel uuid):
- * fase, voortgang and sortering are PDCA concepts the register does not model.
+ * PDCA process overlay for a doel in Open Plan (pk = Open Plan doel uuid).
+ * Grouping/ordering in the PDCA view comes from the doel's doelcategorie in
+ * the register; this overlay holds voortgang, ordering and the fine-grained
+ * uitvoeringsstatus (the register only knows actief/afgerond/geannuleerd).
  */
 @Entity
 @Table(name = "doel_details")
@@ -37,8 +41,10 @@ data class DoelDetails(
     @Column(name = "plan_uuid", nullable = false)
     val planUuid: UUID,
 
-    @Column(nullable = false)
-    var fase: String,
+    /** Refinement of the register status `actief`: gepland or al gestart. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "uitvoerings_status", nullable = false)
+    var uitvoeringsStatus: UitvoeringsStatus = UitvoeringsStatus.GEPLAND,
 
     @Column(name = "voortgang_score")
     var voortgangScore: Int? = null,
@@ -55,3 +61,5 @@ data class DoelDetails(
     @Column(name = "updated_at", nullable = false)
     var updatedAt: LocalDateTime = LocalDateTime.now()
 )
+
+enum class UitvoeringsStatus { GEPLAND, GESTART }

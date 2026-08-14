@@ -144,6 +144,13 @@ export const pdca = {
     delete: (contactmomentUuid: string) =>
       request<void>(`${PDCA}/contactmomentdetails/${contactmomentUuid}`, { method: 'DELETE' }),
   },
+  instrumentdetails: {
+    listByPlan: (planUuid: string) => request<InstrumentDetails[]>(`${PDCA}/instrumentdetails?planUuid=${planUuid}`),
+    upsert: (instrumentUuid: string, data: Partial<InstrumentDetails>) =>
+      request<InstrumentDetails>(`${PDCA}/instrumentdetails/${instrumentUuid}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (instrumentUuid: string) =>
+      request<void>(`${PDCA}/instrumentdetails/${instrumentUuid}`, { method: 'DELETE' }),
+  },
   acties: {
     listByPlan: (planUuid: string) => request<Actie[]>(`${PDCA}/acties?planUuid=${planUuid}`),
     create: (data: Partial<Actie> & { doelUuid: string; title: string }) =>
@@ -187,10 +194,41 @@ export async function deleteDoelCascade(doelUuid: string): Promise<void> {
   for (const instrument of instrumenten) {
     if (instrument.doelen.every(d => d.uuid === doelUuid)) {
       await openplan.instrumenten.delete(instrument.uuid);
+      await pdca.instrumentdetails.delete(instrument.uuid).catch(() => undefined);
     }
   }
   await openplan.doelen.delete(doelUuid);
   await pdca.doeldetails.delete(doelUuid).catch(() => undefined);
+}
+
+/**
+ * Afbreken van een doel met verplichte reden: register-status geannuleerd +
+ * toelichting, en cascade naar alle nog actieve gekoppelde instrumenten
+ * (voorzieningen) met dezelfde reden.
+ */
+export async function afbreekDoelCascade(doelUuid: string, planUuid: string, reden: string): Promise<void> {
+  const einddatum = new Date().toISOString();
+  const instrumenten = await openplan.instrumenten.listByDoelen([doelUuid]);
+  for (const instrument of instrumenten) {
+    if (instrument.status === 'actief') {
+      await openplan.instrumenten.update(instrument.uuid, { status: 'geannuleerd', einddatum });
+      await pdca.instrumentdetails.upsert(instrument.uuid, {
+        planUuid,
+        afbreekReden: `Afgebroken met doel: ${reden}`,
+      });
+    }
+  }
+  await openplan.doelen.update(doelUuid, {
+    status: 'geannuleerd',
+    toelichtingResultaat: reden,
+    einddatum,
+  });
+}
+
+/** Afbreken van een instrument/voorziening met verplichte reden. */
+export async function afbreekInstrument(instrumentUuid: string, planUuid: string, reden: string): Promise<void> {
+  await openplan.instrumenten.update(instrumentUuid, { status: 'geannuleerd', einddatum: new Date().toISOString() });
+  await pdca.instrumentdetails.upsert(instrumentUuid, { planUuid, afbreekReden: reden });
 }
 
 /** Contactmoment in Open Plan plus its overlay row. */
@@ -330,18 +368,32 @@ export interface PlanDetails {
   planUuid: string;
   persoonUuid: string;
   caseDefinitionKey?: string;
+  /** Configureerbare planstatus (Concept, Vastgesteld, ...) zolang het register-status actief is. */
+  weergaveStatus?: string;
   startSituatie?: string;
   gewensteSituatie?: string;
   streefEinddatum?: string;
 }
 
+export type UitvoeringsStatus = 'GEPLAND' | 'GESTART';
+
 export interface DoelDetails {
   doelUuid: string;
   planUuid: string;
-  fase: string;
+  /** Verfijning van register-status actief: gepland of gestart. */
+  uitvoeringsStatus: UitvoeringsStatus;
   voortgangScore?: number;
   voortgangToelichting?: string;
   sortering: number;
+}
+
+export interface InstrumentDetails {
+  instrumentUuid: string;
+  planUuid: string;
+  urenBesteed?: number;
+  effectiviteitScore?: number;
+  effectiviteitToelichting?: string;
+  afbreekReden?: string;
 }
 
 export interface ContactmomentDetails {
@@ -384,8 +436,12 @@ export interface Betrokkene {
 export interface PhaseConfig {
   id: string;
   caseDefinitionKey: string;
-  phases: string;
+  /** JSON array: optionele ordening van doelcategorieën (fasering). */
+  categorieOrdening: string;
+  /** JSON array: evaluatietypen. */
   evaluationTypes: string;
+  /** JSON array: configureerbare planstatussen (Concept, Vastgesteld, ...). */
+  planStatussen?: string | null;
 }
 
 // ------------------------------------------------------------- stub types

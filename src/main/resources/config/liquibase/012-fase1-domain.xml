@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Fase 1 domain changes:
+  - fasering wordt optioneel: doelen groeperen op doelcategorie (register);
+    phase_config.phases wordt categorie_ordening (optionele volgorde)
+  - configureerbare planstatussen (Concept, Vastgesteld, ...) als overlay
+  - doelstatus verfijning gepland/gestart naast de register-status
+  - instrument_details: uren, effectiviteit en afbreekreden per instrument
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="012-01-phase-config-categorie-ordening" author="pdca">
+        <renameColumn tableName="phase_config" oldColumnName="phases" newColumnName="categorie_ordening"/>
+        <addColumn tableName="phase_config">
+            <column name="plan_statussen" type="TEXT"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="012-02-seed-categorie-ordening" author="pdca" context="seed">
+        <!-- Ordening = doelcategorieën van de demo-doelen in Open Plan. -->
+        <update tableName="phase_config">
+            <column name="categorie_ordening" value='["Inventarisatie","Ontwikkeling","Praktisch","Verkenning","Plaatsing","Borging"]'/>
+            <column name="plan_statussen" value='["Concept","Vastgesteld","In uitvoering"]'/>
+            <where>case_definition_key = 'inwonerplan'</where>
+        </update>
+        <update tableName="phase_config">
+            <column name="categorie_ordening" value='["Analyse","Herstel","Controle","Borging"]'/>
+            <column name="plan_statussen" value='["Concept","Vastgesteld","In uitvoering"]'/>
+            <where>case_definition_key = 'binnenhof-renovatie'</where>
+        </update>
+    </changeSet>
+
+    <changeSet id="012-03-doel-details-uitvoerings-status" author="pdca">
+        <addColumn tableName="doel_details">
+            <column name="uitvoerings_status" type="VARCHAR(20)" defaultValue="GEPLAND">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <dropColumn tableName="doel_details" columnName="fase"/>
+    </changeSet>
+
+    <changeSet id="012-04-seed-uitvoerings-status" author="pdca" context="seed">
+        <!-- Actieve demo-doelen met voortgang zijn gestart. -->
+        <sql>
+            UPDATE doel_details SET uitvoerings_status = 'GESTART'
+            WHERE doel_uuid IN (
+                '22222222-2222-2222-2222-222222222203',
+                '22222222-2222-2222-2222-222222222205',
+                '22222222-2222-2222-2222-222222222206',
+                '22222222-2222-2222-2222-222222222212'
+            );
+        </sql>
+    </changeSet>
+
+    <changeSet id="012-05-plan-details-weergave-status" author="pdca">
+        <addColumn tableName="plan_details">
+            <column name="weergave_status" type="VARCHAR(100)"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="012-06-seed-weergave-status" author="pdca" context="seed">
+        <sql>UPDATE plan_details SET weergave_status = 'Vastgesteld';</sql>
+    </changeSet>
+
+    <changeSet id="012-07-create-instrument-details" author="pdca">
+        <createTable tableName="instrument_details">
+            <column name="instrument_uuid" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="plan_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="uren_besteed" type="INT"/>
+            <column name="effectiviteit_score" type="INT"/>
+            <column name="effectiviteit_toelichting" type="TEXT"/>
+            <column name="afbreek_reden" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="instrument_details" indexName="idx_instrument_details_plan">
+            <column name="plan_uuid"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="012-08-seed-instrument-details" author="pdca" context="seed">
+        <!-- Afgeronde demo-instrumenten (uuids uit docker/openplan/init.py). -->
+        <insert tableName="instrument_details">
+            <column name="instrument_uuid" value="44444444-4444-4444-4444-444444444401"/>
+            <column name="plan_uuid" value="11111111-1111-1111-1111-111111111111"/>
+            <column name="uren_besteed" valueNumeric="12"/>
+            <column name="effectiviteit_score" valueNumeric="4"/>
+            <column name="effectiviteit_toelichting" value="Toets gaf duidelijk beeld van leervermogen; direct richting gegeven aan het Werkfit-traject."/>
+            <column name="created_at" valueDate="2026-02-14T09:00:00"/>
+            <column name="updated_at" valueDate="2026-02-14T09:00:00"/>
+        </insert>
+        <insert tableName="instrument_details">
+            <column name="instrument_uuid" value="44444444-4444-4444-4444-444444444402"/>
+            <column name="plan_uuid" value="11111111-1111-1111-1111-111111111111"/>
+            <column name="uren_besteed" valueNumeric="18"/>
+            <column name="created_at" valueDate="2026-06-20T14:30:00"/>
+            <column name="updated_at" valueDate="2026-06-20T14:30:00"/>
+        </insert>
+        <insert tableName="instrument_details">
+            <column name="instrument_uuid" value="44444444-4444-4444-4444-444444444411"/>
+            <column name="plan_uuid" value="33333333-3333-3333-3333-333333333333"/>
+            <column name="uren_besteed" valueNumeric="40"/>
+            <column name="effectiviteit_score" valueNumeric="5"/>
+            <column name="effectiviteit_toelichting" value="Volledig beeld van de brandveiligheidsrisico's; basis voor het herstelplan."/>
+            <column name="created_at" valueDate="2026-03-10T09:00:00"/>
+            <column name="updated_at" valueDate="2026-03-10T09:00:00"/>
+        </insert>
+    </changeSet>
+
+</databaseChangeLog>

@@ -24,31 +24,33 @@ import java.time.LocalDateTime
 import java.util.UUID
 
 /**
- * PDCA configuration per GZAC case definition. Fasering is optional: when
- * [categorieOrdening] is set, the doelen view orders its doelcategorie groups
- * accordingly (e.g. Verkenning, Uitvoering, Nazorg); without it, categories
- * are shown alphabetically.
+ * PDCA voortgangsregistratie for an instrument/voorziening in Open Plan
+ * (pk = Open Plan instrument uuid): bestede uren, effectiviteit and — when the
+ * instrument is afgebroken — the mandatory reason. The register itself only
+ * carries status/resultaat.
  */
 @Entity
-@Table(name = "phase_config")
-data class PhaseConfig(
+@Table(name = "instrument_details")
+data class InstrumentDetails(
     @Id
-    val id: UUID = UUID.randomUUID(),
+    @Column(name = "instrument_uuid")
+    val instrumentUuid: UUID,
 
-    @Column(name = "case_definition_key", nullable = false, unique = true)
-    val caseDefinitionKey: String,
+    @Column(name = "plan_uuid", nullable = false)
+    val planUuid: UUID,
 
-    /** JSON array of doelcategorie names defining the display order. */
-    @Column(name = "categorie_ordening", nullable = false, columnDefinition = "TEXT")
-    var categorieOrdening: String,
+    @Column(name = "uren_besteed")
+    var urenBesteed: Int? = null,
 
-    /** JSON array of evaluation types (INTAKE, PROGRESS, ...). */
-    @Column(name = "evaluation_types", nullable = false, columnDefinition = "TEXT")
-    var evaluationTypes: String,
+    /** Effectiviteit 1 (geen effect) t/m 5 (zeer effectief). */
+    @Column(name = "effectiviteit_score")
+    var effectiviteitScore: Int? = null,
 
-    /** JSON array of configurable plan display statuses (Concept, Vastgesteld, ...). */
-    @Column(name = "plan_statussen", columnDefinition = "TEXT")
-    var planStatussen: String? = null,
+    @Column(name = "effectiviteit_toelichting", columnDefinition = "TEXT")
+    var effectiviteitToelichting: String? = null,
+
+    @Column(name = "afbreek_reden", columnDefinition = "TEXT")
+    var afbreekReden: String? = null,
 
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),

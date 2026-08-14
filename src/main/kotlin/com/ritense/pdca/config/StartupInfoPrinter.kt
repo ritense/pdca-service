@@ -27,12 +27,13 @@ class StartupInfoPrinter(private val env: Environment) {
             │    Demo plan Erika:   $base/openplan/plannen/api/v0/plan/11111111-1111-1111-1111-111111111111
             │    Demo plan Binnenhof: .../plan/33333333-3333-3333-3333-333333333333
             │
-            │  PDCA overlay API (fase/voortgang/acties, keyed by register uuid):
+            │  PDCA overlay API (status/voortgang/acties, keyed by register uuid):
             │    Plandetails:   $base/api/v1/pdca/plandetails
             │    Doeldetails:   $base/api/v1/pdca/doeldetails?planUuid=...
+            │    Instrumenten:  $base/api/v1/pdca/instrumentdetails?planUuid=...
             │    Acties:        $base/api/v1/pdca/acties?planUuid=...
             │    Betrokkenen:   $base/api/v1/pdca/betrokkenen?planUuid=...
-            │    Phases:        $base/api/v1/admin/phase-configs
+            │    Config:        $base/api/v1/admin/phase-configs
             │    BRP/object stub: $base/api/v1/registers/personen/111222333
             │
             │  Plugin host:

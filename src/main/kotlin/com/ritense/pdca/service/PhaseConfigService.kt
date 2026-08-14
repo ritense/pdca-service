@@ -55,14 +55,6 @@ class PhaseConfigService(
         return phaseConfigRepository.save(phaseConfig)
     }
 
-    fun update(id: UUID, updated: PhaseConfig): PhaseConfig {
-        val existing = getById(id)
-        existing.phases = updated.phases
-        existing.evaluationTypes = updated.evaluationTypes
-        existing.updatedAt = LocalDateTime.now()
-        return phaseConfigRepository.save(existing)
-    }
-
     fun getAll(): List<PhaseConfig> {
         return phaseConfigRepository.findAll()
     }
@@ -79,19 +71,25 @@ class PhaseConfigService(
 
     fun updateByCaseDefinitionKey(caseDefinitionKey: String, updated: PhaseConfig): PhaseConfig {
         val existing = getByCaseDefinitionKey(caseDefinitionKey)
-        existing.phases = updated.phases
+        existing.categorieOrdening = updated.categorieOrdening
         existing.evaluationTypes = updated.evaluationTypes
+        existing.planStatussen = updated.planStatussen
         existing.updatedAt = LocalDateTime.now()
         return phaseConfigRepository.save(existing)
     }
 
-    fun getPhases(caseDefinitionKey: String): List<String> {
-        val config = getByCaseDefinitionKey(caseDefinitionKey)
-        return objectMapper.readValue(config.phases, object : TypeReference<List<String>>() {})
-    }
-
     fun getEvaluationTypes(caseDefinitionKey: String): List<String> {
         val config = getByCaseDefinitionKey(caseDefinitionKey)
-        return objectMapper.readValue(config.evaluationTypes, object : TypeReference<List<String>>() {})
+        return parseJsonList(config.evaluationTypes)
     }
+
+    /** Configured plan display statuses, or null when unconfigured (any value allowed). */
+    fun getPlanStatussen(caseDefinitionKey: String): List<String>? {
+        val config = phaseConfigRepository.findByCaseDefinitionKey(caseDefinitionKey) ?: return null
+        val statussen = config.planStatussen?.takeIf { it.isNotBlank() } ?: return null
+        return parseJsonList(statussen).takeIf { it.isNotEmpty() }
+    }
+
+    private fun parseJsonList(json: String): List<String> =
+        objectMapper.readValue(json, object : TypeReference<List<String>>() {})
 }

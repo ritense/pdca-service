@@ -60,7 +60,7 @@
 <div class="add-section">
   <h3>Doel toevoegen</h3>
   <div class="add-row">
-    <div class="form-group"><label>Fase</label><select id="newPhase"></select></div>
+    <div class="form-group"><label>Thema / categorie</label><select id="newCategorie"></select></div>
     <div class="form-group"><label>Titel</label><input type="text" id="newTitle" placeholder="Doel omschrijving"></div>
   </div>
   <div class="form-group"><label>Toelichting</label><textarea id="newDesc" placeholder="Optionele toelichting"></textarea></div>
@@ -75,14 +75,13 @@
 </div>
 
 <script>
-// Direct integration: doelen leven in Open Plan (via de token proxy), de
-// fase-indeling in de PDCA overlay.
+// Direct integration: doelen leven in Open Plan (via de token proxy);
+// weergave gegroepeerd op doelcategorie uit het register (fasering optioneel).
 var API=location.origin.indexOf('http')===0?location.origin:'http://localhost:7500';
 var OPENPLAN=API+'/openplan/plannen/api/v0';
 var planId=null;
 var persoonUuid=null;
-var doeltypeUuid=null;
-var phases=[];
+var doeltypen=[];
 var goals=[];
 var goalDetails={};
 
@@ -90,6 +89,10 @@ window.addEventListener('message',function(e){
   if(e.data&&e.data.source==='valtimo-host'&&e.data.event==='init'){init()}
 });
 window.parent.postMessage({source:'valtimo-plugin',event:'ready'},'*');
+
+function categorieVan(doeltype){
+  return (doeltype&&doeltype.categorieen&&doeltype.categorieen[0]&&doeltype.categorieen[0].naam)||'Overig';
+}
 
 function init(){
   Promise.all([
@@ -102,19 +105,14 @@ function init(){
     var plan=active[0];
     planId=plan.uuid;
     document.getElementById('planTitle').textContent=plan.titel;
-    doeltypeUuid=((res[2].results||[])[0]||{}).uuid;
+    doeltypen=res[2].results||[];
     var details=(res[1]||[]).filter(function(d){return d.planUuid===planId})[0];
     persoonUuid=details&&details.persoonUuid;
-    var caseDefKey=details&&details.caseDefinitionKey;
-    if(!caseDefKey)return {phases:'[]'};
-    return fetch(API+'/api/v1/admin/phase-configs/'+caseDefKey).then(function(r){return r.json()});
-  }).then(function(cfg){
-    if(!cfg)return;
-    phases=JSON.parse(cfg.phases||'[]');
-    if(phases.length===0)phases=['Overig'];
-    var sel=document.getElementById('newPhase');
+    var sel=document.getElementById('newCategorie');
     sel.innerHTML='';
-    phases.forEach(function(p){var o=document.createElement('option');o.value=p;o.textContent=p;sel.appendChild(o)});
+    doeltypen.forEach(function(dt){
+      var o=document.createElement('option');o.value=dt.uuid;o.textContent=categorieVan(dt);sel.appendChild(o);
+    });
     return loadGoals();
   }).catch(function(err){if(err!=='no plan')showError('Fout bij laden: '+err.message)});
 }
@@ -134,20 +132,22 @@ function loadGoals(){
 function renderGoals(){
   var el=document.getElementById('goalsList');
   if(goals.length===0){el.innerHTML='<div class="empty">Nog geen doelen toegevoegd</div>';return}
+  var byUuid={};
+  doeltypen.forEach(function(dt){byUuid[dt.uuid]=dt});
   var grouped={};
-  phases.forEach(function(p){grouped[p]=[]});
   goals.forEach(function(g){
-    var fase=(goalDetails[g.uuid]||{}).fase||'Overig';
-    if(!grouped[fase])grouped[fase]=[];
-    grouped[fase].push(g);
+    var categorie=categorieVan(g.doeltype&&byUuid[g.doeltype.uuid]);
+    if(!grouped[categorie])grouped[categorie]=[];
+    grouped[categorie].push(g);
   });
   var html='';
-  Object.keys(grouped).forEach(function(p){
-    if(!grouped[p]||grouped[p].length===0)return;
+  Object.keys(grouped).sort().forEach(function(p){
     html+='<div style="margin-bottom:16px"><div style="font-size:13px;font-weight:600;color:#525252;margin-bottom:6px"><span class="phase-badge phase-'+p+'">'+esc(p)+'</span> ('+grouped[p].length+' doelen)</div>';
     grouped[p].forEach(function(g){
+      var uitv=(goalDetails[g.uuid]||{}).uitvoeringsStatus;
+      var statusTekst=g.status==='geannuleerd'?'afgebroken':g.status==='actief'&&uitv?uitv.toLowerCase():g.status;
       html+='<div class="goal-card"><div class="goal-info"><div class="goal-title">'+esc(g.titel)+'</div>';
-      html+='<div class="goal-meta"><span class="status-badge status-'+g.status+'">'+esc(g.status+(g.resultaat?' ('+g.resultaat+')':''))+'</span>';
+      html+='<div class="goal-meta"><span class="status-badge status-'+g.status+'">'+esc(statusTekst+(g.resultaat?' ('+g.resultaat+')':''))+'</span>';
       if(g.beschrijving)html+=' &middot; '+esc(g.beschrijving.substring(0,80))+(g.beschrijving.length>80?'...':'');
       html+='</div></div>';
       html+='<button class="btn-danger" onclick="deleteGoal(\''+g.uuid+'\')">Verwijder</button>';
@@ -159,7 +159,7 @@ function renderGoals(){
 }
 
 function addGoal(){
-  var phase=document.getElementById('newPhase').value;
+  var doeltypeUuid=document.getElementById('newCategorie').value;
   var title=document.getElementById('newTitle').value.trim();
   if(!title){alert('Voer een titel in');return}
   if(!persoonUuid||!doeltypeUuid){showError('Plan mist PDCA-details of Open Plan mist doeltypen');return}
@@ -173,7 +173,7 @@ function addGoal(){
   })})
   .then(function(r){if(!r.ok)throw new Error('Fout');return r.json()})
   .then(function(doel){
-    return fetch(API+'/api/v1/pdca/doeldetails/'+doel.uuid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({planUuid:planId,fase:phase})});
+    return fetch(API+'/api/v1/pdca/doeldetails/'+doel.uuid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({planUuid:planId,uitvoeringsStatus:'GEPLAND'})});
   })
   .then(function(){
     document.getElementById('newTitle').value='';
