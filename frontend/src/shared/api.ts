@@ -167,6 +167,15 @@ export const pdca = {
       request<Betrokkene>(`${PDCA}/betrokkenen`, { method: 'POST', body: JSON.stringify(data) }),
     delete: (id: string) => request<void>(`${PDCA}/betrokkenen/${id}`, { method: 'DELETE' }),
   },
+  dossiers: {
+    /**
+     * Onderwater-koppeling (startformulier-route): laat de backend het dossier
+     * lezen en een via de content meegegeven planId aan dit dossier koppelen.
+     */
+    resolvePlan: (documentId: string) =>
+      request<{ planUuid: string; zaakUrn: string; linked: boolean }>(
+        `${PDCA}/dossiers/${documentId}/resolve-plan`, { method: 'POST' }),
+  },
   phaseConfigs: {
     get: (caseDefKey: string) => request<PhaseConfig>(`${API_BASE}/api/v1/admin/phase-configs/${caseDefKey}`),
     list: () => request<PhaseConfig[]>(`${API_BASE}/api/v1/admin/phase-configs`),
@@ -370,8 +379,11 @@ export interface PlanDetails {
   caseDefinitionKey?: string;
   /** Configureerbare planstatus (Concept, Vastgesteld, ...) zolang het register-status actief is. */
   weergaveStatus?: string;
-  startSituatie?: string;
-  gewensteSituatie?: string;
+  /** Begin- en doelpositie uit het positietype-register (PhaseConfig.positieTypen); geen vrije tekst. */
+  beginPositie?: string;
+  doelPositie?: string;
+  /** Het ene hoofddoel: uuid van een hoofddoel-doeltype (categorie "Hoofddoel") in Open Plan. */
+  hoofddoelTypeUuid?: string;
   streefEinddatum?: string;
 }
 
@@ -442,6 +454,8 @@ export interface PhaseConfig {
   evaluationTypes: string;
   /** JSON array: configureerbare planstatussen (Concept, Vastgesteld, ...). */
   planStatussen?: string | null;
+  /** JSON array: positietype-register van het domein (begin-/doelposities). */
+  positieTypen?: string | null;
 }
 
 // ------------------------------------------------------------- stub types

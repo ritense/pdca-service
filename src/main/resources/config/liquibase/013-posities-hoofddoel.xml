@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Beslissingen 17-08-26:
+  - vrije-tekst start-/gewenste situatie wordt getypeerde begin-/doelpositie
+    uit het positietype-register (phase_config.positie_typen, per domein)
+  - een plan heeft precies één hoofddoel: verwijzing naar een hoofddoel-type
+    in het Open Plan doeltype-register (fixed uuids in docker/openplan/init.py);
+    vrije tekst alleen als toelichting (plan.notitie in Open Plan)
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="013-01-plan-details-posities" author="pdca">
+        <renameColumn tableName="plan_details" oldColumnName="start_situatie" newColumnName="begin_positie"/>
+        <renameColumn tableName="plan_details" oldColumnName="gewenste_situatie" newColumnName="doel_positie"/>
+        <addColumn tableName="plan_details">
+            <column name="hoofddoel_type_uuid" type="UUID"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="013-02-phase-config-positie-typen" author="pdca">
+        <addColumn tableName="phase_config">
+            <column name="positie_typen" type="TEXT"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="013-03-seed-positie-typen" author="pdca" context="seed">
+        <!-- Inwonerdomein: participatieladderachtige posities; objectdomein: objectposities. -->
+        <update tableName="phase_config">
+            <column name="positie_typen" value='["1. Geïsoleerd levend","2. Sociale contacten buitenshuis","3. Deelname georganiseerde activiteiten","4. Onbetaald werk","5. Betaald werk met ondersteuning","6. Regulier betaald werk"]'/>
+            <where>case_definition_key = 'inwonerplan'</where>
+        </update>
+        <update tableName="phase_config">
+            <column name="positie_typen" value='["Achterstallig onderhoud","In renovatie","Opgeleverd na renovatie","Structureel geborgd in beheer"]'/>
+            <where>case_definition_key = 'binnenhof-renovatie'</where>
+        </update>
+    </changeSet>
+
+    <changeSet id="013-04-seed-plan-posities" author="pdca" context="seed">
+        <!-- Demo plans: vrije-tekst situaties vervangen door registerposities;
+             hoofddoel_type_uuid verwijst naar de fixed uuids in init.py. -->
+        <update tableName="plan_details">
+            <column name="begin_positie" value="3. Deelname georganiseerde activiteiten"/>
+            <column name="doel_positie" value="6. Regulier betaald werk"/>
+            <column name="hoofddoel_type_uuid" value="88888888-8888-8888-8888-888888888801"/>
+            <where>plan_uuid = '11111111-1111-1111-1111-111111111111'</where>
+        </update>
+        <update tableName="plan_details">
+            <column name="begin_positie" value="In renovatie"/>
+            <column name="doel_positie" value="Structureel geborgd in beheer"/>
+            <column name="hoofddoel_type_uuid" value="88888888-8888-8888-8888-888888888811"/>
+            <where>plan_uuid = '33333333-3333-3333-3333-333333333333'</where>
+        </update>
+    </changeSet>
+
+</databaseChangeLog>

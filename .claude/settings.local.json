@@ -17,7 +17,11 @@
       "Bash(rm -f src/main/kotlin/com/ritense/pdca/openplan/OpenPlanMapping.kt src/main/kotlin/com/ritense/pdca/domain/GoalDetails.kt src/main/kotlin/com/ritense/pdca/domain/EvaluationDetails.kt src/main/kotlin/com/ritense/pdca/domain/InstrumentDetails.kt src/main/kotlin/com/ritense/pdca/repository/GoalDetailsRepository.kt src/main/kotlin/com/ritense/pdca/repository/EvaluationDetailsRepository.kt src/main/kotlin/com/ritense/pdca/repository/InstrumentDetailsRepository.kt src/main/kotlin/com/ritense/pdca/service/PlanService.kt src/main/kotlin/com/ritense/pdca/service/GoalService.kt src/main/kotlin/com/ritense/pdca/service/InstrumentService.kt src/main/kotlin/com/ritense/pdca/service/EvaluationService.kt src/main/kotlin/com/ritense/pdca/service/InvolvedPartyService.kt src/main/kotlin/com/ritense/pdca/web/rest/PlanResource.kt src/main/kotlin/com/ritense/pdca/web/rest/GoalResource.kt src/main/kotlin/com/ritense/pdca/web/rest/InstrumentResource.kt src/main/kotlin/com/ritense/pdca/web/rest/EvaluationResource.kt src/main/kotlin/com/ritense/pdca/web/rest/InvolvedPartyResource.kt src/main/kotlin/com/ritense/pdca/web/rest/ActionResource.kt src/main/kotlin/com/ritense/pdca/web/rest/dto/PlanDtos.kt src/main/kotlin/com/ritense/pdca/web/rest/dto/GoalDtos.kt src/main/kotlin/com/ritense/pdca/web/rest/dto/InstrumentDtos.kt src/main/kotlin/com/ritense/pdca/web/rest/dto/EvaluationDtos.kt src/main/kotlin/com/ritense/pdca/web/rest/dto/InvolvedPartyDtos.kt src/main/kotlin/com/ritense/pdca/web/rest/dto/ActionDtos.kt src/main/kotlin/com/ritense/pdca/domain/PlanDetails.kt src/main/kotlin/com/ritense/pdca/repository/PlanDetailsRepository.kt)",
       "Bash(rm -rf src/main/kotlin/com/ritense/pdca/mock)",
       "Bash(rm -rf src/main/kotlin/com/ritense/pdca/openplan src/main/kotlin/com/ritense/pdca/openproduct)",
-      "Bash(rm -f src/main/kotlin/com/ritense/pdca/registers/RegisterErrors.kt src/main/kotlin/com/ritense/pdca/service/CascadeService.kt)"
+      "Bash(rm -f src/main/kotlin/com/ritense/pdca/registers/RegisterErrors.kt src/main/kotlin/com/ritense/pdca/service/CascadeService.kt)",
+      "Bash(curl -s -o /dev/null -w \"8080: %{http_code}\\\\n\" -m 3 http://localhost:8080/api/v1/ping)",
+      "Bash(curl -s -m 3 http://localhost:8080/v3/api-docs)",
+      "Bash(docker port *)",
+      "Bash(docker exec *)"
     ]
   }
 }

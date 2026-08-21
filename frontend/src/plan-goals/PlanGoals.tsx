@@ -6,11 +6,11 @@ import {
 import { Add, Edit, TrashCan, ChevronRight, Checkmark, Close, StopOutline } from '@carbon/react/icons';
 import { onInit, resizeIframe } from '../shared/bridge';
 import {
-  openplan, openproduct, pdca, urn, deleteDoelCascade, afbreekDoelCascade, afbreekInstrument, productTypeByUrn,
+  openplan, openproduct, pdca, urn, urnId, deleteDoelCascade, afbreekDoelCascade, afbreekInstrument, productTypeByUrn,
   Plan, PlanDetails, Doel, DoelDetails, DoelType, InstrumentType, Instrument, InstrumentDetails, Actie, ProductType,
 } from '../shared/api';
 import {
-  statusLabel, doelStatusLabel, doelStatusTag, doelTypeLabel, doelCategorie, ordenCategorieen,
+  statusLabel, doelStatusLabel, doelStatusTag, doelTypeNaam, subdoelTypen, doelCategorie, ordenCategorieen,
   priorityLabel, formatDate,
 } from '../shared/labels';
 
@@ -38,11 +38,11 @@ export function PlanGoals() {
   const [instrumentModal, setInstrumentModal] = useState<string | null>(null);
   const [afbreekTarget, setAfbreekTarget] = useState<AfbreekTarget>(null);
   const [editDoel, setEditDoel] = useState<Doel | null>(null);
-  const cdkRef = useRef<string | null>(null);
+  const docRef = useRef<string | null>(null);
 
   useEffect(() => {
     onInit(ctx => {
-      cdkRef.current = ctx.caseDefinitionKey || null;
+      docRef.current = ctx.documentId || null;
       loadData();
     });
   }, []);
@@ -52,17 +52,36 @@ export function PlanGoals() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
+      // Plan = dossier (1:1): match uitsluitend op de zaak-URN van dit dossier.
+      if (!docRef.current) {
+        setError('Geen dossiercontext ontvangen. Een plan is 1:1 een dossier; open dit tabblad vanuit een GZAC-dossier.');
+        setLoading(false);
+        return;
+      }
       const [plannen, alleDetails] = await Promise.all([
-        openplan.plannen.list({ status: 'actief' }),
+        openplan.plannen.list(),
         pdca.plandetails.list(),
       ]);
       const detailsByUuid = new Map(alleDetails.map(d => [d.planUuid, d]));
-      let candidates = plannen;
-      if (cdkRef.current) {
-        candidates = plannen.filter(p => detailsByUuid.get(p.uuid)?.caseDefinitionKey === cdkRef.current);
+      let matches = plannen.filter(p => urnId(p.zaak) === docRef.current);
+      let resolveFout: string | null = null;
+      if (matches.length === 0) {
+        // Startformulier-route: backend koppelt een planId uit de dossier-content onderwater.
+        const resolved = await pdca.dossiers.resolvePlan(docRef.current).catch((e: any) => {
+          const msg = typeof e?.message === 'string' ? e.message : '';
+          if (msg.includes('409') || msg.includes('400')) resolveFout = msg;
+          return null;
+        });
+        if (resolved) {
+          matches = (await openplan.plannen.list()).filter(p => urnId(p.zaak) === docRef.current);
+        }
       }
-      if (candidates.length === 0) { setError('Geen actief plan gevonden'); setLoading(false); return; }
-      const p = candidates[0];
+      if (matches.length === 0) {
+        setError(resolveFout ?? 'Geen plan voor dit dossier. Maak eerst een plan aan via de taak "Plan aanmaken".');
+        setLoading(false);
+        return;
+      }
+      const p = matches.find(m => m.status === 'actief') ?? matches[0];
       const pDetails = detailsByUuid.get(p.uuid) ?? null;
       setPlan(p);
       setDetails(pDetails);
@@ -132,21 +151,23 @@ export function PlanGoals() {
   const actiesVoor = (doelUuid: string) => acties.filter(a => a.doelUuid === doelUuid);
   const instrumentenVoor = (doelUuid: string) => instrumenten.filter(i => i.doelen.some(d => d.uuid === doelUuid));
 
-  const handleSaveDoel = async (data: { titel: string; beschrijving: string; doeltypeUuid?: string }) => {
+  // Doelen komen uit het doeltype-register: de titel is de registernaam van
+  // het gekozen doeltype, vrije tekst alleen als toelichting t.b.v. de inwoner.
+  const handleSaveDoel = async (data: { titel: string; toelichting: string; doeltypeUuid: string }) => {
     try {
       if (editDoel) {
         await openplan.doelen.update(editDoel.uuid, {
           titel: data.titel,
-          beschrijving: data.beschrijving,
-          ...(data.doeltypeUuid ? { doeltypeUuid: data.doeltypeUuid } : {}),
+          beschrijving: data.toelichting,
+          doeltypeUuid: data.doeltypeUuid,
         });
       } else if (plan && details) {
         const doel = await openplan.doelen.create({
           plannenUuids: [plan.uuid],
           persoonUuid: details.persoonUuid,
-          doeltypeUuid: data.doeltypeUuid || doeltypen[0]?.uuid,
+          doeltypeUuid: data.doeltypeUuid,
           titel: data.titel,
-          beschrijving: data.beschrijving,
+          beschrijving: data.toelichting,
           startdatum: new Date().toISOString(),
         });
         await pdca.doeldetails.upsert(doel.uuid, { planUuid: plan.uuid, uitvoeringsStatus: 'GEPLAND' });
@@ -274,7 +295,7 @@ export function PlanGoals() {
                       <span style={{fontWeight: 500}}>{doel.titel}</span>
                       {doel.doeltype && (
                         <Tag size="sm" type="purple">
-                          {doelTypeLabel(doeltypen.find(t => t.uuid === doel.doeltype!.uuid))}
+                          {doelCategorie(doel, doeltypen)}
                         </Tag>
                       )}
                     </div>
@@ -453,32 +474,48 @@ function AfbreekModal({ target, onClose, onSubmit }: {
   );
 }
 
+/**
+ * Registergedreven doelinvoer (beslissingen 17-08-26): het doel wordt gekozen
+ * uit het doeltype-register en de titel is de registernaam — geen vrije tekst.
+ * Vrije tekst mag alleen als toelichting ten behoeve van de inwoner.
+ */
 function DoelModal({ open, doel, doeltypen, onClose, onSave }: {
   open: boolean; doel: Doel | null; doeltypen: DoelType[];
-  onClose: () => void; onSave: (data: { titel: string; beschrijving: string; doeltypeUuid?: string }) => void;
+  onClose: () => void; onSave: (data: { titel: string; toelichting: string; doeltypeUuid: string }) => void;
 }) {
-  const [titel, setTitel] = useState('');
-  const [beschrijving, setBeschrijving] = useState('');
+  const [toelichting, setToelichting] = useState('');
   const [doeltypeUuid, setDoeltypeUuid] = useState('');
   useEffect(() => {
     if (open) {
-      setTitel(doel?.titel || ''); setBeschrijving(doel?.beschrijving || '');
+      setToelichting(doel?.beschrijving || '');
       setDoeltypeUuid(doel?.doeltype?.uuid || '');
     }
   }, [open, doel]);
+
+  const opties = subdoelTypen(doeltypen);
+  // Doel met een doeltype van vóór het benoemde register: als eigen optie tonen
+  // zodat bewerken van de toelichting mogelijk blijft zonder herclassificatie.
+  const huidigOnbekend = doel?.doeltype && !opties.some(t => t.uuid === doel.doeltype!.uuid);
+  const gekozen = opties.find(t => t.uuid === doeltypeUuid);
+  const titel = gekozen ? doelTypeNaam(gekozen) : doel?.titel || '';
+
   return (
     <Modal open={open} modalHeading={doel ? 'Doel bewerken' : 'Doel toevoegen'}
       primaryButtonText="Opslaan" secondaryButtonText="Annuleren"
+      primaryButtonDisabled={!doeltypeUuid || !titel}
       onRequestClose={onClose}
-      onRequestSubmit={() => onSave({ titel, beschrijving, doeltypeUuid: doeltypeUuid || undefined })}>
+      onRequestSubmit={() => doeltypeUuid && titel && onSave({ titel, toelichting, doeltypeUuid })}>
       <div className="pdca-modal-form">
-        <TextInput id="doel-titel" labelText="Titel" value={titel} onChange={(e: any) => setTitel(e.target.value)} />
-        <TextArea id="doel-beschrijving" labelText="Beschrijving" value={beschrijving} onChange={(e: any) => setBeschrijving(e.target.value)} />
-        <Select id="doel-type" labelText="Thema / categorie" value={doeltypeUuid} onChange={(e: any) => setDoeltypeUuid(e.target.value)}
-          helperText="Doelen worden in de PDCA-weergave gegroepeerd op deze categorie">
-          <SelectItem value="" text="-- Kies categorie --" />
-          {doeltypen.map(t => <SelectItem key={t.uuid} value={t.uuid} text={doelTypeLabel(t)} />)}
+        <Select id="doel-type" labelText="Doel (uit doeltype-register)" value={doeltypeUuid} onChange={(e: any) => setDoeltypeUuid(e.target.value)}
+          helperText="Vast gedefinieerde doelen; de categorie groepeert ze in de PDCA-weergave">
+          <SelectItem value="" text="-- Kies doel --" />
+          {huidigOnbekend && <SelectItem value={doel!.doeltype!.uuid} text={`${doel!.titel} (huidig)`} />}
+          {opties.map(t => (
+            <SelectItem key={t.uuid} value={t.uuid} text={`${t.doelType} — ${t.categorieen?.[0]?.naam || 'Overig'}`} />
+          ))}
         </Select>
+        <TextArea id="doel-toelichting" labelText="Toelichting (t.b.v. de inwoner)" value={toelichting}
+          onChange={(e: any) => setToelichting(e.target.value)} />
       </div>
     </Modal>
   );

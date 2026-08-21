@@ -59,3 +59,27 @@ tasks.register("bootRunWithDocker") {
     dependsOn("dockerUp")
     finalizedBy("bootRun")
 }
+
+// Importable GZAC case-definition zips (see gzac/case-definitions/README.md).
+// The zip entries keep the config/case/<key>/<version>/ layout that the
+// Valtimo import service expects; output is reproducible so the committed
+// zips only change when their content does.
+val caseZipTasks = listOf("inwonerplan", "binnenhof-renovatie").map { caseKey ->
+    tasks.register<Zip>("caseZip-$caseKey") {
+        group = "gzac"
+        description = "Build the importable GZAC case-definition zip for '$caseKey'"
+        from(layout.projectDirectory.dir("gzac/case-definitions/$caseKey"))
+        include("config/**")
+        exclude("**/.DS_Store")
+        archiveFileName = "$caseKey.zip"
+        destinationDirectory = layout.projectDirectory.dir("gzac/case-definitions")
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
+    }
+}
+
+tasks.register("buildCaseZips") {
+    group = "gzac"
+    description = "Build all importable GZAC case-definition zips"
+    dependsOn(caseZipTasks)
+}

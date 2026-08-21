@@ -74,6 +74,7 @@ class PhaseConfigService(
         existing.categorieOrdening = updated.categorieOrdening
         existing.evaluationTypes = updated.evaluationTypes
         existing.planStatussen = updated.planStatussen
+        existing.positieTypen = updated.positieTypen
         existing.updatedAt = LocalDateTime.now()
         return phaseConfigRepository.save(existing)
     }
@@ -88,6 +89,13 @@ class PhaseConfigService(
         val config = phaseConfigRepository.findByCaseDefinitionKey(caseDefinitionKey) ?: return null
         val statussen = config.planStatussen?.takeIf { it.isNotBlank() } ?: return null
         return parseJsonList(statussen).takeIf { it.isNotEmpty() }
+    }
+
+    /** Configured positietypen for the domein, or null when unconfigured (any value allowed). */
+    fun getPositieTypen(caseDefinitionKey: String): List<String>? {
+        val config = phaseConfigRepository.findByCaseDefinitionKey(caseDefinitionKey) ?: return null
+        val posities = config.positieTypen?.takeIf { it.isNotBlank() } ?: return null
+        return parseJsonList(posities).takeIf { it.isNotEmpty() }
     }
 
     private fun parseJsonList(json: String): List<String> =

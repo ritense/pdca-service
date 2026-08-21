@@ -1,8 +1,13 @@
 package com.ritense.pdca.plugin
 
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.ritense.pdca.domain.StoredPluginConfiguration
+import com.ritense.pdca.repository.StoredPluginConfigurationRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
-import java.util.concurrent.ConcurrentHashMap
+import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDateTime
 
 data class PluginConfiguration(
     val configId: String,
@@ -12,32 +17,62 @@ data class PluginConfiguration(
     val eventSubscriptions: List<String> = emptyList()
 )
 
+/**
+ * Plugin configurations pushed by GZAC, persisted in the PDCA database so the
+ * serviceToken + gzacBaseUrl survive restarts (see [com.ritense.pdca.service.GzacClient]).
+ */
 @Component
-class ConfigurationStore {
+@Transactional
+class ConfigurationStore(
+    private val repository: StoredPluginConfigurationRepository,
+    private val objectMapper: ObjectMapper
+) {
 
     private val logger = LoggerFactory.getLogger(ConfigurationStore::class.java)
-    private val configurations = ConcurrentHashMap<String, PluginConfiguration>()
 
     fun store(configId: String, configuration: PluginConfiguration) {
-        configurations[configId] = configuration
+        repository.save(
+            StoredPluginConfiguration(
+                configId = configId,
+                properties = objectMapper.writeValueAsString(configuration.properties),
+                serviceToken = configuration.serviceToken.ifBlank { null },
+                gzacBaseUrl = configuration.gzacBaseUrl.ifBlank { null },
+                eventSubscriptions = objectMapper.writeValueAsString(configuration.eventSubscriptions),
+                updatedAt = LocalDateTime.now()
+            )
+        )
         logger.info("Stored plugin configuration for configId={}", configId)
     }
 
-    fun get(configId: String): PluginConfiguration? {
-        return configurations[configId]
-    }
+    fun get(configId: String): PluginConfiguration? =
+        repository.findById(configId).orElse(null)?.let { toConfiguration(it) }
 
     fun remove(configId: String): Boolean {
-        val removed = configurations.remove(configId) != null
-        if (removed) {
+        val exists = repository.existsById(configId)
+        if (exists) {
+            repository.deleteById(configId)
             logger.info("Removed plugin configuration for configId={}", configId)
         } else {
             logger.warn("Attempted to remove non-existent configuration for configId={}", configId)
         }
-        return removed
+        return exists
     }
 
-    fun getAll(): Map<String, PluginConfiguration> {
-        return configurations.toMap()
-    }
+    fun getAll(): Map<String, PluginConfiguration> =
+        repository.findAll().associate { it.configId to toConfiguration(it) }
+
+    /** The most recently pushed configuration that can authenticate against GZAC. */
+    fun latestWithGzacAccess(): PluginConfiguration? =
+        repository.findAll()
+            .filter { !it.serviceToken.isNullOrBlank() && !it.gzacBaseUrl.isNullOrBlank() }
+            .maxByOrNull { it.updatedAt }
+            ?.let { toConfiguration(it) }
+
+    private fun toConfiguration(entity: StoredPluginConfiguration) = PluginConfiguration(
+        configId = entity.configId,
+        properties = objectMapper.readValue(entity.properties, object : TypeReference<Map<String, Any>>() {}),
+        serviceToken = entity.serviceToken ?: "",
+        gzacBaseUrl = entity.gzacBaseUrl ?: "",
+        eventSubscriptions = objectMapper.readValue(entity.eventSubscriptions, object : TypeReference<List<String>>() {})
+    )
 }

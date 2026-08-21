@@ -6,7 +6,7 @@ import {
 import { Add, ChevronRight, TrashCan, ArrowRight } from '@carbon/react/icons';
 import { onInit, resizeIframe } from '../shared/bridge';
 import {
-  openplan, pdca, deleteContactmomentCascade,
+  openplan, pdca, urnId, deleteContactmomentCascade,
   Plan, PlanDetails, Doel, DoelDetails, Contactmoment, ContactmomentDetails,
 } from '../shared/api';
 import { statusLabel, evalTypeLabel, formatDate } from '../shared/labels';
@@ -24,25 +24,44 @@ export function PlanEvaluations() {
   const [filter, setFilter] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [createModal, setCreateModal] = useState(false);
-  const cdkRef = useRef<string | null>(null);
+  const docRef = useRef<string | null>(null);
 
-  useEffect(() => { onInit(ctx => { cdkRef.current = ctx.caseDefinitionKey || null; loadData(); }); }, []);
+  useEffect(() => { onInit(ctx => { docRef.current = ctx.documentId || null; loadData(); }); }, []);
   useEffect(() => { resizeIframe(); }, [loading, contactmomenten, expanded]);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
+      // Plan = dossier (1:1): match uitsluitend op de zaak-URN van dit dossier.
+      if (!docRef.current) {
+        setError('Geen dossiercontext ontvangen. Een plan is 1:1 een dossier; open dit tabblad vanuit een GZAC-dossier.');
+        setLoading(false);
+        return;
+      }
       const [plannen, alleDetails] = await Promise.all([
-        openplan.plannen.list({ status: 'actief' }),
+        openplan.plannen.list(),
         pdca.plandetails.list(),
       ]);
       const detailsByUuid = new Map(alleDetails.map(d => [d.planUuid, d]));
-      let candidates = plannen;
-      if (cdkRef.current) {
-        candidates = plannen.filter(p => detailsByUuid.get(p.uuid)?.caseDefinitionKey === cdkRef.current);
+      let matches = plannen.filter(p => urnId(p.zaak) === docRef.current);
+      let resolveFout: string | null = null;
+      if (matches.length === 0) {
+        // Startformulier-route: backend koppelt een planId uit de dossier-content onderwater.
+        const resolved = await pdca.dossiers.resolvePlan(docRef.current).catch((e: any) => {
+          const msg = typeof e?.message === 'string' ? e.message : '';
+          if (msg.includes('409') || msg.includes('400')) resolveFout = msg;
+          return null;
+        });
+        if (resolved) {
+          matches = (await openplan.plannen.list()).filter(p => urnId(p.zaak) === docRef.current);
+        }
       }
-      if (candidates.length === 0) { setError('Geen actief plan gevonden'); setLoading(false); return; }
-      const p = candidates[0];
+      if (matches.length === 0) {
+        setError(resolveFout ?? 'Geen plan voor dit dossier. Maak eerst een plan aan via de taak "Plan aanmaken".');
+        setLoading(false);
+        return;
+      }
+      const p = matches.find(m => m.status === 'actief') ?? matches[0];
       const pDetails = detailsByUuid.get(p.uuid) ?? null;
       setPlan(p); setDetails(pDetails);
 

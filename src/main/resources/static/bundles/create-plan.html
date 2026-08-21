@@ -38,6 +38,14 @@
 <div class="success-msg" id="successMsg">Plan succesvol aangemaakt!</div>
 <h2>Nieuw plan aanmaken</h2>
 
+<!-- Plan = dossier (1:1): als dit dossier al een plan heeft, geen tweede
+     plan aanmaken maar alleen de taak afronden. -->
+<div id="bestaandPlan" style="display:none;background:#e8f0fe;border-left:3px solid #0f62fe;padding:16px;margin-bottom:16px">
+  <p style="margin-bottom:12px">Dit dossier heeft al een plan: <strong id="bestaandPlanTitel"></strong>.</p>
+  <button class="btn btn-primary" onclick="voltooiTaak()">Taak afronden</button>
+</div>
+
+<div id="planForm">
 <div class="form-group">
   <label>Subjecttype</label>
   <div class="radio-group">
@@ -53,6 +61,12 @@
     <button class="btn btn-secondary btn-sm" onclick="lookupSubject()">Zoek</button>
   </div>
   <div class="subject-preview" id="subjectPreview"></div>
+  <!-- Terugkeerder/los plan: bestaand ongekoppeld plan voor dit subject koppelen
+       i.p.v. een nieuw plan aanmaken (plan = dossier 1:1). -->
+  <div class="subject-preview" id="koppelPlanPanel" style="border-left-color:#8a3ffc">
+    <p style="margin-bottom:8px">Los plan gevonden voor dit subject: <strong id="koppelPlanTitel"></strong></p>
+    <button class="btn btn-primary btn-sm" id="koppelPlanBtn" onclick="koppelPlan()"></button>
+  </div>
   <div class="error" id="subjectError"></div>
 </div>
 
@@ -62,18 +76,30 @@
 </div>
 
 <div class="form-group">
-  <label>Hoofddoel</label>
-  <textarea id="mainGoal" placeholder="Wat wil de betrokkene bereiken?"></textarea>
+  <label>Dienstverlening</label>
+  <select id="dienstverlening"></select>
 </div>
 
 <div class="form-group">
-  <label>Startsituatie</label>
-  <textarea id="startSituation" placeholder="Beschrijf de huidige situatie"></textarea>
+  <label>Hoofddoel (uit doeltype-register)</label>
+  <select id="hoofddoel"></select>
+  <div class="error" id="hoofddoelError"></div>
 </div>
 
 <div class="form-group">
-  <label>Gewenste situatie</label>
-  <textarea id="desiredSituation" placeholder="Beschrijf het gewenste eindresultaat"></textarea>
+  <label>Toelichting bij hoofddoel (t.b.v. de inwoner)</label>
+  <textarea id="mainGoalToelichting" placeholder="Optioneel, in de woorden van de inwoner"></textarea>
+</div>
+
+<div class="row">
+  <div class="form-group">
+    <label>Beginpositie (input, doorgaans uit de intake)</label>
+    <select id="beginPositie"></select>
+  </div>
+  <div class="form-group">
+    <label>Doelpositie</label>
+    <select id="doelPositie"></select>
+  </div>
 </div>
 
 <div class="row">
@@ -90,29 +116,160 @@
 <div class="actions">
   <button class="btn btn-primary" onclick="submitPlan()">Plan aanmaken</button>
 </div>
+</div><!-- /planForm -->
 
 <script>
 // Direct integration: the plan is created in Open Plan (via the token proxy at
-// /openplan), only fase-config link + situaties go to the PDCA overlay.
+// /openplan); fase-config link, posities en hoofddoel-verwijzing go to the
+// PDCA overlay. Beslissingen 17-08-26: posities uit het positietype-register
+// (per domein), precies één hoofddoel uit het doeltype-register, dienstverlening
+// = plantype; vrije tekst alleen als toelichting t.b.v. de inwoner.
 var API=location.origin.indexOf('http')===0?location.origin:'http://localhost:7500';
 var OPENPLAN=API+'/openplan/plannen/api/v0';
 // Object plans get this administrative contactpersoon (doelen require a persoon).
 var OBJECT_CONTACT_BSN='234567892';
+var DIENSTVERLENING_LABELS={werk:'Terug naar werk',pip:'Inburgering (PIP)',inkomen:'Inkomensondersteuning'};
 var context={};
+var bestaandPlan=null;
+var koppelbaarPlan=null;
 
 window.addEventListener('message',function(e){
-  if(e.data&&e.data.source==='valtimo-host'&&e.data.event==='init'){context=e.data.payload&&e.data.payload.context||{}}
+  if(e.data&&e.data.source==='valtimo-host'&&e.data.event==='init'){
+    context=e.data.payload&&e.data.payload.context||{};
+    if(context.documentId)checkBestaandPlan(context.documentId);
+  }
 });
 window.parent.postMessage({source:'valtimo-plugin',event:'ready'},'*');
+
+// Plan = dossier (1:1): bestaat er al een plan met de zaak-URN van dit
+// dossier, toon dan alleen "taak afronden" i.p.v. een tweede plan aan te maken.
+// Geen match? Dan kan het dossier via het startformulier een planId dragen:
+// de backend koppelt dat plan onderwater, waarna we opnieuw kijken.
+function checkBestaandPlan(documentId,naResolve){
+  getJson(OPENPLAN+'/plan').then(function(page){
+    var zaakUrn='urn:pdca:zaaksysteem:zaak:'+documentId;
+    var matches=(page.results||[]).filter(function(p){return p.zaak===zaakUrn});
+    if(matches.length===0){
+      if(naResolve)return;
+      fetch(API+'/api/v1/pdca/dossiers/'+documentId+'/resolve-plan',{method:'POST'})
+        .then(function(r){if(r.ok)checkBestaandPlan(documentId,true)})
+        .catch(function(){});
+      return;
+    }
+    bestaandPlan=matches.filter(function(p){return p.status==='actief'})[0]||matches[0];
+    document.getElementById('bestaandPlanTitel').textContent=bestaandPlan.titel;
+    document.getElementById('planForm').style.display='none';
+    document.getElementById('bestaandPlan').style.display='block';
+  }).catch(function(){/* register onbereikbaar: formulier gewoon tonen */});
+}
+
+function voltooiTaak(){
+  window.parent.postMessage({source:'valtimo-plugin',event:'submitTask',payload:{data:{
+    planId:bestaandPlan.uuid,
+    planTitle:bestaandPlan.titel,
+    planStatus:bestaandPlan.status
+  }},'*');
+}
 
 function getSubjectType(){
   return document.querySelector('input[name=subjectType]:checked').value;
 }
 
+function caseKey(){
+  return getSubjectType()==='PERSON'?'inwonerplan':'binnenhof-renovatie';
+}
+
+function fillSelect(id,options,placeholder){
+  var sel=document.getElementById(id);
+  sel.innerHTML='';
+  if(placeholder){
+    var ph=document.createElement('option');ph.value='';ph.textContent=placeholder;sel.appendChild(ph);
+  }
+  options.forEach(function(o){
+    var el=document.createElement('option');el.value=o.value;el.textContent=o.text;sel.appendChild(el);
+  });
+}
+
+// Dienstverleningen (plantypen) en hoofddoelen (doeltype-register, categorie
+// "Hoofddoel") zijn registerbreed; posities komen per domein uit de caseconfig.
+function loadRegisters(){
+  getJson(OPENPLAN+'/plantype').then(function(page){
+    fillSelect('dienstverlening',(page.results||[]).map(function(pt){
+      return {value:pt.uuid,text:DIENSTVERLENING_LABELS[pt.type]||pt.type};
+    }));
+  }).catch(function(){fillSelect('dienstverlening',[],'Register onbereikbaar')});
+  getJson(OPENPLAN+'/doeltype').then(function(page){
+    var hoofddoelen=(page.results||[]).filter(function(dt){
+      return (dt.categorieen||[]).some(function(c){return c.naam==='Hoofddoel'});
+    });
+    fillSelect('hoofddoel',hoofddoelen.map(function(dt){
+      return {value:dt.uuid,text:dt.doelType};
+    }),'-- Kies hoofddoel --');
+  }).catch(function(){fillSelect('hoofddoel',[],'Register onbereikbaar')});
+}
+
+function loadPosities(){
+  getJson(API+'/api/v1/admin/phase-configs/'+caseKey()).then(function(cfg){
+    var posities=JSON.parse(cfg.positieTypen||'[]').map(function(p){return {value:p,text:p}});
+    fillSelect('beginPositie',posities,'-- Kies beginpositie --');
+    fillSelect('doelPositie',posities,'-- Kies doelpositie --');
+  }).catch(function(){
+    fillSelect('beginPositie',[],'Geen positieregister geconfigureerd');
+    fillSelect('doelPositie',[],'Geen positieregister geconfigureerd');
+  });
+}
+
 function clearPreview(){
   document.getElementById('subjectPreview').classList.remove('show');
+  document.getElementById('koppelPlanPanel').classList.remove('show');
+  koppelbaarPlan=null;
   document.getElementById('subjectError').textContent='';
   document.getElementById('subjectIdLabel').textContent=getSubjectType()==='PERSON'?'BSN':'Object ID';
+  loadPosities();
+}
+
+// Bestaat er al een actief, ongekoppeld plan (geen zaak) voor dit subject in
+// dit domein, bied dan koppelen aan: als taakformulier aan dit dossier, los
+// via een door PDCA aangemaakt dossier.
+function zoekKoppelbaarPlan(subjectId){
+  var urn=getSubjectType()==='PERSON'?'urn:pdca:brp:persoon:'+subjectId:'urn:pdca:objecten:object:'+subjectId;
+  Promise.all([
+    getJson(OPENPLAN+'/plan?status=actief'),
+    getJson(API+'/api/v1/pdca/plandetails')
+  ]).then(function(res){
+    var details={};(res[1]||[]).forEach(function(d){details[d.planUuid]=d});
+    var match=(res[0].results||[]).filter(function(p){
+      return p.domeinregister===urn&&!p.zaak&&details[p.uuid]&&details[p.uuid].caseDefinitionKey===caseKey();
+    })[0];
+    if(!match)return;
+    koppelbaarPlan=match;
+    document.getElementById('koppelPlanTitel').textContent=match.titel;
+    document.getElementById('koppelPlanBtn').textContent=(context&&context.documentId)
+      ?'Koppel aan dit dossier':'Maak dossier voor dit plan';
+    document.getElementById('koppelPlanPanel').classList.add('show');
+  }).catch(function(){/* detectie is best effort */});
+}
+
+function koppelPlan(){
+  if(!koppelbaarPlan)return;
+  var msg=document.getElementById('successMsg');
+  if(context&&context.documentId){
+    sendJson(OPENPLAN+'/plan/'+koppelbaarPlan.uuid,'PATCH',{zaak:'urn:pdca:zaaksysteem:zaak:'+context.documentId})
+    .then(function(plan){
+      msg.textContent='Bestaand plan gekoppeld aan dit dossier';
+      msg.style.display='block';
+      window.parent.postMessage({source:'valtimo-plugin',event:'submitTask',payload:{data:{
+        planId:plan.uuid,planTitle:plan.titel,planStatus:plan.status
+      }},'*');
+    }).catch(function(err){alert('Koppelen mislukt: '+err.message)});
+  }else{
+    sendJson(API+'/api/v1/pdca/plans/'+koppelbaarPlan.uuid+'/dossier','POST',null)
+    .then(function(d){
+      msg.textContent='GZAC-dossier '+d.documentId+' aangemaakt voor bestaand plan';
+      msg.style.display='block';
+      document.getElementById('koppelPlanPanel').classList.remove('show');
+    }).catch(function(err){alert('Dossier aanmaken mislukt: '+err.message)});
+  }
 }
 
 function lookupSubject(){
@@ -132,6 +289,7 @@ function lookupSubject(){
     }
     preview.classList.add('show');
     document.getElementById('subjectError').textContent='';
+    zoekKoppelbaarPlan(id);
   }).catch(function(){
     document.getElementById('subjectPreview').classList.remove('show');
     document.getElementById('subjectError').textContent='Geen resultaat gevonden voor dit ID';
@@ -162,6 +320,12 @@ function submitPlan(){
   var subjectId=document.getElementById('subjectId').value.trim();
   var titel=document.getElementById('title').value.trim();
   if(!subjectId||!titel){alert('Vul minimaal Subject ID en Titel in');return}
+  // Precies één hoofddoel, gekozen uit het doeltype-register.
+  var hoofddoelTypeUuid=document.getElementById('hoofddoel').value;
+  if(!hoofddoelTypeUuid){document.getElementById('hoofddoelError').textContent='Kies een hoofddoel uit het register';return}
+  document.getElementById('hoofddoelError').textContent='';
+  var plantypeUuid=document.getElementById('dienstverlening').value;
+  if(!plantypeUuid){alert('Kies een dienstverlening');return}
   var startDate=document.getElementById('startDate').value||new Date().toISOString().split('T')[0];
   var persoonBsn=subjectType==='PERSON'?subjectId:OBJECT_CONTACT_BSN;
   var domeinregister=subjectType==='PERSON'
@@ -170,35 +334,45 @@ function submitPlan(){
 
   Promise.all([
     ensurePersoon(persoonBsn),
-    getJson(OPENPLAN+'/plantype'),
     getJson(OPENPLAN+'/overkoepelendplan')
   ]).then(function(res){
     var persoon=res[0];
-    var plantype=(res[1].results||[])[0];
-    var overkoepelend=(res[2].results||[])[0];
-    if(!plantype||!overkoepelend)throw new Error('Open Plan mist plantype/overkoepelend plan (draai docker compose init)');
+    var overkoepelend=(res[1].results||[])[0];
+    if(!overkoepelend)throw new Error('Open Plan mist overkoepelend plan (draai docker compose init)');
     var body={
       titel:titel,
-      notitie:document.getElementById('mainGoal').value.trim(),
+      notitie:document.getElementById('mainGoalToelichting').value.trim(),
       startdatum:startDate+'T00:00:00Z',
-      plantypeUuid:plantype.uuid,
+      plantypeUuid:plantypeUuid,
       overkoepelendPlanUuid:overkoepelend.uuid,
       domeinregister:domeinregister
     };
-    // Referentie naar de zaak waar het plan uit voortkomt (GZAC-context).
+    // Plan = dossier (1:1). Als taakformulier is het dossier er al: de zaak-URN
+    // van dit dossier gaat mee. Los ("los een plan aanmaakt") maakt de PDCA-app
+    // na het plan zélf het dossier aan in GZAC en koppelt het plan eraan.
     if(context&&context.documentId){body.zaak='urn:pdca:zaaksysteem:zaak:'+context.documentId}
     return sendJson(OPENPLAN+'/plan','POST',body).then(function(plan){
       return sendJson(API+'/api/v1/pdca/plandetails/'+plan.uuid,'PUT',{
         persoonUuid:persoon.uuid,
-        caseDefinitionKey:subjectType==='PERSON'?'inwonerplan':'binnenhof-renovatie',
+        caseDefinitionKey:caseKey(),
         weergaveStatus:'Concept',
-        startSituatie:document.getElementById('startSituation').value.trim()||null,
-        gewensteSituatie:document.getElementById('desiredSituation').value.trim()||null,
+        beginPositie:document.getElementById('beginPositie').value||null,
+        doelPositie:document.getElementById('doelPositie').value||null,
+        hoofddoelTypeUuid:hoofddoelTypeUuid,
         streefEinddatum:document.getElementById('targetEndDate').value||null
       }).then(function(){return plan});
     });
   }).then(function(plan){
-    document.getElementById('successMsg').style.display='block';
+    if(context&&context.documentId){return {plan:plan,dossier:null}}
+    return sendJson(API+'/api/v1/pdca/plans/'+plan.uuid+'/dossier','POST',null)
+      .then(function(dossier){return {plan:plan,dossier:dossier}});
+  }).then(function(res){
+    var plan=res.plan;
+    var msg=document.getElementById('successMsg');
+    msg.textContent=res.dossier
+      ?'Plan en GZAC-dossier aangemaakt (dossier '+res.dossier.documentId+')'
+      :'Plan succesvol aangemaakt!';
+    msg.style.display='block';
     window.parent.postMessage({source:'valtimo-plugin',event:'submitTask',payload:{data:{
       planId:plan.uuid,
       planTitle:plan.titel,
@@ -213,6 +387,8 @@ function submitPlan(){
 function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML}
 
 document.getElementById('startDate').value=new Date().toISOString().split('T')[0];
+loadRegisters();
+loadPosities();
 </script>
 </body>
 </html>

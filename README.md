@@ -19,13 +19,33 @@ statuses `actief`/`afgerond`/`geannuleerd`, resultaat `behaald`/`gefaald`, pagin
 
 The Spring Boot backend itself only keeps what the registers don't model, keyed by register uuid
 (`/api/v1/pdca/*`): uitvoeringsstatus (gepland/gestart) + voortgang per doel, configurable plan
-display statuses (Concept, Vastgesteld, ...), uren/effectiviteit/afbreekreden per instrument,
-evaluatietype + doelvoortgang + actiepunten per contactmoment, acties, betrokkenen and the case
-config (optional doelcategorie-ordening = fasering, evaluation types, plan statuses). Doelen are
-grouped by their **doelcategorie from the register**; the plan owner is the regievoerder
-(`plan.medewerker` URN) and `plan.zaak` references the originating GZAC case. Cross-register
+display statuses (Concept, Vastgesteld, ...), begin-/doelpositie + hoofddoel-verwijzing per plan,
+uren/effectiviteit/afbreekreden per instrument, evaluatietype + doelvoortgang + actiepunten per
+contactmoment, acties, verantwoordelijkheden (betrokkenen incl. hoofdverantwoordelijke) and the
+case config (optional doelcategorie-ordening = fasering, evaluation types, plan statuses,
+**positietypen**). Doelen are grouped by their **doelcategorie from the register**; the plan
+owner is the procesbegeleider/hoofdverantwoordelijke (`plan.medewerker` URN). Cross-register
 references are URNs, e.g. `instrument.product = urn:pdca:openproduct:producttype:<code>` and
 `plan.domeinregister = urn:pdca:brp:persoon:<bsn>`.
+
+Model decisions from the 17-08-26 session are wired in:
+
+- **Posities, geen vrije tekst** — begin- en doelpositie komen uit het positietype-register
+  (`phase_config.positie_typen`, inrichtbaar per dossiertype/domein via de PDCA-beheer view);
+  the backend rejects values outside the register. De beginpositie is input (doorgaans uit de
+  intake — die zelf buiten scope is); de procesbegeleider kan beide bijstellen.
+- **Doelen uit het doeltype-register** — `DoelType.doelType` carries the name of a vast
+  gedefinieerd doel; categorie `Hoofddoel` marks hoofddoel-typen. Elk plan heeft precies één
+  hoofddoel (overlay `hoofddoel_type_uuid`); vrije tekst alleen als toelichting t.b.v. de
+  inwoner (`plan.notitie`, `doel.beschrijving`). Seeded with fixed uuids in
+  `docker/openplan/init.py`.
+- **Plan = dossier (1:1)** — the case tabs and task forms match the plan strictly on the
+  zaak-URN of the current dossier (`plan.zaak = urn:pdca:zaaksysteem:zaak:<documentId>`), no
+  fallback. A dossier without plan shows "maak eerst een plan aan". The demo plans are seeded
+  **ongekoppeld** (no zaak): start a dossier for their subject and the "Plan aanmaken"-taak
+  offers to link the existing plan (terugkeerder-scenario).
+- **Dienstverlening** — het plantype (werk/pip/inkomen) is de dienstverlening waaronder het
+  plan valt en wordt gekozen bij plan-aanmaak.
 
 The app still speaks the Valtimo external-plugin **"URL app" contract** (discovery at
 `/api/host/plugins`, iframe bundles at `/bundles/*`) and can be registered in a Valtimo/GZAC
@@ -106,10 +126,59 @@ Ready-made GZAC case definitions for the two demo cases (`inwonerplan`,
 list/search/tab config — live in [`gzac/case-definitions/`](./gzac/case-definitions/) as
 importable zips; after importing, linking the external-plugin case tabs is the only manual step.
 
+### Los een plan aanmaken → PDCA maakt zelf het dossier aan
+
+Both aanmaakroutes yield a dossier (plan = dossier 1:1):
+
+- **Vanuit een dossier** (taakformulier `create-plan` in de "Plan aanmaken"-taak, gekoppeld
+  als proceskoppeling van het type `external_plugin_task_form`): the form receives the
+  `documentId` and links the plan to that dossier. Has the dossier already a plan (e.g. via
+  the losse route below), the form only offers "taak afronden" instead of creating a second
+  plan. Exists an **ongekoppeld** actief plan for the entered subject in this domein (a los
+  aangemaakt plan or a seeded demo plan), the form offers to link that plan instead of
+  creating a new one — in de losse modus wordt daarvoor een dossier aangemaakt.
+- **Via het startformulier** (plan-id opgeven bij dossier starten): the form.io start form
+  has an optional `planId` field that lands in the dossier content. The PDCA surfaces
+  (tabs and task forms) call `POST /api/v1/pdca/dossiers/{documentId}/resolve-plan` when a
+  dossier has no linked plan yet; the backend then reads the dossier via GZAC (granted
+  endpoint `GET /api/v1/document/*`), validates the plan and sets `plan.zaak` — the plan is
+  linked "onderwater" the moment the dossier is opened. Conflicts (plan already linked to
+  another dossier) return 409.
+- **Los** (create-plan opened without dossier context): after creating the plan the app calls
+  its own `POST /api/v1/pdca/plans/{planUuid}/dossier`, which creates the GZAC dossier
+  (`new-document-and-start-process`, content: bsn/naam of objectId/objectNaam +
+  planId/planTitel/planStatus), and sets `plan.zaak` to the new dossier's zaak-URN.
+  The call is idempotent: an already-linked plan returns its existing dossier.
+
+The app's manifest declares this GZAC-API footprint (capability `gzac_api` plus
+`permissions.endpoints`, see
+[`PluginHostController`](./src/main/kotlin/com/ritense/pdca/plugin/PluginHostController.kt)):
+
+- `POST /api/v1/process-document/operation/new-document-and-start-process` — dossier aanmaken;
+- `GET /api/v1/document-definition/*` — caseDefinitionVersionTag opzoeken (blueprint;
+  `/api/management/**` is voor external-plugin service-tokens niet bereikbaar).
+
+When the GZAC admin (re)saves the plugin configuration and **grants those endpoints**, the
+serviceToken that GZAC pushes is authorized for exactly that allowlist (PBAC is bypassed for
+service tokens on granted endpoints). Credentials are resolved in this order (see
+[`GzacClient`](./src/main/kotlin/com/ritense/pdca/service/GzacClient.kt)):
+
+1. the pushed `serviceToken` + `gzacBaseUrl` (persisted in the `plugin_configuration` table,
+   so restarts are fine; GZAC re-pushes on discovery and on configuration save);
+2. `pdca.gzac.static-token`;
+3. Keycloak client credentials (`pdca.gzac.token-url` + `client-id`/`client-secret`;
+   application.yml defaults match the standaard gzac-docker-compose m2m-client). Only used
+   when no plugin configuration was pushed; the service account then needs the realm roles
+   `ROLE_USER` + `ROLE_ADMIN` to pass GZAC's PBAC for document creation.
+
+Note: the created dossier starts the BPMN process, so its "Plan aanmaken"-taak is open while
+the plan already exists — complete it with the placeholder button.
+
 ## Development
 
 ```bash
 ./gradlew build          # full build -> build/libs/pdca-app-0.1.0.jar
+./gradlew buildCaseZips  # rebuild the importable GZAC case-definition zips
 docker build -t pdca-app .   # containerize (expects the jar from ./gradlew build)
 ```
 

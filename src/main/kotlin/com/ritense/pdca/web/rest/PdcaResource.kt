@@ -99,7 +99,10 @@ class PdcaResource(
                 ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "No PhaseConfig found for caseDefinitionKey: $key")
         }
         val existing = planDetailsRepository.findById(planUuid).orElse(null)
-        request.weergaveStatus?.let { validateWeergaveStatus(existing?.caseDefinitionKey ?: request.caseDefinitionKey, it) }
+        val configKey = existing?.caseDefinitionKey ?: request.caseDefinitionKey
+        request.weergaveStatus?.let { validateWeergaveStatus(configKey, it) }
+        request.beginPositie?.let { validatePositie(configKey, "beginPositie", it) }
+        request.doelPositie?.let { validatePositie(configKey, "doelPositie", it) }
 
         val details = if (existing == null) {
             PlanDetails(
@@ -108,16 +111,18 @@ class PdcaResource(
                     ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "persoonUuid is required when creating plandetails"),
                 caseDefinitionKey = request.caseDefinitionKey,
                 weergaveStatus = request.weergaveStatus,
-                startSituatie = request.startSituatie,
-                gewensteSituatie = request.gewensteSituatie,
+                beginPositie = request.beginPositie,
+                doelPositie = request.doelPositie,
+                hoofddoelTypeUuid = request.hoofddoelTypeUuid,
                 streefEinddatum = request.streefEinddatum
             )
         } else {
             existing.apply {
                 caseDefinitionKey = request.caseDefinitionKey ?: caseDefinitionKey
                 weergaveStatus = request.weergaveStatus ?: weergaveStatus
-                startSituatie = request.startSituatie ?: startSituatie
-                gewensteSituatie = request.gewensteSituatie ?: gewensteSituatie
+                beginPositie = request.beginPositie ?: beginPositie
+                doelPositie = request.doelPositie ?: doelPositie
+                hoofddoelTypeUuid = request.hoofddoelTypeUuid ?: hoofddoelTypeUuid
                 streefEinddatum = request.streefEinddatum ?: streefEinddatum
                 updatedAt = LocalDateTime.now()
             }
@@ -281,6 +286,18 @@ class PdcaResource(
             throw ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
                 "Invalid weergaveStatus '$weergaveStatus'. Valid: $validStatussen"
+            )
+        }
+    }
+
+    /** Posities zijn getypeerd: waarde moet uit het positietype-register van het domein komen. */
+    private fun validatePositie(caseDefinitionKey: String?, field: String, positie: String) {
+        if (caseDefinitionKey == null) return
+        val validPosities = phaseConfigService.getPositieTypen(caseDefinitionKey) ?: return
+        if (positie !in validPosities) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Invalid $field '$positie'. Valid positietypen: $validPosities"
             )
         }
     }

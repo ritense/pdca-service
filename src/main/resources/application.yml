@@ -3,6 +3,9 @@
 # 8090-8108, module databases 33xx/543xx, opensearch 3920x, rabbitmq 4567x/5567x).
 server:
   port: 7500
+  error:
+    # Prototype: toon de reden van ResponseStatusExceptions in de foutrespons.
+    include-message: always
 
 spring:
   application:
@@ -33,6 +36,15 @@ pdca:
   openproduct:
     base-url: ${OPENPRODUCT_URL:http://localhost:7502}
     token: ${OPENPRODUCT_TOKEN:pdca-openproduct-dev-token-0123456789abc}
+  # GZAC zelf: gebruikt om vanuit de "los een plan aanmaken"-route een dossier
+  # aan te maken (plan = dossier 1:1). Voorkeursbron is de serviceToken die
+  # GZAC pusht bij de pluginconfiguratie; dit is de lokale dev-fallback via
+  # Keycloak client credentials (standaard gzac-docker-compose m2m-client).
+  gzac:
+    base-url: ${GZAC_URL:http://localhost:8080}
+    token-url: ${GZAC_TOKEN_URL:http://localhost:8081/auth/realms/valtimo/protocol/openid-connect/token}
+    client-id: ${GZAC_CLIENT_ID:valtimo-user-m2m-client}
+    client-secret: ${GZAC_CLIENT_SECRET:6ef6ca16-6b86-482a-a3d9-0561704c1db9}
   # Namespace used for URNs this app mints (plan.zaak, plan.domeinregister,
   # instrument.product, persoon.klant, ...): urn:<namespace>:<component>:<resource>:<id>
   urn-namespace: pdca

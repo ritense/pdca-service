@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Dossier aanmaken vanuit PDCA (plan = dossier 1:1, "los een plan aanmaken
+  levert alsnog een dossier op"): de pluginconfiguratie die GZAC pusht
+  (serviceToken + gzacBaseUrl) wordt persistent opgeslagen zodat de app na een
+  herstart GZAC kan blijven aanroepen.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="014-01-create-plugin-configuration" author="pdca">
+        <createTable tableName="plugin_configuration">
+            <column name="config_id" type="VARCHAR(255)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="properties" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="service_token" type="TEXT"/>
+            <column name="gzac_base_url" type="VARCHAR(2083)"/>
+            <column name="event_subscriptions" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+</databaseChangeLog>

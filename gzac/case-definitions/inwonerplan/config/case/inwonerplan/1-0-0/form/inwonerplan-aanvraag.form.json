@@ -3,7 +3,7 @@
     "components": [
         {
             "label": "HTML",
-            "content": "<h4>Nieuw inwonerplan</h4><p>Start een PDCA-plan voor een inwoner. Het plan zelf wordt in Open Plan aangemaakt via de taak \"Plan aanmaken\" of het tabblad Planoverzicht.</p><p>Demo-bsn's: 111222333 (Erika de Goede), 123456782 (Jan van Dijk), 999990019 (Fatima El Amrani).</p>",
+            "content": "<h4>Nieuw inwonerplan</h4><p>Start een PDCA-plan voor een inwoner. Vul een <strong>Plan-ID</strong> in om een bestaand (los) plan automatisch aan dit dossier te koppelen; laat het leeg om via de taak \"Plan aanmaken\" een nieuw plan in te vullen.</p><p>Demo-bsn's: 111222333 (Erika de Goede), 123456782 (Jan van Dijk), 999990019 (Fatima El Amrani)</p><p>Demo-plan Erika: <code>11111111-1111-1111-1111-111111111111</code></p>",
             "refreshOnChange": false,
             "key": "html",
             "type": "htmlelement",
@@ -33,6 +33,14 @@
             "label": "Toelichting",
             "key": "toelichting",
             "type": "textarea",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "label": "Plan-ID (bestaand plan koppelen, optioneel)",
+            "description": "UUID van een bestaand los plan in Open Plan; de PDCA-app koppelt het plan automatisch aan dit dossier.",
+            "key": "planId",
+            "type": "textfield",
             "input": true,
             "tableView": false
         },

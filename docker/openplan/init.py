@@ -5,11 +5,13 @@
 # Provisions:
 #   1. a fixed DRF token for the admin superuser (must match `pdca.openplan.token`
 #      in src/main/resources/application.yml);
-#   2. reference data the PDCA app uses directly through the API: plantypen,
-#      doelcategorieën + doeltypen, instrumenttypen, relatietypen;
+#   2. reference data the PDCA app uses directly through the API: plantypen
+#      (= dienstverleningen), doelcategorieën + benoemde hoofd-/subdoeltypen
+#      (het doeltype-register; FIXED uuids omdat de overlay er per plan naar
+#      verwijst), instrumenttypen, relatietypen;
 #   3. demo plannen/doelen/instrumenten/contactmomenten/personen with FIXED
-#      uuids, so the PDCA overlay seed (Liquibase 002-seed-data.xml) can
-#      reference them. Keep both files in sync.
+#      uuids, so the PDCA overlay seed (Liquibase 011-overlay-seed-data.xml
+#      en 013-posities-hoofddoel.xml) can reference them. Keep these in sync.
 #
 # Instrument.product URNs reference Open Product producttypen BY CODE
 # (urn:pdca:openproduct:producttype:<code>), so the two registers need no
@@ -52,25 +54,59 @@ for t in ("werk", "pip", "inkomen"):
 
 DOELCATEGORIEEN = [
     "Inventarisatie", "Ontwikkeling", "Praktisch", "Verkenning", "Plaatsing",
-    "Borging", "Analyse", "Herstel", "Controle", "Algemeen",
+    "Borging", "Analyse", "Herstel", "Controle", "Algemeen", "Hoofddoel",
 ]
-doeltype_per_categorie = {}
+categorie_per_naam = {}
 for naam in DOELCATEGORIEEN:
-    categorie, _ = DoelCategorie.objects.get_or_create(naam=naam)
-    doeltype = DoelType.objects.filter(doel_type="subdoel", categorieen=categorie).first()
-    if doeltype is None:
-        doeltype = DoelType.objects.create(doel_type="subdoel")
-        doeltype.categorieen.add(categorie)
-    doeltype_per_categorie[naam] = doeltype
+    categorie_per_naam[naam], _ = DoelCategorie.objects.get_or_create(naam=naam)
+
+# Vast gedefinieerde hoofd- en subdoelen (beslissingen 17-08-26): doelen worden
+# gekozen uit dit register, geen vrije-tekstdoelen. DoelType.doel_type draagt de
+# naam van het doel; de categorie "Hoofddoel" markeert hoofddoel-typen (een plan
+# heeft er precies één; de PDCA overlay verwijst ernaar via hoofddoel_type_uuid,
+# zie Liquibase 013 — vandaar de FIXED uuids). Overige categorieën groeperen de
+# subdoelen in de PDCA-weergave (fasering).
+DOELTYPEN = [
+    # hoofddoelen (inwonerdomein)
+    ("88888888-8888-8888-8888-888888888801", "Duurzaam aan het werk", "Hoofddoel"),
+    ("88888888-8888-8888-8888-888888888802", "Financieel zelfredzaam", "Hoofddoel"),
+    ("88888888-8888-8888-8888-888888888803", "Zelfstandig meedoen in de samenleving", "Hoofddoel"),
+    # hoofddoelen (objectdomein)
+    ("88888888-8888-8888-8888-888888888811", "Object structureel veilig in gebruik", "Hoofddoel"),
+    # subdoelen (inwonerdomein)
+    ("88888888-8888-8888-8888-888888889901", "Financiele situatie in kaart brengen", "Inventarisatie"),
+    ("88888888-8888-8888-8888-888888889902", "Competenties en werkervaring beoordelen", "Inventarisatie"),
+    ("88888888-8888-8888-8888-888888889903", "Werkfit vaardigheden ontwikkelen", "Ontwikkeling"),
+    ("88888888-8888-8888-8888-888888889904", "Kinderopvang regelen", "Praktisch"),
+    ("88888888-8888-8888-8888-888888889905", "Orientatie op passende functies", "Verkenning"),
+    ("88888888-8888-8888-8888-888888889906", "Duurzame plaatsing realiseren", "Plaatsing"),
+    ("88888888-8888-8888-8888-888888889907", "Nazorg en borging", "Borging"),
+    ("88888888-8888-8888-8888-888888889908", "Taalniveau verbeteren", "Ontwikkeling"),
+    ("88888888-8888-8888-8888-888888889909", "Schulden stabiliseren", "Praktisch"),
+    # subdoelen (objectdomein)
+    ("88888888-8888-8888-8888-888888889911", "Brandveiligheidsrisico's inventariseren", "Analyse"),
+    ("88888888-8888-8888-8888-888888889912", "Geconstateerde gebreken verhelpen", "Herstel"),
+    ("88888888-8888-8888-8888-888888889913", "Herinspectie uitvoeren", "Controle"),
+    ("88888888-8888-8888-8888-888888889914", "Borging in beheerorganisatie", "Borging"),
+]
+doeltype_per_naam = {}
+for uid, naam, categorie_naam in DOELTYPEN:
+    doeltype, dt_created = DoelType.objects.get_or_create(uuid=UUID(uid), defaults={"doel_type": naam})
+    if not dt_created and doeltype.doel_type != naam:
+        doeltype.doel_type = naam
+        doeltype.save()
+    if not doeltype.categorieen.filter(naam=categorie_naam).exists():
+        doeltype.categorieen.add(categorie_per_naam[categorie_naam])
+    doeltype_per_naam[naam] = doeltype
 
 instrumenttypen = {}
 for t in ("training", "coaching", "financiele_ondersteuning"):
     instrumenttypen[t], _ = InstrumentType.objects.get_or_create(instrument_type=t)
 
 for naam in (
-    "Regiebehandelaar", "Arbeidscoach", "Schuldhulpverlener", "Inwoner / Eigenaar",
-    "Projectleider", "Brandveiligheidsadviseur", "Gebouwbeheerder", "Inspecteur",
-    "Aanbieder", "Coach",
+    "Procesbegeleider", "Regiebehandelaar", "Arbeidscoach", "Schuldhulpverlener",
+    "Inwoner / Eigenaar", "Projectleider", "Brandveiligheidsadviseur",
+    "Gebouwbeheerder", "Inspecteur", "Aanbieder", "Coach",
 ):
     RelatieType.objects.get_or_create(naam=naam)
 
@@ -112,11 +148,17 @@ def plan(uuid, **defaults):
     return obj, created_
 
 
-def doel(uuid, plan_obj, persoon_obj, categorie, **defaults):
-    defaults = {"doeltype": doeltype_per_categorie[categorie], "persoon": persoon_obj, **defaults}
+def doel(uuid, plan_obj, persoon_obj, doeltype_naam, **defaults):
+    doeltype = doeltype_per_naam[doeltype_naam]
+    defaults = {"doeltype": doeltype, "persoon": persoon_obj, **defaults}
     obj, created_ = Doel.objects.get_or_create(uuid=UUID(uuid), defaults=defaults)
     if created_:
         obj.plannen.add(plan_obj)
+    elif obj.doeltype_id != doeltype.pk:
+        # Herseed op een bestaande omgeving: verwijs naar het benoemde
+        # registerdoel i.p.v. het oude anonieme "subdoel"-type.
+        obj.doeltype = doeltype
+        obj.save(update_fields=["doeltype"])
     return obj
 
 
@@ -146,40 +188,41 @@ plan_erika, is_new = plan(
     startdatum=dt(2026, 1, 15),
     plantype=plantype_werk,
     overkoepelend_plan=overkoepelend,
-    zaak="urn:pdca:zaaksysteem:zaak:aaaa1111-0000-0000-0000-000000000001",
+    # Bewust zonder zaak: het demoplan wordt "los" geseed en vanuit de GZAC-taak
+    # "Plan aanmaken" aan een nieuw dossier gekoppeld (plan = dossier 1:1).
     domeinregister="urn:pdca:brp:persoon:111222333",
     medewerker="urn:pdca:medewerkers:medewerker:s.jansen",
 )
 
-doel("22222222-2222-2222-2222-222222222201", plan_erika, erika, "Inventarisatie",
+doel("22222222-2222-2222-2222-222222222201", plan_erika, erika, "Financiele situatie in kaart brengen",
      titel="Financiele situatie in kaart brengen",
      beschrijving="Volledig overzicht van inkomsten, schulden, toeslagen en lopende financiele verplichtingen.",
      status="afgerond", resultaat="behaald",
      toelichting_resultaat="Schuldsanering niet nodig, aanvraag bijzondere bijstand ingediend.",
      startdatum=dt(2026, 1, 15), einddatum=dt(2026, 2, 12))
-doel("22222222-2222-2222-2222-222222222202", plan_erika, erika, "Inventarisatie",
+doel("22222222-2222-2222-2222-222222222202", plan_erika, erika, "Competenties en werkervaring beoordelen",
      titel="Competenties en werkervaring beoordelen",
      beschrijving="Beroepsprofielanalyse, overdraagbare vaardigheden en scholingsbehoefte vaststellen.",
      status="afgerond", resultaat="behaald",
      startdatum=dt(2026, 1, 20), einddatum=dt(2026, 2, 28))
-doel("22222222-2222-2222-2222-222222222203", plan_erika, erika, "Ontwikkeling",
+doel("22222222-2222-2222-2222-222222222203", plan_erika, erika, "Werkfit vaardigheden ontwikkelen",
      titel="Werkfit vaardigheden ontwikkelen",
      beschrijving="Sollicitatievaardigheden, presentatie en werkritme opbouwen via het Werkfit-traject.",
      status="actief", startdatum=dt(2026, 3, 1))
-doel("22222222-2222-2222-2222-222222222204", plan_erika, erika, "Praktisch",
+doel("22222222-2222-2222-2222-222222222204", plan_erika, erika, "Kinderopvang regelen",
      titel="Kinderopvang regelen",
      beschrijving="Structurele kinderopvang voor Daan en Lisa zodat werken mogelijk wordt.",
      status="afgerond", resultaat="behaald",
      startdatum=dt(2026, 2, 1), einddatum=dt(2026, 3, 15))
-doel("22222222-2222-2222-2222-222222222205", plan_erika, erika, "Verkenning",
+doel("22222222-2222-2222-2222-222222222205", plan_erika, erika, "Orientatie op passende functies",
      titel="Orientatie op passende functies",
      beschrijving="Administratieve functies verkennen die aansluiten op MBO-4 en zes jaar ervaring.",
      status="actief", startdatum=dt(2026, 4, 1))
-doel("22222222-2222-2222-2222-222222222206", plan_erika, erika, "Plaatsing",
+doel("22222222-2222-2222-2222-222222222206", plan_erika, erika, "Duurzame plaatsing realiseren",
      titel="Duurzame plaatsing realiseren",
      beschrijving="Plaatsing op een passende werkplek met jobcoaching.",
      status="actief", startdatum=dt(2026, 6, 1))
-doel("22222222-2222-2222-2222-222222222207", plan_erika, erika, "Borging",
+doel("22222222-2222-2222-2222-222222222207", plan_erika, erika, "Nazorg en borging",
      titel="Nazorg en borging",
      beschrijving="Monitoring na plaatsing; terugval voorkomen.",
      status="actief", startdatum=dt(2026, 9, 1))
@@ -214,25 +257,25 @@ plan_binnenhof, _ = plan(
     startdatum=dt(2026, 2, 1),
     plantype=plantype_werk,
     overkoepelend_plan=overkoepelend,
-    zaak="urn:pdca:zaaksysteem:zaak:aaaa3333-0000-0000-0000-000000000002",
+    # Los geseed; koppelen gebeurt vanuit de "Plan aanmaken"-taak in GZAC.
     domeinregister="urn:pdca:objecten:object:binnenhof-001",
     medewerker="urn:pdca:medewerkers:medewerker:p.bakker",
 )
 
-doel("22222222-2222-2222-2222-222222222211", plan_binnenhof, beheer_contact, "Analyse",
+doel("22222222-2222-2222-2222-222222222211", plan_binnenhof, beheer_contact, "Brandveiligheidsrisico's inventariseren",
      titel="Brandveiligheidsrisico's inventariseren",
      beschrijving="Volledig brandveiligheidsonderzoek van het complex, inclusief monumentale delen.",
      status="afgerond", resultaat="behaald",
      startdatum=dt(2026, 2, 1), einddatum=dt(2026, 3, 15))
-doel("22222222-2222-2222-2222-222222222212", plan_binnenhof, beheer_contact, "Herstel",
+doel("22222222-2222-2222-2222-222222222212", plan_binnenhof, beheer_contact, "Geconstateerde gebreken verhelpen",
      titel="Geconstateerde gebreken verhelpen",
      beschrijving="Brandcompartimentering en detectie-installaties op orde brengen.",
      status="actief", startdatum=dt(2026, 4, 1))
-doel("22222222-2222-2222-2222-222222222213", plan_binnenhof, beheer_contact, "Controle",
+doel("22222222-2222-2222-2222-222222222213", plan_binnenhof, beheer_contact, "Herinspectie uitvoeren",
      titel="Herinspectie uitvoeren",
      beschrijving="Onafhankelijke herinspectie van alle herstelde onderdelen.",
      status="actief", startdatum=dt(2026, 10, 1))
-doel("22222222-2222-2222-2222-222222222214", plan_binnenhof, beheer_contact, "Borging",
+doel("22222222-2222-2222-2222-222222222214", plan_binnenhof, beheer_contact, "Borging in beheerorganisatie",
      titel="Borging in beheerorganisatie",
      beschrijving="BHV-organisatie en periodieke controles structureel beleggen.",
      status="actief", startdatum=dt(2026, 11, 1))

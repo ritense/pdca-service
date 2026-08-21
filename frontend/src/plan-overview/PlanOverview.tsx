@@ -4,6 +4,7 @@ import {
   ClickableTile,
   Tag,
   Button,
+  Checkbox,
   TextArea,
   TextInput,
   DataTable,
@@ -42,7 +43,10 @@ import {
   BrpPersoon,
   ObjectRecord,
 } from '../shared/api';
-import { statusLabel, evalTypeLabel, formatDate, doelCategorie, ordenCategorieen } from '../shared/labels';
+import {
+  statusLabel, evalTypeLabel, formatDate, doelCategorie, ordenCategorieen,
+  dienstverleningLabel, doelTypeNaam, hoofddoelTypen,
+} from '../shared/labels';
 import '../shared/styles.css';
 
 type SubjectData =
@@ -97,6 +101,7 @@ export function PlanOverview() {
   const [subject, setSubject] = useState<SubjectData>(null);
   const [categorieOrdening, setCategorieOrdening] = useState<string[]>([]);
   const [planStatusOpties, setPlanStatusOpties] = useState<string[]>([]);
+  const [positieTypen, setPositieTypen] = useState<string[]>([]);
   const [doeltypen, setDoeltypen] = useState<DoelType[]>([]);
   const [relatietypen, setRelatietypen] = useState<RelatieType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,29 +111,47 @@ export function PlanOverview() {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
-  const [partyForm, setPartyForm] = useState({ name: '', role: '', email: '', phone: '' });
+  const [partyForm, setPartyForm] = useState({ name: '', role: '', email: '', phone: '', isPrimary: false });
 
   useEffect(() => { resizeIframe(); });
 
   useEffect(() => {
     onInit(async (ctx: GzacContext) => {
       try {
-        // Active plans from Open Plan, matched to this case via the overlay.
-        const [plannen, alleDetails] = await Promise.all([
-          openplan.plannen.list({ status: 'actief' }),
-          pdca.plandetails.list(),
-        ]);
-        const detailsByUuid = new Map(alleDetails.map(d => [d.planUuid, d]));
-        let candidates = plannen;
-        if (ctx.caseDefinitionKey) {
-          candidates = plannen.filter(p => detailsByUuid.get(p.uuid)?.caseDefinitionKey === ctx.caseDefinitionKey);
-        }
-        if (candidates.length === 0) {
-          setError('Geen actieve plannen gevonden voor deze zaak.');
+        // Plan = dossier (1:1): dit tabblad toont uitsluitend het plan waarvan
+        // de zaak-URN naar dit dossier verwijst — geen fallback.
+        if (!ctx.documentId) {
+          setError('Geen dossiercontext ontvangen. Een plan is 1:1 een dossier; open dit tabblad vanuit een GZAC-dossier.');
           setLoading(false);
           return;
         }
-        const selected = candidates[0];
+        const [plannen, alleDetails] = await Promise.all([
+          openplan.plannen.list(),
+          pdca.plandetails.list(),
+        ]);
+        const detailsByUuid = new Map(alleDetails.map(d => [d.planUuid, d]));
+        let matches = plannen.filter(p => urnId(p.zaak) === ctx.documentId);
+        let resolveFout: string | null = null;
+        if (matches.length === 0) {
+          // Startformulier-route: het dossier kan een planId in de content
+          // dragen; de backend koppelt dat plan dan onderwater aan dit dossier.
+          const resolved = await pdca.dossiers.resolvePlan(ctx.documentId).catch((e: any) => {
+            // 409 (plan al aan ander dossier) en 400 (ongeldig planId) zijn
+            // relevante uitleg voor de gebruiker; 404 (geen planId) niet.
+            const msg = typeof e?.message === 'string' ? e.message : '';
+            if (msg.includes('409') || msg.includes('400')) resolveFout = msg;
+            return null;
+          });
+          if (resolved) {
+            matches = (await openplan.plannen.list()).filter(p => urnId(p.zaak) === ctx.documentId);
+          }
+        }
+        if (matches.length === 0) {
+          setError(resolveFout ?? 'Geen plan voor dit dossier. Maak eerst een plan aan via de taak "Plan aanmaken".');
+          setLoading(false);
+          return;
+        }
+        const selected = matches.find(p => p.status === 'actief') ?? matches[0];
         await loadPlanData(selected, detailsByUuid.get(selected.uuid) ?? null);
       } catch (err: any) {
         setError('Kan geen verbinding maken met Open Plan: ' + err.message);
@@ -154,11 +177,13 @@ export function PlanOverview() {
 
       let ordeningRes: string[] = [];
       let statusOptiesRes: string[] = [];
+      let positieTypenRes: string[] = [];
       if (selectedDetails?.caseDefinitionKey) {
         try {
           const cfg = await pdca.phaseConfigs.get(selectedDetails.caseDefinitionKey);
           ordeningRes = JSON.parse(cfg.categorieOrdening || '[]');
           statusOptiesRes = JSON.parse(cfg.planStatussen || '[]');
+          positieTypenRes = JSON.parse(cfg.positieTypen || '[]');
         } catch { /* no config */ }
       }
 
@@ -175,6 +200,7 @@ export function PlanOverview() {
       setSubject(subjectRes);
       setCategorieOrdening(ordeningRes);
       setPlanStatusOpties(statusOptiesRes.length ? statusOptiesRes : ['Concept', 'Vastgesteld', 'In uitvoering']);
+      setPositieTypen(positieTypenRes);
       setLoading(false);
     } catch (err: any) {
       setError('Fout bij laden van plangegevens: ' + err.message);
@@ -252,12 +278,31 @@ export function PlanOverview() {
     }
   }, [plan, showSuccess]);
 
-  // notitie/regievoerder live on the Open Plan plan; situaties in the PDCA overlay.
-  const editableFields = [
-    { key: 'medewerker', label: 'Regievoerder / behandelaar (eigenaar)', emptyText: 'Nog geen regievoerder', value: urnId(plan?.medewerker) || '' },
-    { key: 'notitie', label: 'Hoofddoel / notitie', emptyText: 'Geen notitie', value: plan?.notitie },
-    { key: 'startSituatie', label: 'Startsituatie', emptyText: 'Niet ingevuld', value: details?.startSituatie },
-    { key: 'gewensteSituatie', label: 'Gewenste situatie', emptyText: 'Niet ingevuld', value: details?.gewensteSituatie },
+  // notitie/procesbegeleider live on the Open Plan plan; posities en hoofddoel
+  // in the PDCA overlay. Posities en hoofddoel zijn registergedreven keuzes
+  // (positietype-register resp. doeltype-register) — geen vrije tekst; alleen
+  // de toelichting t.b.v. de inwoner blijft vrije tekst.
+  const hoofddoelOpties = hoofddoelTypen(doeltypen);
+  const gekozenHoofddoel = doeltypen.find(t => t.uuid === details?.hoofddoelTypeUuid);
+  const editableFields: {
+    key: string; label: string; emptyText: string; value?: string;
+    display?: string; options?: { value: string; text: string }[];
+  }[] = [
+    { key: 'medewerker', label: 'Procesbegeleider (hoofdverantwoordelijke)', emptyText: 'Nog geen procesbegeleider', value: urnId(plan?.medewerker) || '' },
+    {
+      key: 'hoofddoelTypeUuid', label: 'Hoofddoel (uit doeltype-register)', emptyText: 'Nog geen hoofddoel gekozen',
+      value: details?.hoofddoelTypeUuid || '', display: doelTypeNaam(gekozenHoofddoel),
+      options: hoofddoelOpties.map(t => ({ value: t.uuid, text: t.doelType })),
+    },
+    { key: 'notitie', label: 'Toelichting bij hoofddoel (t.b.v. de inwoner)', emptyText: 'Geen toelichting', value: plan?.notitie },
+    {
+      key: 'beginPositie', label: 'Beginpositie (input, doorgaans uit de intake)', emptyText: 'Nog niet gezet',
+      value: details?.beginPositie, options: positieTypen.map(p => ({ value: p, text: p })),
+    },
+    {
+      key: 'doelPositie', label: 'Doelpositie', emptyText: 'Nog niet gezet',
+      value: details?.doelPositie, options: positieTypen.map(p => ({ value: p, text: p })),
+    },
   ];
 
   const startEditing = useCallback((key: string, value?: string) => {
@@ -278,6 +323,7 @@ export function PlanOverview() {
         });
         setPlan(updated);
       } else {
+        // Registergedreven velden (hoofddoelTypeUuid, beginPositie, doelPositie).
         const updated = await pdca.plandetails.upsert(plan.uuid, { [editingField]: editValue.trim() } as any);
         setDetails(updated);
       }
@@ -287,6 +333,13 @@ export function PlanOverview() {
       setError('Opslaan mislukt: ' + err.message);
     }
   }, [plan, editingField, editValue, showSuccess]);
+
+  // Elk plan heeft minimaal één hoofdverantwoordelijke: de eerste
+  // verantwoordelijkheid wordt standaard als hoofdverantwoordelijke gemarkeerd.
+  const openPartyModal = useCallback(() => {
+    setPartyForm({ name: '', role: '', email: '', phone: '', isPrimary: betrokkenen.every(b => !b.isPrimary) });
+    setModalOpen(true);
+  }, [betrokkenen]);
 
   const handleAddParty = useCallback(async () => {
     if (!plan) return;
@@ -301,11 +354,11 @@ export function PlanOverview() {
         role: partyForm.role,
         email: partyForm.email.trim() || undefined,
         phone: partyForm.phone.trim() || undefined,
+        isPrimary: partyForm.isPrimary,
       });
       setBetrokkenen(await pdca.betrokkenen.listByPlan(plan.uuid));
       setModalOpen(false);
-      setPartyForm({ name: '', role: '', email: '', phone: '' });
-      showSuccess('Betrokkene toegevoegd');
+      showSuccess('Verantwoordelijkheid toegevoegd');
     } catch (err: any) {
       setError('Toevoegen mislukt: ' + err.message);
     }
@@ -315,7 +368,7 @@ export function PlanOverview() {
     try {
       await pdca.betrokkenen.delete(partyId);
       setBetrokkenen(prev => prev.filter(p => p.id !== partyId));
-      showSuccess('Betrokkene verwijderd');
+      showSuccess('Verantwoordelijkheid verwijderd');
     } catch (err: any) {
       setError('Verwijderen mislukt: ' + err.message);
     }
@@ -345,8 +398,10 @@ export function PlanOverview() {
     { key: 'actions', header: '' },
   ];
 
-  // Eigenaarschap ligt bij de regievoerder (plan.medewerker); betrokkenen
-  // zijn overige contactpersonen zonder primair-markering.
+  // Verantwoordelijkhedenmodel: rollen uit het Open Plan relatietype-register,
+  // hoofdverantwoordelijke(n) gemarkeerd; de procesbegeleider (plan.medewerker)
+  // is daarnaast altijd hoofdverantwoordelijk op planniveau.
+  const primaryIds = new Set(betrokkenen.filter(p => p.isPrimary).map(p => p.id));
   const partyRows = betrokkenen.map(p => ({
     id: p.id,
     name: p.name,
@@ -408,8 +463,11 @@ export function PlanOverview() {
                 </>
               )}
             </div>
-            {urnId(plan.medewerker) && <Tag size="sm" type="green">Regievoerder: {urnId(plan.medewerker)}</Tag>}
-            {plan.plantype && <Tag size="sm" type="cool-gray">plantype: {plan.plantype.type}</Tag>}
+            {urnId(plan.medewerker) && <Tag size="sm" type="green">Procesbegeleider: {urnId(plan.medewerker)}</Tag>}
+            {plan.plantype && <Tag size="sm" type="cool-gray">Dienstverlening: {dienstverleningLabel(plan.plantype.type)}</Tag>}
+            {details?.beginPositie && details?.doelPositie && (
+              <Tag size="sm" type="purple">{details.beginPositie} → {details.doelPositie}</Tag>
+            )}
             {plan.startdatum && <span>Start: {formatDate(plan.startdatum)}</span>}
             {details?.streefEinddatum && <span>Streefdatum: {formatDate(details.streefEinddatum)}</span>}
             {plan.einddatum && <span>Einde: {formatDate(plan.einddatum)}</span>}
@@ -489,7 +547,7 @@ export function PlanOverview() {
                 <h4>Plangegevens</h4>
               </div>
               <div className="pdca-card-body">
-                {editableFields.map(({ key, label, emptyText, value }) => (
+                {editableFields.map(({ key, label, emptyText, value, display, options }) => (
                   <div key={key} className="pdca-info-block">
                     <div className="pdca-info-label">
                       <span>{label}</span>
@@ -499,21 +557,34 @@ export function PlanOverview() {
                     </div>
                     {editingField === key ? (
                       <div>
-                        <TextArea
-                          id={`edit-${key}`}
-                          labelText=""
-                          hideLabel
-                          value={editValue}
-                          onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditValue(e.target.value)}
-                          rows={3}
-                        />
+                        {options ? (
+                          <Select
+                            id={`edit-${key}`}
+                            labelText=""
+                            hideLabel
+                            value={editValue}
+                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setEditValue(e.target.value)}
+                          >
+                            <SelectItem value="" text="-- Kies uit het register --" />
+                            {options.map(o => <SelectItem key={o.value} value={o.value} text={o.text} />)}
+                          </Select>
+                        ) : (
+                          <TextArea
+                            id={`edit-${key}`}
+                            labelText=""
+                            hideLabel
+                            value={editValue}
+                            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditValue(e.target.value)}
+                            rows={3}
+                          />
+                        )}
                         <div className="pdca-edit-actions">
                           <Button size="sm" kind="secondary" onClick={() => setEditingField(null)}>Annuleren</Button>
-                          <Button size="sm" kind="primary" onClick={saveField}>Opslaan</Button>
+                          <Button size="sm" kind="primary" onClick={saveField} disabled={!!options && !editValue}>Opslaan</Button>
                         </div>
                       </div>
                     ) : (
-                      <p className={`pdca-info-value${value ? '' : ' empty'}`}>{value || emptyText}</p>
+                      <p className={`pdca-info-value${value ? '' : ' empty'}`}>{(display ?? value) || emptyText}</p>
                     )}
                   </div>
                 ))}
@@ -570,16 +641,16 @@ export function PlanOverview() {
             </Tile>
           </div>
 
-          {/* Right column: Betrokkenen */}
+          {/* Right column: Verantwoordelijkheden */}
           <div>
             <Tile className="pdca-card">
               <div className="pdca-card-header">
-                <h4>Betrokkenen</h4>
-                <Button size="sm" kind="ghost" onClick={() => setModalOpen(true)}>Toevoegen</Button>
+                <h4>Verantwoordelijkheden</h4>
+                <Button size="sm" kind="ghost" onClick={openPartyModal}>Toevoegen</Button>
               </div>
               <div className="pdca-card-body">
                 {betrokkenen.length === 0 ? (
-                  <p className="pdca-empty">Geen betrokkenen</p>
+                  <p className="pdca-empty">Geen verantwoordelijkheden</p>
                 ) : (
                   <DataTable rows={partyRows} headers={partyHeaders}>
                     {({ rows, headers, getTableProps, getHeaderProps, getRowProps }: any) => (
@@ -607,6 +678,8 @@ export function PlanOverview() {
                                       iconDescription="Verwijderen"
                                       onClick={() => handleDeleteParty(cell.value)}
                                     />
+                                  ) : cell.info.header === 'name' && primaryIds.has(row.id) ? (
+                                    <>{cell.value} <Tag size="sm" type="green">Hoofdverantwoordelijk</Tag></>
                                   ) : (
                                     cell.value
                                   )}
@@ -624,10 +697,10 @@ export function PlanOverview() {
           </div>
         </div>
 
-        {/* Add betrokkene modal — roles from the Open Plan relatietype register */}
+        {/* Add verantwoordelijkheid modal — roles from the Open Plan relatietype register */}
         <Modal
           open={modalOpen}
-          modalHeading="Betrokkene toevoegen"
+          modalHeading="Verantwoordelijkheid toevoegen"
           primaryButtonText="Toevoegen"
           secondaryButtonText="Annuleren"
           onRequestClose={() => setModalOpen(false)}
@@ -645,7 +718,7 @@ export function PlanOverview() {
             />
             <Select
               id="party-role"
-              labelText="Rol *"
+              labelText="Rol * (uit relatietype-register)"
               value={partyForm.role}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPartyForm(prev => ({ ...prev, role: e.target.value }))}
             >
@@ -654,6 +727,12 @@ export function PlanOverview() {
                 <SelectItem key={r.uuid} value={r.naam} text={r.naam} />
               ))}
             </Select>
+            <Checkbox
+              id="party-primary"
+              labelText="Hoofdverantwoordelijke"
+              checked={partyForm.isPrimary}
+              onChange={(_: unknown, { checked }: { checked: boolean }) => setPartyForm(prev => ({ ...prev, isPrimary: checked }))}
+            />
             <TextInput
               id="party-email"
               labelText="E-mail"

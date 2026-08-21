@@ -51,11 +51,25 @@ data class PlanDetails(
     @Column(name = "weergave_status")
     var weergaveStatus: String? = null,
 
-    @Column(name = "start_situatie", columnDefinition = "TEXT")
-    var startSituatie: String? = null,
+    /**
+     * Begin- en doelpositie uit het positietype-register van het domein
+     * (PhaseConfig.positieTypen); geen vrije tekst. De beginpositie komt PDCA
+     * binnen als input (doorgaans uit de intake); de procesbegeleider kan
+     * beide binnen een lopend plan bijstellen.
+     */
+    @Column(name = "begin_positie", columnDefinition = "TEXT")
+    var beginPositie: String? = null,
 
-    @Column(name = "gewenste_situatie", columnDefinition = "TEXT")
-    var gewensteSituatie: String? = null,
+    @Column(name = "doel_positie", columnDefinition = "TEXT")
+    var doelPositie: String? = null,
+
+    /**
+     * Het ene hoofddoel van het plan: verwijzing naar een hoofddoel-doeltype
+     * in het Open Plan doeltype-register (categorie "Hoofddoel"). Vrije tekst
+     * hoort in plan.notitie (toelichting t.b.v. de inwoner).
+     */
+    @Column(name = "hoofddoel_type_uuid")
+    var hoofddoelTypeUuid: UUID? = null,
 
     @Column(name = "streef_einddatum")
     var streefEinddatum: LocalDate? = null,

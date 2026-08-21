@@ -3,7 +3,7 @@
     "components": [
         {
             "label": "HTML",
-            "content": "<h4>Nieuw renovatieplan (object)</h4><p>Start een PDCA-plan voor een object. Het plan zelf wordt in Open Plan aangemaakt via de taak \"Brandveiligheidsplan aanmaken\" of het tabblad Planoverzicht.</p><p>Demo-objecten: binnenhof-001 (Binnenhof), domtoren-001 (Domtoren), centraal-museum-001 (Centraal Museum).</p>",
+            "content": "<h4>Nieuw brandveiligheidsplan (object)</h4><p>Start een PDCA-plan voor een object. Vul een <strong>Plan-ID</strong> in om een bestaand (los) plan automatisch aan dit dossier te koppelen; laat het leeg om via de taak \"Plan aanmaken\" een nieuw plan in te vullen.</p><p>Demo-object: binnenhof-001 (Binnenhof)</p><p>Demo-plan Binnenhof: <code>33333333-3333-3333-3333-333333333333</code></p>",
             "refreshOnChange": false,
             "key": "html",
             "type": "htmlelement",
@@ -33,6 +33,14 @@
             "label": "Toelichting",
             "key": "toelichting",
             "type": "textarea",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "label": "Plan-ID (bestaand plan koppelen, optioneel)",
+            "description": "UUID van een bestaand los plan in Open Plan; de PDCA-app koppelt het plan automatisch aan dit dossier.",
+            "key": "planId",
+            "type": "textfield",
             "input": true,
             "tableView": false
         },

@@ -22,19 +22,22 @@ import java.util.UUID
 
 /**
  * PDCA case configuration: optional ordering of doelcategorieën (fasering),
- * evaluation types and configurable plan display statuses — all JSON arrays.
+ * evaluation types, configurable plan display statuses and the positietypen
+ * register (begin-/doelposities per domein) — all JSON arrays.
  */
 data class CreatePhaseConfigRequest(
     val caseDefinitionKey: String,
     val categorieOrdening: String,
     val evaluationTypes: String,
-    val planStatussen: String? = null
+    val planStatussen: String? = null,
+    val positieTypen: String? = null
 )
 
 data class UpdatePhaseConfigRequest(
     val categorieOrdening: String? = null,
     val evaluationTypes: String? = null,
-    val planStatussen: String? = null
+    val planStatussen: String? = null,
+    val positieTypen: String? = null
 )
 
 data class PhaseConfigResponse(
@@ -43,6 +46,7 @@ data class PhaseConfigResponse(
     val categorieOrdening: String,
     val evaluationTypes: String,
     val planStatussen: String?,
+    val positieTypen: String?,
     val createdAt: LocalDateTime,
     val updatedAt: LocalDateTime
 ) {
@@ -52,6 +56,7 @@ data class PhaseConfigResponse(
         categorieOrdening = config.categorieOrdening,
         evaluationTypes = config.evaluationTypes,
         planStatussen = config.planStatussen,
+        positieTypen = config.positieTypen,
         createdAt = config.createdAt,
         updatedAt = config.updatedAt
     )

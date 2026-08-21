@@ -59,11 +59,8 @@
 
 <div class="add-section">
   <h3>Doel toevoegen</h3>
-  <div class="add-row">
-    <div class="form-group"><label>Thema / categorie</label><select id="newCategorie"></select></div>
-    <div class="form-group"><label>Titel</label><input type="text" id="newTitle" placeholder="Doel omschrijving"></div>
-  </div>
-  <div class="form-group"><label>Toelichting</label><textarea id="newDesc" placeholder="Optionele toelichting"></textarea></div>
+  <div class="form-group"><label>Doel (uit doeltype-register)</label><select id="newDoeltype"></select></div>
+  <div class="form-group"><label>Toelichting (t.b.v. de inwoner)</label><textarea id="newDesc" placeholder="Optionele toelichting"></textarea></div>
   <button class="btn btn-primary btn-sm" onclick="addGoal()">Toevoegen</button>
 </div>
 
@@ -75,8 +72,10 @@
 </div>
 
 <script>
-// Direct integration: doelen leven in Open Plan (via de token proxy);
-// weergave gegroepeerd op doelcategorie uit het register (fasering optioneel).
+// Direct integration: doelen leven in Open Plan (via de token proxy) en worden
+// gekozen uit het doeltype-register (geen vrije-tekstdoelen); weergave
+// gegroepeerd op doelcategorie. Plan = dossier (1:1): het plan wordt strikt op
+// de zaak-URN van dit dossier gematcht.
 var API=location.origin.indexOf('http')===0?location.origin:'http://localhost:7500';
 var OPENPLAN=API+'/openplan/plannen/api/v0';
 var planId=null;
@@ -84,34 +83,61 @@ var persoonUuid=null;
 var doeltypen=[];
 var goals=[];
 var goalDetails={};
+var initialized=false;
 
 window.addEventListener('message',function(e){
-  if(e.data&&e.data.source==='valtimo-host'&&e.data.event==='init'){init()}
+  if(e.data&&e.data.source==='valtimo-host'&&e.data.event==='init'&&!initialized){
+    initialized=true;
+    init(e.data.payload&&e.data.payload.context||{});
+  }
 });
 window.parent.postMessage({source:'valtimo-plugin',event:'ready'},'*');
+setTimeout(function(){if(!initialized){initialized=true;init({})}},500);
 
 function categorieVan(doeltype){
   return (doeltype&&doeltype.categorieen&&doeltype.categorieen[0]&&doeltype.categorieen[0].naam)||'Overig';
 }
 
-function init(){
+function isHoofddoelType(dt){
+  return (dt.categorieen||[]).some(function(c){return c.naam==='Hoofddoel'});
+}
+
+function init(context,naResolve){
+  if(!context.documentId){
+    document.getElementById('planTitle').textContent='Geen dossiercontext ontvangen (plan = dossier).';
+    return;
+  }
+  var zaakUrn='urn:pdca:zaaksysteem:zaak:'+context.documentId;
   Promise.all([
-    fetch(OPENPLAN+'/plan?status=actief').then(function(r){return r.json()}),
+    fetch(OPENPLAN+'/plan').then(function(r){return r.json()}),
     fetch(API+'/api/v1/pdca/plandetails').then(function(r){return r.ok?r.json():[]}),
     fetch(OPENPLAN+'/doeltype').then(function(r){return r.json()})
   ]).then(function(res){
-    var active=res[0].results||[];
-    if(active.length===0){document.getElementById('planTitle').textContent='Geen plan gevonden';return Promise.reject('no plan')}
-    var plan=active[0];
+    var matches=(res[0].results||[]).filter(function(p){return p.zaak===zaakUrn});
+    if(matches.length===0&&!naResolve){
+      // Startformulier-route: backend koppelt een planId uit de dossier-content onderwater.
+      return fetch(API+'/api/v1/pdca/dossiers/'+context.documentId+'/resolve-plan',{method:'POST'})
+        .then(function(r){
+          if(r.ok)return init(context,true);
+          document.getElementById('planTitle').textContent='Geen plan voor dit dossier. Maak eerst een plan aan.';
+          return Promise.reject('no plan');
+        });
+    }
+    if(matches.length===0){document.getElementById('planTitle').textContent='Geen plan voor dit dossier. Maak eerst een plan aan.';return Promise.reject('no plan')}
+    var plan=matches.filter(function(p){return p.status==='actief'})[0]||matches[0];
     planId=plan.uuid;
     document.getElementById('planTitle').textContent=plan.titel;
     doeltypen=res[2].results||[];
     var details=(res[1]||[]).filter(function(d){return d.planUuid===planId})[0];
     persoonUuid=details&&details.persoonUuid;
-    var sel=document.getElementById('newCategorie');
+    // Registergedreven keuzelijst: benoemde subdoelen, geen hoofddoel-typen of
+    // legacy anonieme typen; de titel wordt de registernaam.
+    var sel=document.getElementById('newDoeltype');
     sel.innerHTML='';
-    doeltypen.forEach(function(dt){
-      var o=document.createElement('option');o.value=dt.uuid;o.textContent=categorieVan(dt);sel.appendChild(o);
+    doeltypen.filter(function(dt){
+      return !isHoofddoelType(dt)&&dt.doelType!=='subdoel'&&dt.doelType!=='hoofddoel';
+    }).forEach(function(dt){
+      var o=document.createElement('option');o.value=dt.uuid;o.textContent=dt.doelType+' — '+categorieVan(dt);sel.appendChild(o);
     });
     return loadGoals();
   }).catch(function(err){if(err!=='no plan')showError('Fout bij laden: '+err.message)});
@@ -159,15 +185,15 @@ function renderGoals(){
 }
 
 function addGoal(){
-  var doeltypeUuid=document.getElementById('newCategorie').value;
-  var title=document.getElementById('newTitle').value.trim();
-  if(!title){alert('Voer een titel in');return}
-  if(!persoonUuid||!doeltypeUuid){showError('Plan mist PDCA-details of Open Plan mist doeltypen');return}
+  var doeltypeUuid=document.getElementById('newDoeltype').value;
+  if(!doeltypeUuid){alert('Kies een doel uit het register');return}
+  if(!persoonUuid){showError('Plan mist PDCA-details');return}
+  var gekozen=doeltypen.filter(function(dt){return dt.uuid===doeltypeUuid})[0];
   fetch(OPENPLAN+'/doel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     plannenUuids:[planId],
     persoonUuid:persoonUuid,
     doeltypeUuid:doeltypeUuid,
-    titel:title,
+    titel:gekozen.doelType,
     beschrijving:document.getElementById('newDesc').value.trim()||'',
     startdatum:new Date().toISOString()
   })})
@@ -176,7 +202,6 @@ function addGoal(){
     return fetch(API+'/api/v1/pdca/doeldetails/'+doel.uuid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({planUuid:planId,uitvoeringsStatus:'GEPLAND'})});
   })
   .then(function(){
-    document.getElementById('newTitle').value='';
     document.getElementById('newDesc').value='';
     showSuccess('Doel toegevoegd');
     return loadGoals();
@@ -201,7 +226,6 @@ function showSuccess(msg){var el=document.getElementById('successMsg');el.textCo
 function showError(msg){var el=document.getElementById('errorMsg');el.textContent=msg;el.style.display='block';setTimeout(function(){el.style.display='none'},5000)}
 function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML}
 
-setTimeout(init,100);
 </script>
 </body>
 </html>

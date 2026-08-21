@@ -50,6 +50,14 @@ data class PhaseConfig(
     @Column(name = "plan_statussen", columnDefinition = "TEXT")
     var planStatussen: String? = null,
 
+    /**
+     * JSON array of positietypen (inwoner-/objectposities) for this domein.
+     * Begin- en doelpositie of a plan must come from this register; free text
+     * is rejected when the register is configured.
+     */
+    @Column(name = "positie_typen", columnDefinition = "TEXT")
+    var positieTypen: String? = null,
+
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
 

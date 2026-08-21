@@ -96,16 +96,37 @@ var planId=null;
 var goals=[];
 var goalDetails={};
 
+var initialized=false;
 window.addEventListener('message',function(e){
-  if(e.data&&e.data.source==='valtimo-host'&&e.data.event==='init'){init()}
+  if(e.data&&e.data.source==='valtimo-host'&&e.data.event==='init'&&!initialized){
+    initialized=true;
+    init(e.data.payload&&e.data.payload.context||{});
+  }
 });
 window.parent.postMessage({source:'valtimo-plugin',event:'ready'},'*');
+setTimeout(function(){if(!initialized){initialized=true;init({})}},500);
 
-function init(){
-  fetch(OPENPLAN+'/plan?status=actief').then(function(r){return r.json()}).then(function(page){
-    var active=page.results||[];
-    if(active.length===0){document.getElementById('planTitle').textContent='Geen plan gevonden';return Promise.reject('no plan')}
-    return active[0];
+// Plan = dossier (1:1): het plan wordt strikt op de zaak-URN van dit dossier gematcht.
+function init(context,naResolve){
+  if(!context.documentId){
+    document.getElementById('planTitle').textContent='Geen dossiercontext ontvangen (plan = dossier).';
+    return;
+  }
+  var zaakUrn='urn:pdca:zaaksysteem:zaak:'+context.documentId;
+  fetch(OPENPLAN+'/plan').then(function(r){return r.json()}).then(function(page){
+    var matches=(page.results||[]).filter(function(p){return p.zaak===zaakUrn});
+    if(matches.length===0&&!naResolve){
+      // Startformulier-route: backend koppelt een planId uit de dossier-content
+      // onderwater; daarna rendert een verse init en stopt deze keten stil.
+      return fetch(API+'/api/v1/pdca/dossiers/'+context.documentId+'/resolve-plan',{method:'POST'})
+        .then(function(r){
+          if(r.ok){init(context,true)}
+          else{document.getElementById('planTitle').textContent='Geen plan voor dit dossier. Maak eerst een plan aan.'}
+          return Promise.reject('no plan');
+        });
+    }
+    if(matches.length===0){document.getElementById('planTitle').textContent='Geen plan voor dit dossier. Maak eerst een plan aan.';return Promise.reject('no plan')}
+    return matches.filter(function(p){return p.status==='actief'})[0]||matches[0];
   }).then(function(plan){
     planId=plan.uuid;
     document.getElementById('planTitle').textContent=plan.titel;
@@ -117,7 +138,7 @@ function init(){
     goals=(res[0].results||[]).filter(function(g){return g.status!=='geannuleerd'});
     (res[1]||[]).forEach(function(d){goalDetails[d.doelUuid]=d});
     renderGoalProgress();
-  }).catch(function(err){document.getElementById('goalProgressList').innerHTML='<div style="color:#da1e28">Fout bij laden: '+err.message+'</div>'});
+  }).catch(function(err){if(err==='no plan')return;document.getElementById('goalProgressList').innerHTML='<div style="color:#da1e28">Fout bij laden: '+err.message+'</div>'});
 }
 
 function renderGoalProgress(){
@@ -195,7 +216,6 @@ function submitEval(){
 function esc(s){if(!s)return'';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 
 document.getElementById('evalDate').value=new Date().toISOString().split('T')[0];
-setTimeout(init,100);
 </script>
 </body>
 </html>

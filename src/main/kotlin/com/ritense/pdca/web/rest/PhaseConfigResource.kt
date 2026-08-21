@@ -65,7 +65,8 @@ class PhaseConfigResource(
                 caseDefinitionKey = request.caseDefinitionKey,
                 categorieOrdening = request.categorieOrdening,
                 evaluationTypes = request.evaluationTypes,
-                planStatussen = request.planStatussen
+                planStatussen = request.planStatussen,
+                positieTypen = request.positieTypen
             )
         )
         return ResponseEntity.status(HttpStatus.CREATED).body(PhaseConfigResponse(config))
@@ -80,7 +81,8 @@ class PhaseConfigResource(
         val updated = existing.copy(
             categorieOrdening = request.categorieOrdening ?: existing.categorieOrdening,
             evaluationTypes = request.evaluationTypes ?: existing.evaluationTypes,
-            planStatussen = request.planStatussen ?: existing.planStatussen
+            planStatussen = request.planStatussen ?: existing.planStatussen,
+            positieTypen = request.positieTypen ?: existing.positieTypen
         )
         val config = phaseConfigService.updateByCaseDefinitionKey(caseDefKey, updated)
         return ResponseEntity.ok(PhaseConfigResponse(config))

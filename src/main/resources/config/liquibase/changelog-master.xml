@@ -8,5 +8,7 @@
     <include file="config/liquibase/010-openplan-overlay-schema.xml"/>
     <include file="config/liquibase/011-overlay-seed-data.xml"/>
     <include file="config/liquibase/012-fase1-domain.xml"/>
+    <include file="config/liquibase/013-posities-hoofddoel.xml"/>
+    <include file="config/liquibase/014-plugin-config-dossier.xml"/>
 
 </databaseChangeLog>

@@ -28,8 +28,9 @@ data class PlanDetailsRequest(
     val persoonUuid: UUID? = null,
     val caseDefinitionKey: String? = null,
     val weergaveStatus: String? = null,
-    val startSituatie: String? = null,
-    val gewensteSituatie: String? = null,
+    val beginPositie: String? = null,
+    val doelPositie: String? = null,
+    val hoofddoelTypeUuid: UUID? = null,
     val streefEinddatum: LocalDate? = null
 )
 

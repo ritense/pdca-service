@@ -33,11 +33,17 @@ const DOELGROEP_LABELS: Record<string, string> = {
   bedrijven_en_instellingen: 'Bedrijven en instellingen',
 };
 
+/** Plantype = de dienstverlening waaronder het plan valt. */
+const DIENSTVERLENING_LABELS: Record<string, string> = {
+  werk: 'Terug naar werk', pip: 'Inburgering (PIP)', inkomen: 'Inkomensondersteuning',
+};
+
 export function statusLabel(s: string): string { return STATUS_LABELS[s] || s; }
 export function evalTypeLabel(s: string): string { return EVAL_TYPE_LABELS[s] || s; }
 export function priorityLabel(s: string): string { return PRIORITY_LABELS[s] || s; }
 export function assigneeTypeLabel(s: string): string { return ASSIGNEE_TYPE_LABELS[s] || s; }
 export function doelgroepLabel(s: string): string { return DOELGROEP_LABELS[s] || s; }
+export function dienstverleningLabel(s: string): string { return DIENSTVERLENING_LABELS[s] || s; }
 
 /**
  * PDCA doel/instrument display status: Gepland, Gestart, Afgerond, Afgebroken.
@@ -67,10 +73,34 @@ export function formatDate(dateStr: string | undefined | null): string {
   return dateStr;
 }
 
-/** Doeltype display label: the first doelcategorie naam. */
-export function doelTypeLabel(doelType: { doelType: string; categorieen: { naam: string }[] } | undefined): string {
-  if (!doelType) return '';
-  return doelType.categorieen?.[0]?.naam || doelType.doelType;
+/**
+ * Doeltype-register (beslissingen 17-08-26): DoelType.doelType draagt de naam
+ * van het vast gedefinieerde doel; de categorie "Hoofddoel" markeert
+ * hoofddoel-typen. Legacy anonieme typen ("hoofddoel"/"subdoel" zonder naam)
+ * worden buiten de keuzelijsten gehouden.
+ */
+type DoelTypeLike = { uuid: string; doelType: string; categorieen: { naam: string }[] };
+
+export function doelTypeNaam(doelType: DoelTypeLike | undefined): string {
+  return doelType?.doelType || '';
+}
+
+export function isHoofddoelType(doelType: DoelTypeLike): boolean {
+  return doelType.categorieen?.some(c => c.naam === 'Hoofddoel') ?? false;
+}
+
+const isLegacyType = (t: DoelTypeLike) => t.doelType === 'hoofddoel' || t.doelType === 'subdoel';
+
+export function hoofddoelTypen(doeltypen: DoelTypeLike[]): DoelTypeLike[] {
+  return doeltypen.filter(t => isHoofddoelType(t) && !isLegacyType(t));
+}
+
+export function subdoelTypen(doeltypen: DoelTypeLike[]): DoelTypeLike[] {
+  return doeltypen
+    .filter(t => !isHoofddoelType(t) && !isLegacyType(t))
+    .sort((a, b) =>
+      (a.categorieen?.[0]?.naam || '').localeCompare(b.categorieen?.[0]?.naam || '') ||
+      a.doelType.localeCompare(b.doelType));
 }
 
 /**

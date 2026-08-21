@@ -56,8 +56,31 @@ class PluginHostController(
             ),
             "additionalProperties" to false
         ),
+        // De app roept GZAC's API aan met de gepushte serviceToken (capability
+        // gzac_api). Voor service-tokens geldt uitsluitend deze endpoint-
+        // allowlist (PBAC wordt overgeslagen); de beheerder bevestigt deze
+        // footprint bij het aanmaken of heraccepteren van de configuratie.
         "permissions" to mapOf(
-            "endpoints" to emptyList<Any>()
+            "capabilities" to listOf("gzac_api"),
+            "endpoints" to listOf(
+                // Dossier aanmaken voor een plan (plan = dossier 1:1, losse route).
+                mapOf(
+                    "method" to "POST",
+                    "pattern" to "/api/v1/process-document/operation/new-document-and-start-process"
+                ),
+                // caseDefinitionVersionTag opzoeken (blueprint van de documentdefinitie);
+                // /api/management/** is voor service-tokens niet bereikbaar.
+                mapOf(
+                    "method" to "GET",
+                    "pattern" to "/api/v1/document-definition/*"
+                ),
+                // Dossier lezen om een via het startformulier meegegeven planId
+                // onderwater aan het plan te koppelen (plan.zaak zetten).
+                mapOf(
+                    "method" to "GET",
+                    "pattern" to "/api/v1/document/*"
+                )
+            )
         ),
         "frontendBundles" to listOf(
             mapOf(
