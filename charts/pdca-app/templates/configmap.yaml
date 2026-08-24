@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pdca-app.fullname" . }}
+  labels:
+    {{- include "pdca-app.labels" . | nindent 4 }}
+data:
+  SERVER_PORT: {{ .Values.config.serverPort | quote }}
+  PDCA_SEED_DEMO_DATA: {{ .Values.config.seedDemoData | quote }}
+  {{- if .Values.database.host }}
+  PDCA_DB_HOST: {{ .Values.database.host | quote }}
+  {{- end }}
+  PDCA_DB_PORT: {{ .Values.database.port | quote }}
+  PDCA_DB_NAME: {{ .Values.database.name | quote }}
+  PDCA_DB_USER: {{ .Values.database.user | quote }}
+  {{- if .Values.externalServices.openplan.url }}
+  OPENPLAN_URL: {{ .Values.externalServices.openplan.url | quote }}
+  {{- end }}
+  {{- if .Values.externalServices.openproduct.url }}
+  OPENPRODUCT_URL: {{ .Values.externalServices.openproduct.url | quote }}
+  {{- end }}
+  {{- if .Values.externalServices.gzac.enabled }}
+  GZAC_URL: {{ .Values.externalServices.gzac.url | quote }}
+  GZAC_TOKEN_URL: {{ .Values.externalServices.gzac.tokenUrl | quote }}
+  GZAC_CLIENT_ID: {{ .Values.externalServices.gzac.clientId | quote }}
+  {{- end }}
