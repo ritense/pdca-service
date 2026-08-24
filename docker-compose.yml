@@ -3,6 +3,12 @@
 #   pdca-database    PostgreSQL for the PDCA app's own overlay data (localhost:7503)
 #   openplan-*       Maykin Open Plan   (plannen register, http://localhost:7501)
 #   openproduct-*    Maykin Open Product (producttypen register, http://localhost:7502)
+#   pdca-app         The app itself (http://localhost:7500) — only with --profile app
+#
+# Two ways to run:
+#
+#   docker compose up -d                           # deps only, app via ./gradlew bootRun
+#   docker compose --profile app up -d --build     # entire stack in Docker
 #
 # The 7500-7503 block (app itself on 7500) deliberately avoids every port used
 # by the Valtimo project and its dependencies: GZAC stack (8001-8012, 8080,
@@ -20,6 +26,36 @@
 # Admin UIs: http://localhost:7501/admin/ and http://localhost:7502/admin/ (admin/admin)
 
 services:
+  # The app itself, opt-in via `--profile app` so the default `up -d` (used by
+  # ./gradlew bootRunWithDocker) keeps starting the dependencies only.
+  # PDCA_APP_IMAGE lets a cluster host run a pre-built registry image instead
+  # of building from source: PDCA_APP_IMAGE=<registry>/pdca-app:<tag> \
+  #   docker compose --profile app up -d --no-build
+  pdca-app:
+    profiles: ["app"]
+    build: .
+    image: ${PDCA_APP_IMAGE:-pdca-app:local}
+    ports:
+      - "7500:7500"
+    environment:
+      PDCA_DB_HOST: pdca-database
+      PDCA_DB_PORT: "5432"
+      OPENPLAN_URL: http://openplan:8000
+      OPENPRODUCT_URL: http://openproduct:8000
+      # GZAC runs outside this compose project (its own stack on the host).
+      GZAC_URL: http://host.docker.internal:8080
+      GZAC_TOKEN_URL: http://host.docker.internal:8081/auth/realms/valtimo/protocol/openid-connect/token
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    depends_on:
+      pdca-database:
+        condition: service_healthy
+      openplan:
+        condition: service_healthy
+      openproduct:
+        condition: service_healthy
+
   pdca-database:
     image: postgres:17.4-alpine
     ports:
@@ -28,6 +64,11 @@ services:
       POSTGRES_DB: pdca
       POSTGRES_USER: pdca
       POSTGRES_PASSWORD: pdca
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pdca -d pdca"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     volumes:
       - pdca-database-data:/var/lib/postgresql/data
 

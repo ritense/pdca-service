@@ -47,7 +47,7 @@ tasks.withType<Test> {
 
 tasks.register<Exec>("dockerUp") {
     group = "docker"
-    description = "Start the PDCA database via docker compose"
+    description = "Start the PDCA app's dependencies via docker compose"
     commandLine("/usr/local/bin/docker", "compose", "up", "-d")
     workingDir = projectDir
     environment("PATH", "/usr/local/bin:/usr/bin:/bin")
@@ -58,6 +58,65 @@ tasks.register("bootRunWithDocker") {
     description = "Start docker compose, then run the PDCA app"
     dependsOn("dockerUp")
     finalizedBy("bootRun")
+}
+
+// ---------------------------------------------------------------------------
+// Container image tasks. The Dockerfile is fully self-contained (builds the
+// frontend bundles and the jar inside the image), so none of these need a
+// local Node or a prior ./gradlew build.
+
+tasks.register<Exec>("dockerBuild") {
+    group = "docker"
+    description = "Build the pdca-app container image (tags: $version, latest)"
+    commandLine(
+        "/usr/local/bin/docker", "build",
+        "-t", "pdca-app:$version",
+        "-t", "pdca-app:latest",
+        ".",
+    )
+    workingDir = projectDir
+    environment("PATH", "/usr/local/bin:/usr/bin:/bin")
+}
+
+tasks.register<Exec>("dockerUpAll") {
+    group = "docker"
+    description = "Run the entire stack (app + dependencies) in Docker"
+    commandLine("/usr/local/bin/docker", "compose", "--profile", "app", "up", "-d", "--build")
+    workingDir = projectDir
+    environment("PATH", "/usr/local/bin:/usr/bin:/bin")
+}
+
+tasks.register<Exec>("dockerDownAll") {
+    group = "docker"
+    description = "Stop and remove the entire Docker stack (app + dependencies)"
+    commandLine("/usr/local/bin/docker", "compose", "--profile", "app", "down")
+    workingDir = projectDir
+    environment("PATH", "/usr/local/bin:/usr/bin:/bin")
+}
+
+// Build-and-push for the development cluster, e.g.:
+//   ./gradlew dockerBuildPush -PdockerRegistry=registry.example.com/team
+//   ./gradlew dockerBuildPush -PdockerRegistry=... -PdockerTag=pr-42 -PdockerPlatforms=linux/amd64,linux/arm64
+tasks.register<Exec>("dockerBuildPush") {
+    group = "docker"
+    description = "Build the image for the dev cluster (buildx) and push it (-PdockerRegistry=..., optional -PdockerTag=..., -PdockerPlatforms=...)"
+    val registry = providers.gradleProperty("dockerRegistry").orNull
+    val tag = providers.gradleProperty("dockerTag").orNull ?: version.toString()
+    val platforms = providers.gradleProperty("dockerPlatforms").orNull ?: "linux/amd64"
+    doFirst {
+        if (registry == null) {
+            throw GradleException("Set the target registry: ./gradlew dockerBuildPush -PdockerRegistry=<registry>/<namespace>")
+        }
+    }
+    commandLine(
+        "/usr/local/bin/docker", "buildx", "build",
+        "--platform", platforms,
+        "-t", "$registry/pdca-app:$tag",
+        "-t", "$registry/pdca-app:latest",
+        "--push", ".",
+    )
+    workingDir = projectDir
+    environment("PATH", "/usr/local/bin:/usr/bin:/bin")
 }
 
 // Importable GZAC case-definition zips (see gzac/case-definitions/README.md).

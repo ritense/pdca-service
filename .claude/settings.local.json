@@ -21,7 +21,11 @@
       "Bash(curl -s -o /dev/null -w \"8080: %{http_code}\\\\n\" -m 3 http://localhost:8080/api/v1/ping)",
       "Bash(curl -s -m 3 http://localhost:8080/v3/api-docs)",
       "Bash(docker port *)",
-      "Bash(docker exec *)"
+      "Bash(docker exec *)",
+      "Read(//Users/maximbuur/Projects/**)",
+      "Bash(docker version *)",
+      "Bash(docker buildx *)",
+      "Bash(docker manifest *)"
     ]
   }
 }

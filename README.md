@@ -63,7 +63,8 @@ instance by URL.
 ./gradlew bootRunWithDocker    # docker compose up -d + bootRun (app on http://localhost:7500)
 ```
 
-Or in two steps: `docker compose up -d` then `./gradlew bootRun`.
+Or in two steps: `docker compose up -d` then `./gradlew bootRun`. To run the app itself as a
+container too, see [Docker](#docker): `docker compose --profile app up -d --build`.
 
 The compose file runs three stacks:
 
@@ -174,12 +175,59 @@ service tokens on granted endpoints). Credentials are resolved in this order (se
 Note: the created dossier starts the BPMN process, so its "Plan aanmaken"-taak is open while
 the plan already exists — complete it with the placeholder button.
 
+## Docker
+
+The `Dockerfile` is fully self-contained: it builds the frontend bundles (Node) and the jar
+(Gradle) inside the image, so `docker build` works from a clean checkout without a local JDK or
+Node. The runtime image is a slim non-root JRE with a `/health`-based healthcheck.
+
+**Entire stack in Docker** (app + registers + database), one command:
+
+```bash
+docker compose --profile app up -d --build   # or: ./gradlew dockerUpAll
+# app on http://localhost:7500, tear down with: docker compose --profile app down
+```
+
+Without `--profile app` the compose file starts the dependencies only (the
+`./gradlew bootRunWithDocker` dev flow is unchanged).
+
+**Build the image** (for the local development cluster or elsewhere):
+
+```bash
+./gradlew dockerBuild        # = docker build -t pdca-app:0.1.0 -t pdca-app:latest .
+./gradlew dockerBuildPush -PdockerRegistry=<registry>/<namespace>   # buildx linux/amd64 + push
+# optional: -PdockerTag=<tag> -PdockerPlatforms=linux/amd64,linux/arm64
+```
+
+On a cluster host with the repo checked out, the compose file can also run a pre-built image
+instead of building from source:
+`PDCA_APP_IMAGE=<registry>/pdca-app:<tag> docker compose --profile app up -d --no-build`.
+
+Everything external is configured through environment variables (defaults in
+`application.yml` target the localhost dev setup; the compose `pdca-app` service overrides
+them with in-network hostnames):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SERVER_PORT` | `7500` | HTTP port of the app (healthcheck follows it) |
+| `PDCA_DB_HOST` / `PDCA_DB_PORT` | `localhost` / `7503` | PostgreSQL for the PDCA overlay |
+| `PDCA_DB_NAME` / `PDCA_DB_USER` / `PDCA_DB_PASS` | `pdca` (all three) | Overlay database name/credentials |
+| `OPENPLAN_URL` / `OPENPLAN_TOKEN` | `http://localhost:7501` / dev token | Open Plan register |
+| `OPENPRODUCT_URL` / `OPENPRODUCT_TOKEN` | `http://localhost:7502` / dev token | Open Product register |
+| `GZAC_URL` | `http://localhost:8080` | GZAC API (dossier aanmaken) |
+| `GZAC_TOKEN_URL` / `GZAC_CLIENT_ID` / `GZAC_CLIENT_SECRET` | standaard gzac-docker-compose m2m-client | Keycloak client-credentials fallback |
+| `PDCA_SEED_DEMO_DATA` | `true` | Seed demo plannen into an empty Open Plan on boot |
+
+Container networking notes: the compose `pdca-app` service reaches a GZAC stack running on the
+host via `host.docker.internal` (mapped with `host-gateway`, so it also works on Linux). The
+other direction, when GZAC itself runs in Docker, register the plugin URL as
+`http://host.docker.internal:7500` instead of `localhost:7500`.
+
 ## Development
 
 ```bash
 ./gradlew build          # full build -> build/libs/pdca-app-0.1.0.jar
 ./gradlew buildCaseZips  # rebuild the importable GZAC case-definition zips
-docker build -t pdca-app .   # containerize (expects the jar from ./gradlew build)
 ```
 
 Resetting data: `docker compose down -v` wipes all three databases; the init containers and

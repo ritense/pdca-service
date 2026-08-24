@@ -1,0 +1,24 @@
+# Keep the build context small and the image build hermetic: the frontend
+# bundles are always rebuilt inside the image (stage 1), never taken from a
+# possibly stale local build.
+.git
+.gradle
+.idea
+.kotlin
+.vscode
+.claude
+.humanlayer
+build
+frontend/node_modules
+frontend/dist
+src/main/resources/static/bundles/react
+docker
+gzac
+pdca_material
+docker-compose.yml
+Dockerfile
+README.md
+.env
+.env.*
+*.log
+.DS_Store

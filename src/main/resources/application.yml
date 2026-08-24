@@ -11,7 +11,7 @@ spring:
   application:
     name: pdca-app
   datasource:
-    url: jdbc:postgresql://${PDCA_DB_HOST:localhost}:${PDCA_DB_PORT:7503}/pdca
+    url: jdbc:postgresql://${PDCA_DB_HOST:localhost}:${PDCA_DB_PORT:7503}/${PDCA_DB_NAME:pdca}
     username: ${PDCA_DB_USER:pdca}
     password: ${PDCA_DB_PASS:pdca}
     driver-class-name: org.postgresql.Driver
