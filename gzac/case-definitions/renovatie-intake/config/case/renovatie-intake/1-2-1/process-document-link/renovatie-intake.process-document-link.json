@@ -1,0 +1,7 @@
+[
+    {
+        "processDefinitionKey": "renovatie-intake",
+        "canInitializeDocument": true,
+        "startableByUser": true
+    }
+]

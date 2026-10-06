@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_renovatie_intake"
+                  targetNamespace="http://bpmn.io/schema/bpmn"
+                  exporter="pdca-app" exporterVersion="0.1.0">
+    <bpmn:process camunda:versionTag="CD:renovatie-intake:1.2.1" id="renovatie-intake" isExecutable="true"
+                  name="Intake renovatie (PDCA)">
+        <bpmn:startEvent id="start-event" name="Intake renovatie (object)">
+            <bpmn:outgoing>flow-start-plan-aanmaken</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:userTask camunda:candidateGroups="ROLE_USER" id="plan-aanmaken" name="Brandveiligheidsplan aanmaken (PDCA)">
+            <bpmn:documentation>Maak het plan aan op basis van de intake in dit dossier, via het externe
+                taakformulier "create-plan" van de PDCA-app. De proceskoppeling zit in de zip: kies bij de
+                import de PDCA-pluginconfiguratie, of herstel de koppeling daarna via de configuratiemelding
+                op het dossiertype. Het formulier wordt voorgevuld vanuit de dossier-content en maakt naast
+                het plan ook het bijbehorende plan-dossier aan.
+            </bpmn:documentation>
+            <bpmn:incoming>flow-start-plan-aanmaken</bpmn:incoming>
+            <bpmn:outgoing>flow-plan-aanmaken-einde</bpmn:outgoing>
+        </bpmn:userTask>
+        <bpmn:endEvent id="einde" name="Intake afgerond">
+            <bpmn:incoming>flow-plan-aanmaken-einde</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="flow-start-plan-aanmaken" sourceRef="start-event" targetRef="plan-aanmaken"/>
+        <bpmn:sequenceFlow id="flow-plan-aanmaken-einde" sourceRef="plan-aanmaken" targetRef="einde"/>
+    </bpmn:process>
+    <bpmndi:BPMNDiagram id="BPMNDiagram_renovatie_intake">
+        <bpmndi:BPMNPlane bpmnElement="renovatie-intake" id="BPMNPlane_renovatie_intake">
+            <bpmndi:BPMNShape bpmnElement="start-event" id="Shape_start-event">
+                <dc:Bounds height="36" width="36" x="152" y="152"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="plan-aanmaken" id="Shape_plan-aanmaken">
+                <dc:Bounds height="80" width="100" x="250" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="einde" id="Shape_einde">
+                <dc:Bounds height="36" width="36" x="412" y="152"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNEdge bpmnElement="flow-start-plan-aanmaken" id="Edge_flow-start-plan-aanmaken">
+                <di:waypoint x="188" y="170"/>
+                <di:waypoint x="250" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-plan-aanmaken-einde" id="Edge_flow-plan-aanmaken-einde">
+                <di:waypoint x="350" y="170"/>
+                <di:waypoint x="412" y="170"/>
+            </bpmndi:BPMNEdge>
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+</bpmn:definitions>

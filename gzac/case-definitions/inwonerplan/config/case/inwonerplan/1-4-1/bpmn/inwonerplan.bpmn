@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  id="Definitions_inwonerplan"
+                  targetNamespace="http://bpmn.io/schema/bpmn"
+                  exporter="pdca-app" exporterVersion="0.1.0">
+    <bpmn:process camunda:versionTag="CD:inwonerplan:1.4.1" id="inwonerplan" isExecutable="true"
+                  name="Inwonerplan (PDCA)">
+        <bpmn:startEvent id="start-event" name="Aanvraag inwonerplan">
+            <bpmn:outgoing>flow-start-plan-aanmaken</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:userTask camunda:candidateGroups="ROLE_USER" id="plan-aanmaken" name="Plan aanmaken (PDCA)">
+            <bpmn:documentation>Maak het plan aan in Open Plan via het externe taakformulier "create-plan"
+                van de PDCA-app (de proceskoppeling zit in de zip: kies bij de import de
+                PDCA-pluginconfiguratie, of herstel de koppeling via de configuratiemelding), of maak het
+                plan aan via het tabblad Planoverzicht.
+            </bpmn:documentation>
+            <bpmn:incoming>flow-start-plan-aanmaken</bpmn:incoming>
+            <bpmn:outgoing>flow-plan-aanmaken-cyclus</bpmn:outgoing>
+        </bpmn:userTask>
+        <bpmn:userTask camunda:candidateGroups="ROLE_USER" id="pdca-cyclus" name="PDCA-cyclus bijhouden">
+            <bpmn:documentation>Werk doelen, acties en instrumenten bij en leg evaluaties vast via de
+                PDCA-tabbladen (of koppel de externe taakformulieren "update-goals" / "evaluate").
+            </bpmn:documentation>
+            <bpmn:incoming>flow-plan-aanmaken-cyclus</bpmn:incoming>
+            <bpmn:incoming>flow-doorgaan</bpmn:incoming>
+            <bpmn:outgoing>flow-cyclus-keuze</bpmn:outgoing>
+        </bpmn:userTask>
+        <bpmn:exclusiveGateway id="vervolg-keuze" name="Plan afronden?" default="flow-doorgaan">
+            <bpmn:incoming>flow-cyclus-keuze</bpmn:incoming>
+            <bpmn:outgoing>flow-doorgaan</bpmn:outgoing>
+            <bpmn:outgoing>flow-afronden</bpmn:outgoing>
+        </bpmn:exclusiveGateway>
+        <bpmn:endEvent id="einde" name="Plan afgerond">
+            <bpmn:incoming>flow-afronden</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="flow-start-plan-aanmaken" sourceRef="start-event" targetRef="plan-aanmaken"/>
+        <bpmn:sequenceFlow id="flow-plan-aanmaken-cyclus" sourceRef="plan-aanmaken" targetRef="pdca-cyclus"/>
+        <bpmn:sequenceFlow id="flow-cyclus-keuze" sourceRef="pdca-cyclus" targetRef="vervolg-keuze"/>
+        <bpmn:sequenceFlow id="flow-doorgaan" name="doorgaan" sourceRef="vervolg-keuze" targetRef="pdca-cyclus"/>
+        <bpmn:sequenceFlow id="flow-afronden" name="afronden" sourceRef="vervolg-keuze" targetRef="einde">
+            <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${vervolg == 'afronden'}</bpmn:conditionExpression>
+        </bpmn:sequenceFlow>
+    </bpmn:process>
+    <bpmndi:BPMNDiagram id="BPMNDiagram_inwonerplan">
+        <bpmndi:BPMNPlane bpmnElement="inwonerplan" id="BPMNPlane_inwonerplan">
+            <bpmndi:BPMNShape bpmnElement="start-event" id="Shape_start-event">
+                <dc:Bounds height="36" width="36" x="152" y="152"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="plan-aanmaken" id="Shape_plan-aanmaken">
+                <dc:Bounds height="80" width="100" x="250" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="pdca-cyclus" id="Shape_pdca-cyclus">
+                <dc:Bounds height="80" width="100" x="420" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="vervolg-keuze" id="Shape_vervolg-keuze" isMarkerVisible="true">
+                <dc:Bounds height="50" width="50" x="590" y="145"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="einde" id="Shape_einde">
+                <dc:Bounds height="36" width="36" x="712" y="152"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNEdge bpmnElement="flow-start-plan-aanmaken" id="Edge_flow-start-plan-aanmaken">
+                <di:waypoint x="188" y="170"/>
+                <di:waypoint x="250" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-plan-aanmaken-cyclus" id="Edge_flow-plan-aanmaken-cyclus">
+                <di:waypoint x="350" y="170"/>
+                <di:waypoint x="420" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-cyclus-keuze" id="Edge_flow-cyclus-keuze">
+                <di:waypoint x="520" y="170"/>
+                <di:waypoint x="590" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-doorgaan" id="Edge_flow-doorgaan">
+                <di:waypoint x="615" y="145"/>
+                <di:waypoint x="615" y="80"/>
+                <di:waypoint x="470" y="80"/>
+                <di:waypoint x="470" y="130"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-afronden" id="Edge_flow-afronden">
+                <di:waypoint x="640" y="170"/>
+                <di:waypoint x="712" y="170"/>
+            </bpmndi:BPMNEdge>
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+</bpmn:definitions>

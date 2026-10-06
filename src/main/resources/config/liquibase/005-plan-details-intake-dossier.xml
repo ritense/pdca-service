@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Records which intake dossier a plan came from. Plan = dossier (1:1) is about
+  the PLAN dossier (plan_details.dossier_id); on the intake route that dossier
+  is created next to the plan, so the intake dossier itself keeps no link and
+  the app had no way to recognise a second create-plan submission from the same
+  intake. That made the final intake task unrecoverable: after the plan was
+  created, every retry ran into the one-active-plan-per-inwoner rule and the
+  task could never be completed. With this column that submission is
+  idempotent — the same intake gets its existing plan back.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="005-01-add-plan-details-intake-dossier-id" author="pdca">
+        <addColumn tableName="plan_details">
+            <column name="intake_dossier_id" type="VARCHAR(64)"/>
+        </addColumn>
+        <createIndex tableName="plan_details" indexName="idx_plan_details_intake_dossier_id">
+            <column name="intake_dossier_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

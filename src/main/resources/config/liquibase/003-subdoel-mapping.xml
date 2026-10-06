@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Which subdoeltypen may be chosen under which hoofddoeltype, per case type.
+  The register cannot express a relation between two doeltypen (its only link
+  field, doelcategorie, already carries the "Hoofddoel" marker and the themas),
+  so the catalog lives in the case configuration — next to the positietypen,
+  and like those it moves into the register's Configuratie once Open Plan
+  models it ("subdoeltypen kunnen bij meerdere doeltypen horen").
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="003-01-phase-config-subdoel-mapping" author="pdca">
+        <!-- JSON object: hoofddoeltype name -> array of subdoeltype names.
+             Keyed by name because every other reference to a doeltype in the
+             intake chain is by name too (DMN output, task forms, prefill).
+             A hoofddoel without an entry scopes nothing: all subdoeltypen
+             stay available (the same "empty = always" convention as the
+             doeltypen of a bouwblokkoppeling and the themas of a doeltype). -->
+        <addColumn tableName="phase_config">
+            <column name="subdoel_mapping" type="TEXT"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="003-02-seed-subdoel-mapping" author="pdca" context="seed">
+        <!-- Inwonerdomein: the three W&P hoofddoelen over the nine subdoelen.
+             "Kinderopvang regelen" and "Financiele situatie in kaart brengen"
+             deliberately appear under more than one hoofddoel — a randvoorwaarde
+             serves both working and participating. -->
+        <update tableName="phase_config">
+            <column name="subdoel_mapping"><![CDATA[{
+  "Duurzaam aan het werk": [
+    "Competenties en werkervaring beoordelen",
+    "Werkfit vaardigheden ontwikkelen",
+    "Orientatie op passende functies",
+    "Duurzame plaatsing realiseren",
+    "Nazorg en borging",
+    "Kinderopvang regelen",
+    "Financiele situatie in kaart brengen"
+  ],
+  "Financieel zelfredzaam": [
+    "Financiele situatie in kaart brengen",
+    "Schulden stabiliseren"
+  ],
+  "Zelfstandig meedoen in de samenleving": [
+    "Taalniveau verbeteren",
+    "Kinderopvang regelen",
+    "Financiele situatie in kaart brengen"
+  ]
+}]]></column>
+            <where>case_definition_key = 'inwonerplan'</where>
+        </update>
+        <!-- Objectdomein: one hoofddoel over its four subdoelen. -->
+        <update tableName="phase_config">
+            <column name="subdoel_mapping"><![CDATA[{
+  "Object structureel veilig in gebruik": [
+    "Brandveiligheidsrisico's inventariseren",
+    "Geconstateerde gebreken verhelpen",
+    "Herinspectie uitvoeren",
+    "Borging in beheerorganisatie"
+  ]
+}]]></column>
+            <where>case_definition_key = 'binnenhof-renovatie'</where>
+        </update>
+    </changeSet>
+
+</databaseChangeLog>

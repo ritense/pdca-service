@@ -1,0 +1,44 @@
+{
+    "$id": "werkfit-aanvraag.schema",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Werkfit-traject aanvraag",
+    "type": "object",
+    "properties": {
+        "planUuid": {
+            "type": "string",
+            "description": "UUID van het PDCA-plan in Open Plan (startgegeven van de PDCA-app)"
+        },
+        "doelUuid": {
+            "type": "string",
+            "description": "UUID van het doel waarvoor het product wordt aangevraagd (startgegeven)"
+        },
+        "subjectId": {
+            "type": "string",
+            "description": "Subject van het plan: bsn (persoon) of object-id (startgegeven)"
+        },
+        "productTitel": {
+            "type": "string",
+            "description": "Label van de aanvraag zoals gekozen in PDCA Beheer (startgegeven)"
+        },
+        "dossierUrn": {
+            "type": "string",
+            "description": "URN van dit dossier (urn:pdca:gzac:dossier:<dossiertype>:<documentId>), door de PDCA-app direct na aanmaak geschreven; aanmaak-instrument zet hem in het zaak-veld van het instrument zodat de planpagina naar dit dossier kan linken"
+        },
+        "besluitToelichting": {
+            "type": "string",
+            "description": "Toelichting bij het besluit (formulier werkfit-beoordelen)"
+        },
+        "instrumentUuid": {
+            "type": "string",
+            "description": "UUID van het instrument in Open Plan, geschreven door de result mapping van de plugin-action aanmaak-instrument na toekenning"
+        },
+        "productResultaat": {
+            "type": "string",
+            "description": "Resultaat van het traject (behaald/gefaald), vastgelegd met het formulier werkfit-afronden; update-instrument leest dit als doc:/productResultaat"
+        },
+        "productToelichting": {
+            "type": "string",
+            "description": "Toelichting bij de afronding; komt via update-instrument in de PDCA-overlay terecht"
+        }
+    }
+}

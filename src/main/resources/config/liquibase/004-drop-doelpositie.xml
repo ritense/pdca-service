@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Doelpositie dropped as a concept. A plan carries its direction in the
+  hoofddoel; the positie is the subject's current classification and gets
+  re-determined over time (an evaluation may move it), so a target position
+  set once at plan creation has no owner and no moment of truth. What remains
+  is one positie per plan (plan_details.begin_positie).
+
+  The prefill mappings of the intake configs lose their doelPositie entry;
+  intake documents that still carry a /doelPositie field are simply ignored.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="004-01-drop-plan-details-doel-positie" author="pdca">
+        <dropColumn tableName="plan_details" columnName="doel_positie"/>
+    </changeSet>
+
+    <changeSet id="004-02-strip-doelpositie-from-prefill-mappings" author="pdca">
+        <!-- Leaves a stale entry harmless either way (unknown prefill keys are
+             ignored), but keeps the configuration honest about what it maps. -->
+        <update tableName="phase_config">
+            <column name="prefill_mapping"
+                    valueComputed="replace(prefill_mapping, '&quot;doelPositie&quot;:&quot;/doelPositie&quot;,', '')"/>
+            <where>prefill_mapping LIKE '%doelPositie%'</where>
+        </update>
+    </changeSet>
+
+</databaseChangeLog>

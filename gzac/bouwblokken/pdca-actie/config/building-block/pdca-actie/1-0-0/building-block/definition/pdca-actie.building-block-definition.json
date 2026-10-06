@@ -1,0 +1,7 @@
+{
+    "key": "pdca-actie",
+    "name": "PDCA Actie",
+    "description": "Voert een actie van een PDCA-plan uit onder een doel: taak in de takenlijst van het plandossier, terugmelding naar de PDCA-app via de plugin-action update-actie.",
+    "versionTag": "1.0.0",
+    "final": false
+}

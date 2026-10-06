@@ -1,0 +1,7 @@
+{
+    "key": "jobcoaching-aanvragen",
+    "name": "Jobcoaching aanvragen",
+    "description": "Vraagt het product Jobcoaching aan voor een doel van een PDCA-plan: beoordelingstaak in de takenlijst van het plandossier; bij toekenning zet het proces het instrument zelf in het plan (plugin-action aanmaak-instrument) en na uitvoering rondt het het af (update-instrument).",
+    "versionTag": "1.0.0",
+    "final": false
+}

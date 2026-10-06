@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan aanmaken</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'IBM Plex Sans',sans-serif;color:#161616;background:#fff;font-size:14px;line-height:1.5;padding:2px}
+  h2{font-size:20px;font-weight:600;margin-bottom:8px}
+  h3{font-size:15px;font-weight:600;margin:24px 0 4px}
+  .section-hint{font-size:12px;color:#525252;margin-bottom:8px}
+  .form-group{margin-bottom:16px}
+  label{display:block;font-size:12px;font-weight:500;color:#525252;margin-bottom:4px;letter-spacing:.32px}
+  input[type=text],input[type=date],input[type=number],textarea,select{
+    width:100%;padding:10px 14px;border:1px solid #8d8d8d;border-radius:0;background:#fff;
+    font-family:inherit;font-size:14px;color:#161616;outline:none;transition:border-color .15s;
+  }
+  input:focus,textarea:focus,select:focus{border-color:#0f62fe;box-shadow:inset 0 0 0 1px #0f62fe}
+  textarea{min-height:60px;resize:vertical}
+  .radio-group{display:flex;gap:16px;margin-top:4px}
+  .radio-group label{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:400;color:#161616;cursor:pointer}
+  .radio-group input[type=radio]{accent-color:#0f62fe;width:16px;height:16px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .subject-preview{background:#e8f0fe;border-left:3px solid #0f62fe;padding:12px;margin-top:8px;font-size:13px;display:none}
+  .subject-preview.show{display:block}
+  .subject-lookup{display:flex;gap:8px;align-items:flex-end}
+  .subject-lookup input{flex:1}
+  .btn{padding:10px 24px;font-family:inherit;font-size:14px;font-weight:500;border:none;cursor:pointer;transition:background .15s}
+  .btn-primary{background:#0f62fe;color:#fff}.btn-primary:hover{background:#0353e9}
+  .btn-secondary{background:#e0e0e0;color:#161616}.btn-secondary:hover{background:#c6c6c6}
+  .btn-sm{padding:6px 14px;font-size:13px}
+  .btn-ghost{background:none;color:#da1e28;font-size:18px;line-height:1;padding:4px 8px}
+  .actions{display:flex;gap:12px;margin-top:24px;justify-content:flex-end}
+  .error{color:#da1e28;font-size:12px;margin-top:4px}
+  .success-msg{background:#defbe6;border-left:3px solid #24a148;padding:16px;margin-bottom:16px;display:none}
+  .prefill-msg{background:#fff8e1;border-left:3px solid #f1c21b;padding:10px 12px;margin-bottom:16px;font-size:13px;display:none}
+  .error-msg{background:#fff1f1;border-left:3px solid #da1e28;padding:10px 12px;margin-bottom:12px;font-size:13px;display:none}
+  .list-table{width:100%;border-collapse:collapse;margin-bottom:8px}
+  .list-table th{font-size:11px;font-weight:600;color:#525252;text-align:left;padding:4px 6px;text-transform:uppercase;letter-spacing:.4px}
+  .list-table td{padding:3px 6px;vertical-align:top}
+  .list-table input,.list-table select{padding:6px 8px;font-size:13px}
+  .list-empty{font-size:13px;color:#6f6f6f;font-style:italic;margin:4px 0 8px}
+</style>
+</head>
+<body>
+<div class="success-msg" id="successMsg">Plan succesvol aangemaakt!</div>
+<h2>Nieuw plan aanmaken</h2>
+<div class="prefill-msg" id="prefillMsg"></div>
+
+<!-- Plan = dossier (1:1): when this dossier already has a plan, do not
+     create a second plan; only complete the task. -->
+<div id="bestaandPlan" style="display:none;background:#e8f0fe;border-left:3px solid #0f62fe;padding:16px;margin-bottom:16px">
+  <p style="margin-bottom:12px">Dit dossier heeft al een plan: <strong id="bestaandPlanTitel"></strong>.</p>
+  <button class="btn btn-primary" onclick="voltooiTaak()">Taak afronden</button>
+</div>
+
+<div id="planForm">
+<div class="form-group">
+  <label>Subjecttype</label>
+  <div class="radio-group">
+    <label><input type="radio" name="subjectType" value="PERSON" checked onchange="clearPreview()"> Persoon</label>
+    <label><input type="radio" name="subjectType" value="OBJECT" onchange="clearPreview()"> Object</label>
+  </div>
+</div>
+
+<div class="form-group">
+  <label id="subjectIdLabel">BSN of Object ID</label>
+  <div class="subject-lookup">
+    <input type="text" id="subjectId" placeholder="Bijv. 111222333">
+    <button class="btn btn-secondary btn-sm" onclick="lookupSubject()">Zoek</button>
+  </div>
+  <div class="subject-preview" id="subjectPreview"></div>
+  <!-- Returning subject/standalone plan: link an existing unlinked plan for
+       this subject instead of creating a new one (plan = dossier 1:1). -->
+  <div class="subject-preview" id="koppelPlanPanel" style="border-left-color:#8a3ffc">
+    <p style="margin-bottom:8px">Los plan gevonden voor dit subject: <strong id="koppelPlanTitel"></strong></p>
+    <button class="btn btn-primary btn-sm" id="koppelPlanBtn" onclick="koppelPlan()"></button>
+  </div>
+  <div class="error" id="subjectError"></div>
+</div>
+
+<div class="form-group">
+  <label>Titel</label>
+  <input type="text" id="title" placeholder="Bijv. Ontwikkelplan Werk - Naam">
+</div>
+
+<div class="form-group">
+  <label>Dienstverlening</label>
+  <select id="dienstverlening"></select>
+</div>
+
+<div class="form-group">
+  <label>Hoofddoel (uit doeltype-register)</label>
+  <select id="hoofddoel"></select>
+  <div class="error" id="hoofddoelError"></div>
+</div>
+
+<div class="form-group">
+  <label>Subdoelgroep (W&amp;P-segmentatie, doorgaans uit de intake)</label>
+  <input type="text" id="subdoelgroep" placeholder="Bijv. Ontwikkelen naar werk — leeg indien onbekend">
+</div>
+
+<div class="form-group">
+  <label>Toelichting bij hoofddoel (t.b.v. de inwoner)</label>
+  <textarea id="mainGoalToelichting" placeholder="Optioneel, in de woorden van de inwoner"></textarea>
+</div>
+
+<div class="form-group">
+  <label>Positie (doorgaans uit de intake; wordt later opnieuw bepaald)</label>
+  <select id="beginPositie"></select>
+</div>
+
+<div class="row">
+  <div class="form-group">
+    <label>Startdatum</label>
+    <input type="date" id="startDate">
+  </div>
+  <div class="form-group">
+    <label>Beoogde einddatum</label>
+    <input type="date" id="targetEndDate">
+  </div>
+</div>
+
+<h3>Doelen</h3>
+<div class="section-hint">Subdoelen uit het doeltype-register, beperkt tot wat bij het gekozen hoofddoel hoort.</div>
+<div id="doelenList"></div>
+<button class="btn btn-secondary btn-sm" onclick="addDoel()">+ Doel toevoegen</button>
+
+<h3>Instrumenten</h3>
+<div class="section-hint">Voorzieningen uit de Open Product catalogus, gekoppeld aan een doel.</div>
+<div id="instrumentenList"></div>
+<button class="btn btn-secondary btn-sm" onclick="addInstrument()">+ Instrument toevoegen</button>
+
+<h3>Contactmomenten / evaluaties</h3>
+<div id="contactmomentenList"></div>
+<button class="btn btn-secondary btn-sm" onclick="addContactmoment()">+ Contactmoment toevoegen</button>
+
+<h3>Betrokkenen</h3>
+<div id="betrokkenenList"></div>
+<button class="btn btn-secondary btn-sm" onclick="addBetrokkene()">+ Betrokkene toevoegen</button>
+
+<div class="error-msg" id="submitError"></div>
+<div class="actions">
+  <button class="btn btn-primary" id="submitBtn" onclick="submitPlan()">Plan aanmaken</button>
+</div>
+</div><!-- /planForm -->
+
+<script>
+// User-task route: this external task form is prefilled from the dossier
+// content (intake) via GET /api/v1/pdca/dossiers/{id}/plan-prefill — the
+// document paths per case type live in the PDCA Beheer configuration
+// (prefill mapping). Works with minimal prefill (just a bsn) up to maximal
+// prefill (a complete plan with doelen/instrumenten/evaluaties/betrokkenen).
+// Creation happens server-side in one go via POST /api/v1/pdca/plan-intake.
+var API=location.origin.indexOf('http')===0?location.origin:'http://localhost:7500';
+var OPENPLAN=API+'/openplan/plannen/api/v0';
+var OPENPRODUCT=API+'/openproduct/producttypen/api/v1';
+var DIENSTVERLENING_LABELS={werk:'Terug naar werk',pip:'Inburgering (PIP)',inkomen:'Inkomensondersteuning'};
+var context={};
+var bestaandPlan=null;
+var koppelbaarPlan=null;
+var prefillData=null;
+
+// Register data for the choice lists.
+var reg={plantypen:[],doeltypen:[],relatietypen:[],producttypen:[],posities:[],subdoelMapping:null,evalTypes:['INTAKE','PROGRESS','EVALUATION']};
+// Editable lists; extra fields from the prefill (e.g. toelichting) stay on
+// the row objects and travel to the backend unchanged.
+var doelen=[],instrumenten=[],contactmomenten=[],betrokkenen=[];
+
+window.addEventListener('message',function(e){
+  if(e.data&&e.data.source==='valtimo-host'&&e.data.event==='init'){
+    context=e.data.payload&&e.data.payload.context||{};
+    if(context.documentId)laadPrefill(context.documentId);
+  }
+});
+
+// Intake case type: this dossier is not the plan dossier but its intake
+// (PhaseConfig.planCaseDefinitionKey points at the plan case type). The form
+// then creates a plan dossier next to the plan (standalone route) instead
+// of linking the plan to this dossier.
+function intakeMode(){
+  return !!(prefillData&&prefillData.planCaseDefinitionKey&&prefillData.caseDefinitionKey
+    &&prefillData.planCaseDefinitionKey!==prefillData.caseDefinitionKey);
+}
+window.parent.postMessage({source:'valtimo-plugin',event:'ready'},'*');
+
+// Plan = dossier (1:1): when a plan is already directly linked to this
+// dossier (overlay), only show "complete task" instead of creating a second
+// plan. No link? Then the dossier may carry a planId from the start form:
+// the backend links that plan under water, after which we look again.
+function checkBestaandPlan(documentId,naResolve){
+  getJson(API+'/api/v1/pdca/dossiers/'+documentId+'/plan').then(function(details){
+    return getJson(OPENPLAN+'/plan/'+details.planUuid);
+  }).then(function(plan){
+    bestaandPlan=plan;
+    document.getElementById('bestaandPlanTitel').textContent=bestaandPlan.titel;
+    document.getElementById('planForm').style.display='none';
+    document.getElementById('bestaandPlan').style.display='block';
+  }).catch(function(){
+    if(naResolve)return;
+    fetch(API+'/api/v1/pdca/dossiers/'+documentId+'/resolve-plan',{method:'POST'})
+      .then(function(r){if(r.ok)checkBestaandPlan(documentId,true)})
+      .catch(function(){});
+  });
+}
+
+function voltooiTaak(){
+  submitTask({planId:bestaandPlan.uuid,planTitel:bestaandPlan.titel,planStatus:bestaandPlan.status});
+}
+
+// The task-form submission is categorised by value-resolver prefix: unprefixed
+// keys become process variables, which vanish with the process instance. The
+// plan result has to outlive the process (the case widgets and the case list
+// read it from the dossier), so every key goes out as 'doc:' — written to the
+// document content under the property of the same name.
+function submitTask(velden){
+  var data={};
+  Object.keys(velden).forEach(function(veld){
+    if(velden[veld]!==undefined&&velden[veld]!==null)data['doc:'+veld]=velden[veld];
+  });
+  window.parent.postMessage({source:'valtimo-plugin',event:'submitTask',payload:{data:data}},'*');
+}
+
+// ------------------------------------------------------------------ prefill
+
+function laadPrefill(documentId){
+  getJson(API+'/api/v1/pdca/dossiers/'+documentId+'/plan-prefill').then(function(res){
+    prefillData=res;
+    // Only a plan dossier can already have a plan; an intake dossier cannot
+    // (the plan belongs to the plan dossier this task is about to create).
+    if(!intakeMode())checkBestaandPlan(documentId);
+    return registersGeladen;
+  }).then(function(){
+    // Only now is caseKey() the plan case type, so this is the call whose
+    // positions must win; it also guarantees the options exist before the
+    // prefill selects one.
+    return laadPosities();
+  }).then(function(){
+    pasPrefillToe();
+  }).catch(function(err){
+    // No prefill available (e.g. GZAC unreachable): behave as a plan dossier,
+    // but say why the form stays empty instead of failing silently.
+    var msg=document.getElementById('prefillMsg');
+    msg.textContent='Voorvullen vanuit de intake mislukt: '+err.message;
+    msg.style.display='block';
+    checkBestaandPlan(documentId);
+  });
+}
+
+function pasPrefillToe(){
+  var p=prefillData&&prefillData.prefill||{};
+  var velden=0;
+  if(p.subjectType){
+    document.querySelector('input[name=subjectType][value='+p.subjectType+']').checked=true;
+    document.getElementById('subjectIdLabel').textContent=p.subjectType==='PERSON'?'BSN':'Object ID';
+  }
+  if(p.subjectId){document.getElementById('subjectId').value=p.subjectId;velden++;lookupSubject();}
+  if(p.titel){document.getElementById('title').value=p.titel;velden++}
+  if(p.notitie){document.getElementById('mainGoalToelichting').value=p.notitie;velden++}
+  if(p.startdatum){document.getElementById('startDate').value=p.startdatum;velden++}
+  if(p.streefEinddatum){document.getElementById('targetEndDate').value=p.streefEinddatum;velden++}
+  // The positie comes from the case config of the PLAN case type (not the
+  // radio type); laadPrefill has already loaded it.
+  var nietGezet=[];
+  if(p.beginPositie){
+    if(setSelect('beginPositie',p.beginPositie))velden++;
+    else nietGezet.push('positie "'+p.beginPositie+'"');
+  }
+  if(p.dienstverlening){
+    if(setSelect('dienstverlening',p.dienstverlening))velden++;
+    else nietGezet.push('dienstverlening "'+p.dienstverlening+'"');
+  }
+  if(p.hoofddoel){
+    if(setSelect('hoofddoel',p.hoofddoel))velden++;
+    else nietGezet.push('hoofddoel "'+p.hoofddoel+'"');
+  }
+  if(Array.isArray(p.doelen)){
+    var bekend=reg.doeltypen.map(function(dt){return dt.doelType});
+    p.doelen.forEach(function(d){
+      if(d&&d.doelType&&bekend.indexOf(d.doelType)<0)nietGezet.push('subdoel "'+d.doelType+'"');
+    });
+  }
+  if(p.subdoelgroep){document.getElementById('subdoelgroep').value=p.subdoelgroep;velden++}
+  if(Array.isArray(p.doelen)){doelen=p.doelen.slice();velden+=doelen.length}
+  if(Array.isArray(p.instrumenten)){instrumenten=p.instrumenten.slice();velden+=instrumenten.length}
+  if(Array.isArray(p.contactmomenten)){contactmomenten=p.contactmomenten.slice();velden+=contactmomenten.length}
+  if(Array.isArray(p.betrokkenen)){betrokkenen=p.betrokkenen.slice();velden+=betrokkenen.length}
+  // Intakes without a planafspraken step (W&P) leave titel/startdatum empty:
+  // sensible defaults keep the form doorklikbaar.
+  if(!document.getElementById('title').value&&p.naam)
+    document.getElementById('title').value='Plan – '+p.naam;
+  if(!document.getElementById('startDate').value)
+    document.getElementById('startDate').value=new Date().toISOString().slice(0,10);
+  renderAlleLijsten();
+  if(velden>0||nietGezet.length>0){
+    var msg=document.getElementById('prefillMsg');
+    var tekst='Voorgevuld vanuit de intake van dit dossier ('+velden+' velden/regels). Controleer en vul aan waar nodig.';
+    if(nietGezet.length>0){
+      // The backend rejects values outside the registers, so offering them
+      // here would only move the failure to submit time. An empty register
+      // (e.g. an environment without reference data) shows up here too.
+      tekst+=' Let op: '+nietGezet.join(', ')+' uit de intake staat niet in het register — kies zelf een waarde of vul het register aan.';
+    }
+    msg.textContent=tekst;
+    msg.style.display='block';
+  }
+}
+
+// Returns false when the value is not among the options, so the caller can
+// report it instead of leaving an empty select without explanation.
+function setSelect(id,value){
+  var sel=document.getElementById(id);
+  for(var i=0;i<sel.options.length;i++){
+    if(sel.options[i].value===value){sel.value=value;return true}
+  }
+  return false;
+}
+
+// ------------------------------------------------------------- choice lists
+
+// The case type of the PLAN: for an intake dossier the plan case type from
+// the configuration (positions/evaluation types/linkable plans apply there).
+function caseKey(){
+  if(prefillData&&prefillData.planCaseDefinitionKey)return prefillData.planCaseDefinitionKey;
+  if(prefillData&&prefillData.caseDefinitionKey)return prefillData.caseDefinitionKey;
+  return getSubjectType()==='PERSON'?'inwonerplan':'binnenhof-renovatie';
+}
+
+function getSubjectType(){
+  return document.querySelector('input[name=subjectType]:checked').value;
+}
+
+// Keeps an already-chosen value when refilling, so a late-resolving reload
+// cannot wipe a selection the prefill just made.
+function fillSelect(id,options,placeholder){
+  var sel=document.getElementById(id);
+  var vorige=sel.value;
+  sel.innerHTML='';
+  if(placeholder){
+    var ph=document.createElement('option');ph.value='';ph.textContent=placeholder;sel.appendChild(ph);
+  }
+  options.forEach(function(o){
+    var el=document.createElement('option');el.value=o.value;el.textContent=o.text;sel.appendChild(el);
+  });
+  if(vorige)setSelect(id,vorige);
+}
+
+// Dienstverleningen (plantypen) and doeltypen are register-wide; positions
+// and evaluation types come from the case config per case type. Values are
+// the register names (no uuids): the backend looks them up itself.
+var registersGeladen=Promise.all([
+  getJson(OPENPLAN+'/plantype').then(function(page){
+    reg.plantypen=page.results||[];
+    fillSelect('dienstverlening',reg.plantypen.map(function(pt){
+      return {value:pt.type,text:DIENSTVERLENING_LABELS[pt.type]||pt.type};
+    }));
+  }).catch(function(){fillSelect('dienstverlening',[],'Register onbereikbaar')}),
+  getJson(OPENPLAN+'/doeltype').then(function(page){
+    reg.doeltypen=page.results||[];
+    var hoofddoelen=reg.doeltypen.filter(isHoofddoelType);
+    fillSelect('hoofddoel',hoofddoelen.map(function(dt){
+      return {value:dt.doelType,text:dt.doelType};
+    }),'-- Kies hoofddoel --');
+  }).catch(function(){fillSelect('hoofddoel',[],'Register onbereikbaar')}),
+  getJson(OPENPLAN+'/relatietype').then(function(page){reg.relatietypen=page.results||[]}).catch(function(){}),
+  getJson(OPENPRODUCT+'/producttypen').then(function(page){reg.producttypen=page.results||[]}).catch(function(){})
+]);
+
+function isHoofddoelType(dt){
+  return (dt.categorieen||[]).some(function(c){return c.naam==='Hoofddoel'});
+}
+
+function subdoeltypen(){
+  return reg.doeltypen.filter(function(dt){
+    return !isHoofddoelType(dt)&&dt.doelType!=='subdoel'&&dt.doelType!=='hoofddoel';
+  });
+}
+
+// Subdoelen that the chosen hoofddoel allows (case configuration, keyed by
+// hoofddoeltype name). No mapping, no hoofddoel or no entry = all subdoelen.
+function subdoeltypenVoorHoofddoel(){
+  var alle=subdoeltypen();
+  var hoofddoel=(document.getElementById('hoofddoel')||{}).value;
+  if(!hoofddoel||!reg.subdoelMapping)return alle;
+  var toegestaan=reg.subdoelMapping[hoofddoel];
+  if(!toegestaan||!toegestaan.length)return alle;
+  return alle.filter(function(dt){return toegestaan.indexOf(dt.doelType)>=0});
+}
+
+var positiesToken=0;
+function laadPosities(){
+  var token=++positiesToken;
+  return getJson(API+'/api/v1/admin/phase-configs/'+caseKey()).then(function(cfg){
+    if(token!==positiesToken)return;
+    reg.posities=JSON.parse(cfg.positieTypen||'[]');
+    try{reg.subdoelMapping=cfg.subdoelMapping?JSON.parse(cfg.subdoelMapping):null}catch(e){reg.subdoelMapping=null}
+    reg.planStatussen=JSON.parse(cfg.planStatussen||'[]');
+    reg.evalTypes=JSON.parse(cfg.evaluationTypes||'[]');
+    if(reg.evalTypes.length===0)reg.evalTypes=['INTAKE','PROGRESS','EVALUATION'];
+    var posities=reg.posities.map(function(p){return {value:p,text:p}});
+    fillSelect('beginPositie',posities,'-- Kies positie --');
+  }).catch(function(){
+    if(token!==positiesToken)return;
+    fillSelect('beginPositie',[],'Geen positieregister geconfigureerd');
+  });
+}
+
+function clearPreview(){
+  document.getElementById('subjectPreview').classList.remove('show');
+  document.getElementById('koppelPlanPanel').classList.remove('show');
+  koppelbaarPlan=null;
+  document.getElementById('subjectError').textContent='';
+  document.getElementById('subjectIdLabel').textContent=getSubjectType()==='PERSON'?'BSN':'Object ID';
+  laadPosities();
+}
+
+// --------------------------------------------------------- editable lists
+
+function rij(cells,onRemove){
+  var tr=document.createElement('tr');
+  cells.forEach(function(c){var td=document.createElement('td');td.appendChild(c);tr.appendChild(td)});
+  var td=document.createElement('td');
+  var btn=document.createElement('button');btn.className='btn btn-ghost';btn.textContent='×';btn.title='Verwijderen';
+  btn.onclick=onRemove;td.appendChild(btn);tr.appendChild(td);
+  return tr;
+}
+
+function inputCell(obj,veld,type,placeholder,breedte){
+  var el=document.createElement('input');
+  el.type=type||'text';el.placeholder=placeholder||'';el.value=obj[veld]!=null?obj[veld]:'';
+  if(breedte)el.style.width=breedte;
+  el.oninput=function(){obj[veld]=type==='number'?(el.value===''?null:parseInt(el.value,10)):el.value};
+  return el;
+}
+
+function selectCell(obj,veld,opties,leeg){
+  var el=document.createElement('select');
+  if(leeg){var ph=document.createElement('option');ph.value='';ph.textContent=leeg;el.appendChild(ph)}
+  opties.forEach(function(o){
+    var opt=document.createElement('option');opt.value=o.value;opt.textContent=o.text;el.appendChild(opt);
+  });
+  el.value=obj[veld]!=null?obj[veld]:'';
+  el.onchange=function(){obj[veld]=el.value};
+  return el;
+}
+
+function renderLijst(containerId,items,headers,rijMaker,leegTekst){
+  var container=document.getElementById(containerId);
+  container.innerHTML='';
+  if(items.length===0){
+    var p=document.createElement('div');p.className='list-empty';p.textContent=leegTekst;
+    container.appendChild(p);return;
+  }
+  var table=document.createElement('table');table.className='list-table';
+  var thead=document.createElement('thead');var tr=document.createElement('tr');
+  headers.concat(['']).forEach(function(h){var th=document.createElement('th');th.textContent=h;tr.appendChild(th)});
+  thead.appendChild(tr);table.appendChild(thead);
+  var tbody=document.createElement('tbody');
+  items.forEach(function(item,i){tbody.appendChild(rijMaker(item,i))});
+  table.appendChild(tbody);container.appendChild(table);
+}
+
+function renderDoelen(){
+  var toegestaan=subdoeltypenVoorHoofddoel().map(function(dt){return dt.doelType});
+  // Keep values already chosen (prefill, or a hoofddoel switch) selectable, so
+  // narrowing the scope never silently empties a row.
+  doelen.forEach(function(d){if(d.doelType&&toegestaan.indexOf(d.doelType)<0)toegestaan.push(d.doelType)});
+  var typeOpties=toegestaan.map(function(n){return {value:n,text:n}});
+  renderLijst('doelenList',doelen,['Doel (register)','Beschrijving','Status','Voortgang %'],function(d,i){
+    return rij([
+      selectCell(d,'doelType',typeOpties,'-- kies doel --'),
+      inputCell(d,'beschrijving'),
+      selectCell(d,'status',[{value:'actief',text:'actief'},{value:'afgerond',text:'afgerond'}]),
+      inputCell(d,'voortgang','number','0','70px')
+    ],function(){doelen.splice(i,1);renderDoelen();renderInstrumenten()});
+  },'Nog geen doelen. Voeg subdoelen toe uit het doeltype-register.');
+}
+
+function renderInstrumenten(){
+  var productOpties=reg.producttypen.map(function(pt){return {value:pt.code,text:pt.naam}});
+  var doelOpties=doelen.filter(function(d){return d.doelType}).map(function(d){return {value:d.doelType,text:d.doelType}});
+  renderLijst('instrumentenList',instrumenten,['Titel','Product (catalogus)','Bij doel','Status'],function(it,i){
+    return rij([
+      inputCell(it,'titel'),
+      selectCell(it,'product',productOpties,'-- geen --'),
+      selectCell(it,'doel',doelOpties,'-- eerste doel --'),
+      selectCell(it,'status',[{value:'actief',text:'actief'},{value:'afgerond',text:'afgerond'}])
+    ],function(){instrumenten.splice(i,1);renderInstrumenten()});
+  },'Nog geen instrumenten.');
+}
+
+function renderContactmomenten(){
+  var typeOpties=reg.evalTypes.map(function(t){return {value:t,text:t}});
+  renderLijst('contactmomentenList',contactmomenten,['Datum','Type','Status','Notitie'],function(cm,i){
+    return rij([
+      inputCell(cm,'datum','date','','140px'),
+      selectCell(cm,'evaluatieType',typeOpties),
+      selectCell(cm,'status',[{value:'actief',text:'gepland'},{value:'afgerond',text:'afgerond'}]),
+      inputCell(cm,'notitie')
+    ],function(){contactmomenten.splice(i,1);renderContactmomenten()});
+  },'Nog geen contactmomenten.');
+}
+
+function renderBetrokkenen(){
+  var rolOpties=reg.relatietypen.map(function(rt){return {value:rt.naam,text:rt.naam}});
+  renderLijst('betrokkenenList',betrokkenen,['Naam','Rol','Organisatie','Hoofdverantw.'],function(b,i){
+    var check=document.createElement('input');check.type='checkbox';check.checked=!!b.hoofdverantwoordelijke;
+    check.onchange=function(){b.hoofdverantwoordelijke=check.checked};
+    return rij([
+      inputCell(b,'naam'),
+      selectCell(b,'rol',rolOpties,'-- rol --'),
+      inputCell(b,'organisatie'),
+      check
+    ],function(){betrokkenen.splice(i,1);renderBetrokkenen()});
+  },'Nog geen betrokkenen.');
+}
+
+function renderAlleLijsten(){renderDoelen();renderInstrumenten();renderContactmomenten();renderBetrokkenen()}
+
+function addDoel(){doelen.push({doelType:'',beschrijving:'',status:'actief',voortgang:null});renderDoelen()}
+function addInstrument(){instrumenten.push({titel:'',product:'',doel:'',status:'actief'});renderInstrumenten()}
+function addContactmoment(){contactmomenten.push({datum:'',evaluatieType:reg.evalTypes[0]||'EVALUATION',status:'actief',notitie:''});renderContactmomenten()}
+function addBetrokkene(){betrokkenen.push({naam:'',rol:'',organisatie:'',hoofdverantwoordelijke:false});renderBetrokkenen()}
+
+// ------------------------------------------ link existing standalone plan
+
+// When an active, unlinked plan (no dossier in the overlay) already exists
+// for this subject in this domein, offer linking: as a task form to this
+// dossier, standalone via a dossier created by PDCA.
+function zoekKoppelbaarPlan(subjectId){
+  var urn=getSubjectType()==='PERSON'?'urn:pdca:brp:persoon:'+subjectId:'urn:pdca:objecten:object:'+subjectId;
+  Promise.all([
+    getJson(OPENPLAN+'/plan?status=actief'),
+    getJson(API+'/api/v1/pdca/plandetails')
+  ]).then(function(res){
+    var details={};(res[1]||[]).forEach(function(d){details[d.planUuid]=d});
+    var match=(res[0].results||[]).filter(function(p){
+      var d=details[p.uuid];
+      return p.domeinregister===urn&&d&&!d.dossierId&&d.caseDefinitionKey===caseKey();
+    })[0];
+    if(!match)return;
+    koppelbaarPlan=match;
+    document.getElementById('koppelPlanTitel').textContent=match.titel;
+    document.getElementById('koppelPlanBtn').textContent=(context&&context.documentId)
+      ?'Koppel aan dit dossier':'Maak dossier voor dit plan';
+    document.getElementById('koppelPlanPanel').classList.add('show');
+  }).catch(function(){/* detection is best effort */});
+}
+
+function koppelPlan(){
+  if(!koppelbaarPlan)return;
+  var msg=document.getElementById('successMsg');
+  if(context&&context.documentId&&!intakeMode()){
+    sendJson(API+'/api/v1/pdca/dossiers/'+context.documentId+'/plan','PUT',{planUuid:koppelbaarPlan.uuid})
+    .then(function(){
+      msg.textContent='Bestaand plan gekoppeld aan dit dossier';
+      msg.style.display='block';
+      submitTask({planId:koppelbaarPlan.uuid,planTitel:koppelbaarPlan.titel,planStatus:koppelbaarPlan.status});
+    }).catch(function(err){alert('Koppelen mislukt: '+err.message)});
+  }else{
+    // Standalone or intake mode: the app creates the plan dossier itself.
+    sendJson(API+'/api/v1/pdca/plans/'+koppelbaarPlan.uuid+'/dossier','POST',null)
+    .then(function(d){
+      msg.textContent='Plan-dossier '+d.documentId+' aangemaakt voor bestaand plan';
+      msg.style.display='block';
+      document.getElementById('koppelPlanPanel').classList.remove('show');
+      if(context&&context.documentId){
+        submitTask({
+          planId:koppelbaarPlan.uuid,planTitel:koppelbaarPlan.titel,planStatus:koppelbaarPlan.status,
+          planDossierId:d.documentId
+        });
+      }
+    }).catch(function(err){alert('Dossier aanmaken mislukt: '+err.message)});
+  }
+}
+
+function lookupSubject(){
+  var id=document.getElementById('subjectId').value.trim();
+  if(!id){document.getElementById('subjectError').textContent='Voer een ID in';return}
+  var type=getSubjectType();
+  var url=type==='PERSON'?API+'/api/v1/registers/personen/'+id:API+'/api/v1/registers/objecten/'+id;
+  fetch(url).then(function(r){
+    if(!r.ok)throw new Error('Niet gevonden');
+    return r.json();
+  }).then(function(data){
+    var preview=document.getElementById('subjectPreview');
+    if(type==='PERSON'){
+      preview.innerHTML='<strong>'+esc(data.naam)+'</strong><br>BSN: '+esc(data.bsn)+'<br>Geboortedatum: '+esc(data.geboortedatum)+'<br>Adres: '+esc(data.adres.straat+' '+data.adres.huisnummer+', '+data.adres.woonplaats);
+    }else{
+      preview.innerHTML='<strong>'+esc(data.naam)+'</strong><br>Type: '+esc(data.type)+'<br>Adres: '+esc(data.adres.straat+', '+data.adres.woonplaats)+'<br>Eigenaar: '+esc(data.eigenaar);
+    }
+    preview.classList.add('show');
+    document.getElementById('subjectError').textContent='';
+    zoekKoppelbaarPlan(id);
+  }).catch(function(){
+    // The intake mints a fresh BSN per aanmelding (repeatable demo), so the
+    // subject is usually not in the BRP/objecten stub. That is not an error:
+    // fall back to what the intake itself recorded. A hand-typed id that
+    // resolves to nothing does get the error — nothing vouches for it.
+    if(intakeSubject(id)){
+      document.getElementById('subjectError').textContent='';
+      return;
+    }
+    document.getElementById('subjectPreview').classList.remove('show');
+    document.getElementById('subjectError').textContent='Geen resultaat gevonden voor dit ID';
+  });
+}
+
+// Shows the subject as the intake recorded it, when this is the id the
+// prefill came with. Returns false if it is some other id.
+function intakeSubject(id){
+  var p=prefillData&&prefillData.prefill;
+  if(!p||p.subjectId!==id)return false;
+  var naam=p.naam||p.objectNaam;
+  if(!naam)return false;
+  var preview=document.getElementById('subjectPreview');
+  preview.innerHTML='<strong>'+esc(naam)+'</strong><br>'
+    +(getSubjectType()==='PERSON'?'BSN: ':'Object ID: ')+esc(id)
+    +'<br><em>Niet in het register gevonden; gegevens uit de intake.</em>';
+  preview.classList.add('show');
+  zoekKoppelbaarPlan(id);
+  return true;
+}
+
+function getJson(url){
+  return fetch(url)
+    .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(foutTekst(r.status,t))});return r.json()});
+}
+function sendJson(url,method,body){
+  return fetch(url,{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(function(r){if(!r.ok)return r.text().then(function(t){throw new Error(foutTekst(r.status,t))});return r.json()});
+}
+
+// The backend states refusals (unknown hoofddoel, positie outside the
+// register, the one-active-plan rule) in the 'message' of its error body.
+// Showing the raw body instead buries that in a JSON blob.
+function foutTekst(status,body){
+  try{
+    var melding=JSON.parse(body).message;
+    if(melding)return melding;
+  }catch(e){/* not a JSON error body */}
+  return 'HTTP '+status+(body?': '+body:'');
+}
+
+// ------------------------------------------------------------------ submit
+
+function submitPlan(){
+  document.getElementById('submitError').style.display='none';
+  var subjectType=getSubjectType();
+  var subjectId=document.getElementById('subjectId').value.trim();
+  var titel=document.getElementById('title').value.trim();
+  if(!subjectId||!titel){toonFout('Vul minimaal Subject ID en Titel in');return}
+  // Exactly one hoofddoel, chosen from the doeltype register.
+  var hoofddoel=document.getElementById('hoofddoel').value;
+  if(!hoofddoel){
+    document.getElementById('hoofddoelError').textContent='Kies een hoofddoel uit het register';
+    toonFout('Kies een hoofddoel uit het register');
+    return;
+  }
+  document.getElementById('hoofddoelError').textContent='';
+  var onvolledigeDoelen=doelen.filter(function(d){return !d.doelType});
+  if(onvolledigeDoelen.length>0){toonFout('Kies voor elk doel een registerdoel (of verwijder de lege regel)');return}
+
+  var request={
+    // The backend decides the mode based on this dossier: plan case type =
+    // link to this dossier; intake case type or standalone = create its own
+    // plan dossier. Plan and dossier always come into existence together.
+    documentId:context&&context.documentId||null,
+    caseDefinitionKey:caseKey(),
+    subjectType:subjectType,
+    subjectId:subjectId,
+    titel:titel,
+    notitie:document.getElementById('mainGoalToelichting').value.trim(),
+    dienstverlening:document.getElementById('dienstverlening').value||null,
+    hoofddoel:hoofddoel,
+    subdoelgroep:document.getElementById('subdoelgroep').value.trim()||null,
+    weergaveStatus:prefillData&&prefillData.prefill&&prefillData.prefill.weergaveStatus
+      ||(reg.planStatussen&&reg.planStatussen[0])||null,
+    beginPositie:document.getElementById('beginPositie').value||null,
+    startdatum:document.getElementById('startDate').value||null,
+    streefEinddatum:document.getElementById('targetEndDate').value||null,
+    doelen:doelen,
+    instrumenten:instrumenten.filter(function(it){return it.titel}),
+    contactmomenten:contactmomenten.filter(function(cm){return cm.datum||cm.notitie}),
+    betrokkenen:betrokkenen.filter(function(b){return b.naam})
+  };
+
+  // One server-side call does everything: plan + doelen + instrumenten +
+  // contactmomenten + betrokkenen plus the plan dossier (link to this
+  // dossier, or create it in intake/standalone mode) — plan = dossier 1:1.
+  var knop=document.getElementById('submitBtn');
+  if(knop)knop.disabled=true;
+  sendJson(API+'/api/v1/pdca/plan-intake','POST',request).then(function(res){
+    var msg=document.getElementById('successMsg');
+    // Idempotent per intake: a repeat submission gets the plan this intake
+    // already produced back instead of a second plan.
+    msg.textContent=res.bestaand
+      ? 'Deze intake had al een plan (plan-dossier '+res.planDossierId+'); de taak wordt daarop afgerond.'
+      : 'Plan aangemaakt met '+res.doelen+' doelen, '+res.instrumenten+' instrumenten en '
+        +res.contactmomenten+' contactmomenten (plan-dossier '+res.planDossierId+')'
+        +(res.warnings&&res.warnings.length?' — let op: '+res.warnings.join('; '):'');
+    msg.style.display='block';
+    submitTask({
+      planId:res.planUuid,
+      planTitel:titel,
+      planStatus:'actief',
+      // Only the intake route gets a separate plan dossier; on a plan case type
+      // the plan dossier *is* this dossier, which has no planDossierId field.
+      planDossierId:res.planDossierId&&res.planDossierId!==(context&&context.documentId)
+        ?res.planDossierId:undefined
+    });
+  }).catch(function(err){
+    if(knop)knop.disabled=false;
+    toonFout(err.message);
+  });
+}
+
+// A refusal has to stay readable and leave the form usable, so it goes above
+// the button instead of into an alert the user dismisses and forgets.
+function toonFout(tekst){
+  var el=document.getElementById('submitError');
+  if(!el){alert(tekst);return}
+  el.textContent=tekst;
+  el.style.display='block';
+}
+
+function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+document.getElementById('startDate').value=new Date().toISOString().split('T')[0];
+registersGeladen.then(function(){
+  // The doelen list is scoped by the hoofddoel through the case config, so
+  // render once that is in — and again whenever the hoofddoel changes.
+  laadPosities().then(renderAlleLijsten);
+  document.getElementById('hoofddoel').addEventListener('change',renderDoelen);
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+    "searchFields": [
+        {
+            "key": "objectId",
+            "path": "doc:objectId",
+            "dataType": "text",
+            "fieldType": "single",
+            "matchType": "like",
+            "title": "Object-id"
+        },
+        {
+            "key": "objectNaam",
+            "path": "doc:objectNaam",
+            "dataType": "text",
+            "fieldType": "single",
+            "matchType": "like",
+            "title": "Objectnaam"
+        }
+    ]
+}

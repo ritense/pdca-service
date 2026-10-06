@@ -1,0 +1,40 @@
+name: Publish Helm Chart
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'charts/**'
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  publish-chart:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+      - name: Extract chart version
+        id: chart
+        run: |
+          version=$(grep '^version:' charts/pdca-app/Chart.yaml | awk '{print $2}')
+          echo "version=$version" >> $GITHUB_OUTPUT
+
+      - name: Package Helm chart
+        run: helm package charts/pdca-app
+
+      - name: Push Helm chart to GHCR
+        run: helm push pdca-app-${{ steps.chart.outputs.version }}.tgz oci://${{ env.REGISTRY }}/ritense

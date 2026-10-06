@@ -1,0 +1,53 @@
+{
+    "display": "form",
+    "components": [
+        {
+            "type": "content",
+            "key": "info",
+            "input": false,
+            "tableView": false,
+            "html": "<p>Vanuit een PDCA-plan is het product <strong>Werkfit Traject WIO</strong> aangevraagd voor een doel. Bij toekenning wordt het instrument automatisch in het plan gezet, met dit dossier als zaakverwijzing; bij afwijzing gebeurt er niets in het plan.</p>"
+        },
+        {
+            "label": "Aanvraag",
+            "key": "productTitel",
+            "type": "textfield",
+            "input": true,
+            "tableView": false,
+            "disabled": true
+        },
+        {
+            "label": "Besluit",
+            "key": "pv.besluit",
+            "type": "select",
+            "input": true,
+            "tableView": false,
+            "widget": "html5",
+            "data": {
+                "values": [
+                    { "label": "Toekennen", "value": "toekennen" },
+                    { "label": "Afwijzen", "value": "afwijzen" }
+                ]
+            },
+            "validate": {
+                "required": true
+            }
+        },
+        {
+            "label": "Toelichting",
+            "key": "besluitToelichting",
+            "type": "textarea",
+            "input": true,
+            "tableView": false,
+            "defaultValue": ""
+        },
+        {
+            "type": "button",
+            "label": "Besluit vastleggen",
+            "key": "submit",
+            "disableOnInvalid": true,
+            "input": true,
+            "tableView": false
+        }
+    ]
+}

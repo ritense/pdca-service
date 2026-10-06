@@ -1,0 +1,8 @@
+{
+    "key": "intake-werk-participatie",
+    "name": "Intake werk en participatie",
+    "versionTag": "1.0.0",
+    "final": false,
+    "canHaveAssignee": true,
+    "autoAssignTasks": false
+}

@@ -1,0 +1,54 @@
+[
+    {
+        "activityId": "start-event",
+        "activityType": "bpmn:StartEvent:start",
+        "processLinkType": "form",
+        "formDefinitionName": "jobcoaching-aanvraag-start"
+    },
+    {
+        "activityId": "aanvraag-beoordelen",
+        "activityType": "bpmn:UserTask:create",
+        "processLinkType": "form",
+        "formDefinitionName": "jobcoaching-beoordelen"
+    },
+    {
+        "activityId": "jobcoaching-uitvoeren",
+        "activityType": "bpmn:UserTask:create",
+        "processLinkType": "form",
+        "formDefinitionName": "jobcoaching-afronden"
+    },
+    {
+        "activityId": "instrument-aanmaken",
+        "activityType": "bpmn:ServiceTask:start",
+        "processLinkType": "external_plugin",
+        "actionKey": "aanmaak-instrument",
+        "pluginDefinitionKey": "pdca",
+        "pluginVersion": "0.2.0",
+        "actionProperties": {
+            "doelUuid": "doc:/doelUuid",
+            "titel": "Jobcoaching",
+            "product": "urn:pdca:openproduct:producttype:JOBCOACHING"
+        },
+        "actionResultMappings": [
+            {
+                "source": "/instrumentUuid",
+                "target": "doc:/instrumentUuid"
+            }
+        ]
+    },
+    {
+        "activityId": "instrument-afronden",
+        "activityType": "bpmn:ServiceTask:start",
+        "processLinkType": "external_plugin",
+        "actionKey": "update-instrument",
+        "pluginDefinitionKey": "pdca",
+        "pluginVersion": "0.2.0",
+        "actionProperties": {
+            "instrumentUuid": "doc:/instrumentUuid",
+            "planUuid": "doc:/planUuid",
+            "status": "afgerond",
+            "resultaat": "doc:/productResultaat",
+            "toelichting": "doc:/productToelichting"
+        }
+    }
+]

@@ -1,0 +1,7 @@
+[
+    {
+        "processDefinitionKey": "intake-werk-participatie",
+        "canInitializeDocument": true,
+        "startableByUser": true
+    }
+]

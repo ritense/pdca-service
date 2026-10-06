@@ -1,0 +1,47 @@
+[
+    {
+        "key": "naam",
+        "path": "doc:naam",
+        "displayType": {
+            "type": "text",
+            "displayTypeParameters": {}
+        },
+        "sortable": true,
+        "order": 0
+    },
+    {
+        "key": "bsn",
+        "path": "doc:bsn",
+        "displayType": {
+            "type": "text",
+            "displayTypeParameters": {}
+        },
+        "sortable": true,
+        "order": 1
+    },
+    {
+        "key": "createdOn",
+        "path": "case:createdOn",
+        "displayType": {
+            "type": "date",
+            "displayTypeParameters": {
+                "dateFormat": null
+            }
+        },
+        "sortable": true,
+        "defaultSort": "DESC",
+        "order": 2
+    },
+    {
+        "key": "modifiedOn",
+        "path": "case:modifiedOn",
+        "displayType": {
+            "type": "date",
+            "displayTypeParameters": {
+                "dateFormat": null
+            }
+        },
+        "sortable": true,
+        "order": 3
+    }
+]

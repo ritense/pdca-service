@@ -1,0 +1,32 @@
+{
+    "$id": "jobcoaching-aanvragen.schema",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Jobcoaching aanvragen",
+    "type": "object",
+    "properties": {
+        "planUuid": {
+            "type": "string",
+            "description": "UUID van het plan in Open Plan (via de input mapping uit /bouwblokStart van het plandossier)"
+        },
+        "doelUuid": {
+            "type": "string",
+            "description": "UUID van het doel waarvoor het product wordt aangevraagd (via de input mapping uit /bouwblokStart)"
+        },
+        "subjectId": {
+            "type": "string",
+            "description": "Subject van het plan: bsn (persoon) of object-id (via de input mapping uit /bouwblokStart)"
+        },
+        "instrumentUuid": {
+            "type": "string",
+            "description": "UUID van het instrument in Open Plan, geschreven door de result mapping van de plugin-action aanmaak-instrument na toekenning"
+        },
+        "productResultaat": {
+            "type": "string",
+            "description": "Resultaat van de jobcoaching (behaald/gefaald), vastgelegd met het formulier jobcoaching-afronden; update-instrument leest dit als doc:/productResultaat"
+        },
+        "productToelichting": {
+            "type": "string",
+            "description": "Toelichting bij de afronding, vastgelegd met het formulier jobcoaching-afronden; komt in de PDCA-overlay terecht"
+        }
+    }
+}

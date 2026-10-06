@@ -1,0 +1,40 @@
+{
+    "display": "form",
+    "components": [
+        {
+            "label": "Actie",
+            "key": "actieTitel",
+            "type": "textfield",
+            "input": true,
+            "tableView": false,
+            "disabled": true
+        },
+        {
+            "label": "Omschrijving",
+            "key": "actieOmschrijving",
+            "type": "textarea",
+            "input": true,
+            "tableView": false,
+            "disabled": true
+        },
+        {
+            "label": "Resultaat",
+            "key": "resultaat",
+            "type": "textarea",
+            "input": true,
+            "tableView": false,
+            "description": "Wat is er gedaan en wat is de uitkomst? Dit resultaat komt op de actie in het PDCA-plan te staan.",
+            "validate": {
+                "required": true
+            }
+        },
+        {
+            "type": "button",
+            "label": "Actie afronden",
+            "key": "submit",
+            "disableOnInvalid": true,
+            "input": true,
+            "tableView": false
+        }
+    ]
+}

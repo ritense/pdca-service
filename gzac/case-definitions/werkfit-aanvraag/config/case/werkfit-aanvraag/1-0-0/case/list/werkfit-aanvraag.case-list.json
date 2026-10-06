@@ -1,0 +1,35 @@
+[
+    {
+        "key": "productTitel",
+        "path": "doc:productTitel",
+        "displayType": {
+            "type": "text",
+            "displayTypeParameters": {}
+        },
+        "sortable": true,
+        "order": 0
+    },
+    {
+        "key": "subjectId",
+        "path": "doc:subjectId",
+        "displayType": {
+            "type": "text",
+            "displayTypeParameters": {}
+        },
+        "sortable": true,
+        "order": 1
+    },
+    {
+        "key": "createdOn",
+        "path": "case:createdOn",
+        "displayType": {
+            "type": "date",
+            "displayTypeParameters": {
+                "dateFormat": null
+            }
+        },
+        "sortable": true,
+        "defaultSort": "DESC",
+        "order": 2
+    }
+]

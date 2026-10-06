@@ -1,0 +1,20 @@
+{
+    "searchFields": [
+        {
+            "key": "subjectId",
+            "path": "doc:subjectId",
+            "dataType": "text",
+            "fieldType": "single",
+            "matchType": "like",
+            "title": "Subject (bsn of object-id)"
+        },
+        {
+            "key": "productTitel",
+            "path": "doc:productTitel",
+            "dataType": "text",
+            "fieldType": "single",
+            "matchType": "like",
+            "title": "Aanvraag"
+        }
+    ]
+}

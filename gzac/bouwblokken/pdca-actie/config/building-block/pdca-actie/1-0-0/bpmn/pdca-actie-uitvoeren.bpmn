@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_pdca_actie"
+                  targetNamespace="http://bpmn.io/schema/bpmn"
+                  exporter="pdca-app" exporterVersion="0.2.0">
+    <!--
+      Building block "pdca-actie": executes an action of a PDCA plan under a
+      doel. Started by the PDCA app through the start form on the plan
+      dossier; the start payload lands on the dossier document under
+      /bouwblokStart and the building-block link's input mappings copy it
+      into THIS building block's document (contract = the document schema:
+      actieId, actieTitel, actieOmschrijving, planUuid, doelUuid, subjectId,
+      resultaat). Reporting back goes through the external-plugin action
+      "update-actie" of the PDCA plugin (gebeurtenis GESTART /
+      TER_BEOORDELING / AFGEROND / AFGEWEZEN), reading doc: references from
+      the building block document. Copy this process to model your own
+      action executions; the contract stays the same.
+    -->
+    <bpmn:process camunda:versionTag="BB:pdca-actie:1.0.0" id="pdca-actie-uitvoeren" isExecutable="true"
+                  name="PDCA-actie uitvoeren">
+        <bpmn:startEvent id="start-event" name="Actie gestart vanuit het plan">
+            <bpmn:outgoing>flow-start-melden</bpmn:outgoing>
+        </bpmn:startEvent>
+        <!-- Deliberately synchronous (no async-before): if the callback
+             fails, the whole start fails with a clear error in the PDCA app
+             instead of a silent process incident. -->
+        <bpmn:serviceTask id="actie-starten" name="Actie starten melden"
+                          camunda:expression="${true}">
+            <bpmn:documentation>Tells the PDCA app the action has started (plugin action update-actie,
+                gebeurtenis GESTART, actieId from the building block document: doc:/actieId).
+            </bpmn:documentation>
+            <bpmn:incoming>flow-start-melden</bpmn:incoming>
+            <bpmn:outgoing>flow-melden-uitvoeren</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <!-- The task title uses the process variable actieTitel, set by the
+             input mapping pv:actieTitel of the building-block link (BPMN
+             expressions cannot read the document). -->
+        <bpmn:userTask camunda:candidateGroups="ROLE_USER" id="actie-uitvoeren" name="Actie: ${actieTitel}">
+            <bpmn:documentation>Voer de actie uit en leg het resultaat vast met het meegeleverde
+                formulier "pdca-actie-afronden" (documentveld resultaat).
+            </bpmn:documentation>
+            <bpmn:incoming>flow-melden-uitvoeren</bpmn:incoming>
+            <bpmn:outgoing>flow-uitvoeren-afronden</bpmn:outgoing>
+        </bpmn:userTask>
+        <bpmn:serviceTask id="actie-afronden" name="Actie afronden melden"
+                          camunda:expression="${true}">
+            <bpmn:documentation>Tells the PDCA app the action is completed (plugin action update-actie,
+                gebeurtenis AFGEROND, resultaat from the building block document: doc:/resultaat).
+            </bpmn:documentation>
+            <bpmn:incoming>flow-uitvoeren-afronden</bpmn:incoming>
+            <bpmn:outgoing>flow-afronden-einde</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:endEvent id="einde" name="Actie afgerond">
+            <bpmn:incoming>flow-afronden-einde</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="flow-start-melden" sourceRef="start-event" targetRef="actie-starten"/>
+        <bpmn:sequenceFlow id="flow-melden-uitvoeren" sourceRef="actie-starten" targetRef="actie-uitvoeren"/>
+        <bpmn:sequenceFlow id="flow-uitvoeren-afronden" sourceRef="actie-uitvoeren" targetRef="actie-afronden"/>
+        <bpmn:sequenceFlow id="flow-afronden-einde" sourceRef="actie-afronden" targetRef="einde"/>
+    </bpmn:process>
+    <bpmndi:BPMNDiagram id="BPMNDiagram_pdca_actie">
+        <bpmndi:BPMNPlane bpmnElement="pdca-actie-uitvoeren" id="BPMNPlane_pdca_actie">
+            <bpmndi:BPMNShape bpmnElement="start-event" id="Shape_start-event">
+                <dc:Bounds height="36" width="36" x="152" y="152"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="actie-starten" id="Shape_actie-starten">
+                <dc:Bounds height="80" width="100" x="250" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="actie-uitvoeren" id="Shape_actie-uitvoeren">
+                <dc:Bounds height="80" width="100" x="410" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="actie-afronden" id="Shape_actie-afronden">
+                <dc:Bounds height="80" width="100" x="570" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="einde" id="Shape_einde">
+                <dc:Bounds height="36" width="36" x="732" y="152"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNEdge bpmnElement="flow-start-melden" id="Edge_flow-start-melden">
+                <di:waypoint x="188" y="170"/>
+                <di:waypoint x="250" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-melden-uitvoeren" id="Edge_flow-melden-uitvoeren">
+                <di:waypoint x="350" y="170"/>
+                <di:waypoint x="410" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-uitvoeren-afronden" id="Edge_flow-uitvoeren-afronden">
+                <di:waypoint x="510" y="170"/>
+                <di:waypoint x="570" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-afronden-einde" id="Edge_flow-afronden-einde">
+                <di:waypoint x="670" y="170"/>
+                <di:waypoint x="732" y="170"/>
+            </bpmndi:BPMNEdge>
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+</bpmn:definitions>

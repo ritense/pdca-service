@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- First mock of the DVKM algorithm as a decision requirements graph with
+     two tables, mirroring the W&P model:
+       1. dvkm-subdoelgroep (the Ruleset): inwonergegevens (process variables
+          pv.dvkm* from the intake forms) in, subdoelgroep out. Hit policy
+          FIRST encodes the DVKM beslisboom as readable priority rules (hard
+          exclusions first, decisive criteria next, default last) instead of
+          the weighted score distribution of the real model.
+       2. dvkm-inwonerpositie (the subdoelgroep catalog): subdoelgroep in,
+          inwonerpositie + gekoppeld hoofddoel out. The inwonerpositie is the
+          aggregate of its subdoelgroepen; each subdoelgroep carries exactly
+          one hoofddoel ("aan een subdoelgroep is 1 hoofddoel gekoppeld").
+          This table IS the subdoelgroep catalog — there is deliberately no
+          second copy in the app configuration.
+     The subdoelgroepen follow the DVKM bronposities: posities 1 and 4 have
+     two (Crisis/Ontheffing and naar-werk/tijdens-werk), the others one with
+     the positie name. The positie output values are exactly the positietypen
+     seeded for the inwonerplan case type (liquibase changelog 002) and the
+     hoofddoel values are the hoofddoeltype names from the doeltype register,
+     so every outcome is directly valid in dropdowns, server-side validation
+     and the create-plan prefill. The BPMN references only the top decision
+     dvkm-inwonerpositie; table 1 is evaluated through the information
+     requirement within the same deployment.
+     Source: DVKM v4, tab procesbegeleider (vragenlijst + beslisboom). -->
+<definitions xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:camunda="http://camunda.org/schema/1.0/dmn"
+             xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/"
+             xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/"
+             xmlns:di="http://www.omg.org/spec/DMN/20180521/DI/"
+             id="dvkm-inwonerpositie-definities" name="DVKM inwonerpositie"
+             namespace="http://camunda.org/schema/1.0/dmn"
+             exporter="pdca-app" exporterVersion="0.1.0">
+  <decision id="dvkm-subdoelgroep" name="DVKM: subdoelgroep bepalen">
+    <decisionTable id="dvkm-subdoelgroep-tabel" hitPolicy="FIRST">
+      <input id="input-acuut" label="Acute situatie">
+        <inputExpression id="inputexpr-acuut" typeRef="string">
+          <text>dvkmAcuut</text>
+        </inputExpression>
+      </input>
+      <input id="input-zrm" label="ZRM-score">
+        <inputExpression id="inputexpr-zrm" typeRef="string">
+          <text>dvkmZrm</text>
+        </inputExpression>
+      </input>
+      <input id="input-ontheffing" label="Ontheffing arbeidsverplichting">
+        <inputExpression id="inputexpr-ontheffing" typeRef="string">
+          <text>dvkmOntheffing</text>
+        </inputExpression>
+      </input>
+      <input id="input-werk" label="Werkt nu">
+        <inputExpression id="inputexpr-werk" typeRef="string">
+          <text>dvkmWerk</text>
+        </inputExpression>
+      </input>
+      <input id="input-dienstverband" label="Dienstverband LKS/BW/STiP/OB">
+        <inputExpression id="inputexpr-dienstverband" typeRef="string">
+          <text>dvkmDienstverband</text>
+        </inputExpression>
+      </input>
+      <input id="input-wnv" label="Werknemersvaardigheden">
+        <inputExpression id="inputexpr-wnv" typeRef="string">
+          <text>dvkmWerknemersvaardigheden</text>
+        </inputExpression>
+      </input>
+      <input id="input-taal" label="Taalniveau">
+        <inputExpression id="inputexpr-taal" typeRef="string">
+          <text>dvkmTaalniveau</text>
+        </inputExpression>
+      </input>
+      <input id="input-motivatie" label="Motivatie voor werk">
+        <inputExpression id="inputexpr-motivatie" typeRef="string">
+          <text>dvkmMotivatie</text>
+        </inputExpression>
+      </input>
+      <output id="output-subdoelgroep" label="Subdoelgroep" name="subdoelgroep" typeRef="string"/>
+      <rule id="regel-01-crisis">
+        <description>Crisis: terminaal, acute instabiliteit of verblijf in een instelling sluit alle andere subdoelgroepen uit (DVKM-bronpositie 1)</description>
+        <inputEntry id="regel-01-acuut"><text>"ja"</text></inputEntry>
+        <inputEntry id="regel-01-zrm"><text/></inputEntry>
+        <inputEntry id="regel-01-ontheffing"><text/></inputEntry>
+        <inputEntry id="regel-01-werk"><text/></inputEntry>
+        <inputEntry id="regel-01-dienstverband"><text/></inputEntry>
+        <inputEntry id="regel-01-wnv"><text/></inputEntry>
+        <inputEntry id="regel-01-taal"><text/></inputEntry>
+        <inputEntry id="regel-01-motivatie"><text/></inputEntry>
+        <outputEntry id="regel-01-uit"><text>"Crisis"</text></outputEntry>
+      </rule>
+      <rule id="regel-02-zrm-instabiel">
+        <description>ZRM-score 1 = acuut instabiel: eerst stabiliseren (DVKM-bronposities 1/2)</description>
+        <inputEntry id="regel-02-acuut"><text/></inputEntry>
+        <inputEntry id="regel-02-zrm"><text>"1"</text></inputEntry>
+        <inputEntry id="regel-02-ontheffing"><text/></inputEntry>
+        <inputEntry id="regel-02-werk"><text/></inputEntry>
+        <inputEntry id="regel-02-dienstverband"><text/></inputEntry>
+        <inputEntry id="regel-02-wnv"><text/></inputEntry>
+        <inputEntry id="regel-02-taal"><text/></inputEntry>
+        <inputEntry id="regel-02-motivatie"><text/></inputEntry>
+        <outputEntry id="regel-02-uit"><text>"Crisis"</text></outputEntry>
+      </rule>
+      <rule id="regel-03-arbeidsontheffing">
+        <description>Ontheffing van de arbeidsverplichting (UWV): niet beschikbaar zonder crisis (DVKM-bronpositie 2)</description>
+        <inputEntry id="regel-03-acuut"><text/></inputEntry>
+        <inputEntry id="regel-03-zrm"><text/></inputEntry>
+        <inputEntry id="regel-03-ontheffing"><text>"ja"</text></inputEntry>
+        <inputEntry id="regel-03-werk"><text/></inputEntry>
+        <inputEntry id="regel-03-dienstverband"><text/></inputEntry>
+        <inputEntry id="regel-03-wnv"><text/></inputEntry>
+        <inputEntry id="regel-03-taal"><text/></inputEntry>
+        <inputEntry id="regel-03-motivatie"><text/></inputEntry>
+        <outputEntry id="regel-03-uit"><text>"Ontheffing"</text></outputEntry>
+      </rule>
+      <rule id="regel-04-duurzaam-werk">
+        <description>Duurzaam werk: begeleiding richt zich op werkbehoud en nazorg (DVKM-bronpositie 8)</description>
+        <inputEntry id="regel-04-acuut"><text/></inputEntry>
+        <inputEntry id="regel-04-zrm"><text/></inputEntry>
+        <inputEntry id="regel-04-ontheffing"><text/></inputEntry>
+        <inputEntry id="regel-04-werk"><text>"duurzaam"</text></inputEntry>
+        <inputEntry id="regel-04-dienstverband"><text/></inputEntry>
+        <inputEntry id="regel-04-wnv"><text/></inputEntry>
+        <inputEntry id="regel-04-taal"><text/></inputEntry>
+        <inputEntry id="regel-04-motivatie"><text/></inputEntry>
+        <outputEntry id="regel-04-uit"><text>"Aan het werk blijven"</text></outputEntry>
+      </rule>
+      <rule id="regel-05-onduurzaam-werk">
+        <description>Werkt, maar onvoldoende duurzaam: ontwikkelen tijdens werk (DVKM-bronpositie 6)</description>
+        <inputEntry id="regel-05-acuut"><text/></inputEntry>
+        <inputEntry id="regel-05-zrm"><text/></inputEntry>
+        <inputEntry id="regel-05-ontheffing"><text/></inputEntry>
+        <inputEntry id="regel-05-werk"><text>"onduurzaam"</text></inputEntry>
+        <inputEntry id="regel-05-dienstverband"><text/></inputEntry>
+        <inputEntry id="regel-05-wnv"><text/></inputEntry>
+        <inputEntry id="regel-05-taal"><text/></inputEntry>
+        <inputEntry id="regel-05-motivatie"><text/></inputEntry>
+        <outputEntry id="regel-05-uit"><text>"Ontwikkelen tijdens werk"</text></outputEntry>
+      </rule>
+      <rule id="regel-06-dienstverband-ja">
+        <description>Dienstverband met LKS, Beschut Werk, STiP of Ontwikkelbaan: ontwikkelen tijdens werk (DVKM-bronpositie 6)</description>
+        <inputEntry id="regel-06-acuut"><text/></inputEntry>
+        <inputEntry id="regel-06-zrm"><text/></inputEntry>
+        <inputEntry id="regel-06-ontheffing"><text/></inputEntry>
+        <inputEntry id="regel-06-werk"><text/></inputEntry>
+        <inputEntry id="regel-06-dienstverband"><text>"ja"</text></inputEntry>
+        <inputEntry id="regel-06-wnv"><text/></inputEntry>
+        <inputEntry id="regel-06-taal"><text/></inputEntry>
+        <inputEntry id="regel-06-motivatie"><text/></inputEntry>
+        <outputEntry id="regel-06-uit"><text>"Ontwikkelen tijdens werk"</text></outputEntry>
+      </rule>
+      <rule id="regel-07-zrm-kwetsbaar">
+        <description>ZRM 2 tot 3 = kwetsbaar functioneren: meedoen zonder prestatiedruk geeft ritme en stabiliteit (DVKM-bronpositie 3)</description>
+        <inputEntry id="regel-07-acuut"><text/></inputEntry>
+        <inputEntry id="regel-07-zrm"><text>"2-3"</text></inputEntry>
+        <inputEntry id="regel-07-ontheffing"><text/></inputEntry>
+        <inputEntry id="regel-07-werk"><text/></inputEntry>
+        <inputEntry id="regel-07-dienstverband"><text/></inputEntry>
+        <inputEntry id="regel-07-wnv"><text/></inputEntry>
+        <inputEntry id="regel-07-taal"><text/></inputEntry>
+        <inputEntry id="regel-07-motivatie"><text/></inputEntry>
+        <outputEntry id="regel-07-uit"><text>"Meedoen voor stabiliteit"</text></outputEntry>
+      </rule>
+      <rule id="regel-08-motivatie-afwezig">
+        <description>Motivatie afwezig: druk richting werk werkt averechts, eerst meedoen (DVKM-bronpositie 3)</description>
+        <inputEntry id="regel-08-acuut"><text/></inputEntry>
+        <inputEntry id="regel-08-zrm"><text/></inputEntry>
+        <inputEntry id="regel-08-ontheffing"><text/></inputEntry>
+        <inputEntry id="regel-08-werk"><text/></inputEntry>
+        <inputEntry id="regel-08-dienstverband"><text/></inputEntry>
+        <inputEntry id="regel-08-wnv"><text/></inputEntry>
+        <inputEntry id="regel-08-taal"><text/></inputEntry>
+        <inputEntry id="regel-08-motivatie"><text>"afwezig"</text></inputEntry>
+        <outputEntry id="regel-08-uit"><text>"Meedoen voor stabiliteit"</text></outputEntry>
+      </rule>
+      <rule id="regel-09-snel-aan-het-werk">
+        <description>Goede werknemersvaardigheden, taal minimaal A2 en motivatie aanwezig: direct bemiddelen (DVKM-bronpositie 7; taal onder A2 is daar een uitsluiting)</description>
+        <inputEntry id="regel-09-acuut"><text/></inputEntry>
+        <inputEntry id="regel-09-zrm"><text/></inputEntry>
+        <inputEntry id="regel-09-ontheffing"><text/></inputEntry>
+        <inputEntry id="regel-09-werk"><text/></inputEntry>
+        <inputEntry id="regel-09-dienstverband"><text/></inputEntry>
+        <inputEntry id="regel-09-wnv"><text>"goed"</text></inputEntry>
+        <inputEntry id="regel-09-taal"><text>"A2","B1"</text></inputEntry>
+        <inputEntry id="regel-09-motivatie"><text>"aanwezig"</text></inputEntry>
+        <outputEntry id="regel-09-uit"><text>"Snel aan het werk"</text></outputEntry>
+      </rule>
+      <rule id="regel-10-beperkt-belastbaar">
+        <description>ZRM 3 = beperkt belastbaar: werknemersvaardigheden opbouwen via meedoen (DVKM-bronpositie 4)</description>
+        <inputEntry id="regel-10-acuut"><text/></inputEntry>
+        <inputEntry id="regel-10-zrm"><text>"3"</text></inputEntry>
+        <inputEntry id="regel-10-ontheffing"><text/></inputEntry>
+        <inputEntry id="regel-10-werk"><text/></inputEntry>
+        <inputEntry id="regel-10-dienstverband"><text/></inputEntry>
+        <inputEntry id="regel-10-wnv"><text/></inputEntry>
+        <inputEntry id="regel-10-taal"><text/></inputEntry>
+        <inputEntry id="regel-10-motivatie"><text/></inputEntry>
+        <outputEntry id="regel-10-uit"><text>"Meedoen als eerste stap naar werk"</text></outputEntry>
+      </rule>
+      <rule id="regel-11-motivatie-laag">
+        <description>Lage motivatie: ritme en zelfvertrouwen opbouwen als eerste stap (DVKM-bronpositie 4)</description>
+        <inputEntry id="regel-11-acuut"><text/></inputEntry>
+        <inputEntry id="regel-11-zrm"><text/></inputEntry>
+        <inputEntry id="regel-11-ontheffing"><text/></inputEntry>
+        <inputEntry id="regel-11-werk"><text/></inputEntry>
+        <inputEntry id="regel-11-dienstverband"><text/></inputEntry>
+        <inputEntry id="regel-11-wnv"><text/></inputEntry>
+        <inputEntry id="regel-11-taal"><text/></inputEntry>
+        <inputEntry id="regel-11-motivatie"><text>"laag"</text></inputEntry>
+        <outputEntry id="regel-11-uit"><text>"Meedoen als eerste stap naar werk"</text></outputEntry>
+      </rule>
+      <rule id="regel-12-default">
+        <description>Default: inzetbaarheid vergroten richting werk, "first place, then train" (DVKM-bronpositie 5)</description>
+        <inputEntry id="regel-12-acuut"><text/></inputEntry>
+        <inputEntry id="regel-12-zrm"><text/></inputEntry>
+        <inputEntry id="regel-12-ontheffing"><text/></inputEntry>
+        <inputEntry id="regel-12-werk"><text/></inputEntry>
+        <inputEntry id="regel-12-dienstverband"><text/></inputEntry>
+        <inputEntry id="regel-12-wnv"><text/></inputEntry>
+        <inputEntry id="regel-12-taal"><text/></inputEntry>
+        <inputEntry id="regel-12-motivatie"><text/></inputEntry>
+        <outputEntry id="regel-12-uit"><text>"Ontwikkelen naar werk"</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decision id="dvkm-inwonerpositie" name="DVKM: inwonerpositie bepalen">
+    <informationRequirement id="req-subdoelgroep">
+      <requiredDecision href="#dvkm-subdoelgroep"/>
+    </informationRequirement>
+    <decisionTable id="dvkm-inwonerpositie-tabel" hitPolicy="UNIQUE">
+      <input id="input-subdoelgroep" label="Subdoelgroep">
+        <inputExpression id="inputexpr-subdoelgroep" typeRef="string">
+          <text>subdoelgroep</text>
+        </inputExpression>
+      </input>
+      <output id="output-subdoelgroep-door" label="Subdoelgroep" name="subdoelgroep" typeRef="string"/>
+      <output id="output-inwonerpositie" label="Inwonerpositie" name="inwonerpositie" typeRef="string"/>
+      <output id="output-hoofddoel" label="Gekoppeld hoofddoel" name="hoofddoel" typeRef="string"/>
+      <rule id="cat-01-crisis">
+        <description>Subdoelgroep van positie 1 (crisis: terminaal, instabiel, instelling)</description>
+        <inputEntry id="cat-01-in"><text>"Crisis"</text></inputEntry>
+        <outputEntry id="cat-01-sdg"><text>"Crisis"</text></outputEntry>
+        <outputEntry id="cat-01-pos"><text>"1. Nog niet beschikbaar voor meedoen of werk"</text></outputEntry>
+        <outputEntry id="cat-01-hd"><text>"Zelfstandig meedoen in de samenleving"</text></outputEntry>
+      </rule>
+      <rule id="cat-02-ontheffing">
+        <description>Subdoelgroep van positie 1 (ontheffing van de arbeidsverplichting)</description>
+        <inputEntry id="cat-02-in"><text>"Ontheffing"</text></inputEntry>
+        <outputEntry id="cat-02-sdg"><text>"Ontheffing"</text></outputEntry>
+        <outputEntry id="cat-02-pos"><text>"1. Nog niet beschikbaar voor meedoen of werk"</text></outputEntry>
+        <outputEntry id="cat-02-hd"><text>"Zelfstandig meedoen in de samenleving"</text></outputEntry>
+      </rule>
+      <rule id="cat-03-stabiliteit">
+        <description>Enige subdoelgroep van positie 2</description>
+        <inputEntry id="cat-03-in"><text>"Meedoen voor stabiliteit"</text></inputEntry>
+        <outputEntry id="cat-03-sdg"><text>"Meedoen voor stabiliteit"</text></outputEntry>
+        <outputEntry id="cat-03-pos"><text>"2. Meedoen voor stabiliteit"</text></outputEntry>
+        <outputEntry id="cat-03-hd"><text>"Zelfstandig meedoen in de samenleving"</text></outputEntry>
+      </rule>
+      <rule id="cat-04-eerste-stap">
+        <description>Enige subdoelgroep van positie 3</description>
+        <inputEntry id="cat-04-in"><text>"Meedoen als eerste stap naar werk"</text></inputEntry>
+        <outputEntry id="cat-04-sdg"><text>"Meedoen als eerste stap naar werk"</text></outputEntry>
+        <outputEntry id="cat-04-pos"><text>"3. Meedoen als eerste stap naar werk"</text></outputEntry>
+        <outputEntry id="cat-04-hd"><text>"Duurzaam aan het werk"</text></outputEntry>
+      </rule>
+      <rule id="cat-05-naar-werk">
+        <description>Subdoelgroep van positie 4 (ontwikkelen naar werk)</description>
+        <inputEntry id="cat-05-in"><text>"Ontwikkelen naar werk"</text></inputEntry>
+        <outputEntry id="cat-05-sdg"><text>"Ontwikkelen naar werk"</text></outputEntry>
+        <outputEntry id="cat-05-pos"><text>"4. Ontwikkelen richting werk"</text></outputEntry>
+        <outputEntry id="cat-05-hd"><text>"Duurzaam aan het werk"</text></outputEntry>
+      </rule>
+      <rule id="cat-06-tijdens-werk">
+        <description>Subdoelgroep van positie 4 (ontwikkelen tijdens werk)</description>
+        <inputEntry id="cat-06-in"><text>"Ontwikkelen tijdens werk"</text></inputEntry>
+        <outputEntry id="cat-06-sdg"><text>"Ontwikkelen tijdens werk"</text></outputEntry>
+        <outputEntry id="cat-06-pos"><text>"4. Ontwikkelen richting werk"</text></outputEntry>
+        <outputEntry id="cat-06-hd"><text>"Duurzaam aan het werk"</text></outputEntry>
+      </rule>
+      <rule id="cat-07-snel">
+        <description>Enige subdoelgroep van positie 5</description>
+        <inputEntry id="cat-07-in"><text>"Snel aan het werk"</text></inputEntry>
+        <outputEntry id="cat-07-sdg"><text>"Snel aan het werk"</text></outputEntry>
+        <outputEntry id="cat-07-pos"><text>"5. Snel aan het werk"</text></outputEntry>
+        <outputEntry id="cat-07-hd"><text>"Duurzaam aan het werk"</text></outputEntry>
+      </rule>
+      <rule id="cat-08-werkbehoud">
+        <description>Enige subdoelgroep van positie 6 (werkbehoud en nazorg)</description>
+        <inputEntry id="cat-08-in"><text>"Aan het werk blijven"</text></inputEntry>
+        <outputEntry id="cat-08-sdg"><text>"Aan het werk blijven"</text></outputEntry>
+        <outputEntry id="cat-08-pos"><text>"6. Aan het werk blijven"</text></outputEntry>
+        <outputEntry id="cat-08-hd"><text>"Duurzaam aan het werk"</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="dvkm-diagram">
+      <dmndi:DMNShape id="dvkm-subdoelgroep-shape" dmnElementRef="dvkm-subdoelgroep">
+        <dc:Bounds height="80" width="180" x="160" y="260"/>
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="dvkm-inwonerpositie-shape" dmnElementRef="dvkm-inwonerpositie">
+        <dc:Bounds height="80" width="180" x="160" y="100"/>
+      </dmndi:DMNShape>
+      <dmndi:DMNEdge id="req-subdoelgroep-edge" dmnElementRef="req-subdoelgroep">
+        <di:waypoint x="250" y="260"/>
+        <di:waypoint x="250" y="180"/>
+      </dmndi:DMNEdge>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

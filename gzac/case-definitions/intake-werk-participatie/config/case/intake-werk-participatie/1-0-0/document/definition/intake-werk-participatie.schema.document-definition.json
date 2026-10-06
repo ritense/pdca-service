@@ -1,0 +1,133 @@
+{
+    "$id": "intake-werk-participatie.schema",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Intake werk en participatie",
+    "type": "object",
+    "properties": {
+        "bsn": {
+            "type": "string",
+            "description": "BSN van de inwoner (subject van het aan te maken plan)"
+        },
+        "naam": {
+            "type": "string",
+            "description": "Naam van de inwoner"
+        },
+        "toelichting": {
+            "type": "string",
+            "description": "Aanleiding van de aanmelding"
+        },
+        "gespreksNotitie": {
+            "type": "string",
+            "description": "Notitie van het intakegesprek"
+        },
+        "dvkmWerk": {
+            "type": "string",
+            "description": "DVKM-inwonergegeven: werkt de inwoner op dit moment (bron SUWI)"
+        },
+        "dvkmAcuut": {
+            "type": "string",
+            "description": "DVKM-inwonergegeven: acute situatie die voorgaat op werk"
+        },
+        "dvkmOntheffing": {
+            "type": "string",
+            "description": "DVKM-inwonergegeven: ontheffing van de arbeidsverplichting"
+        },
+        "dvkmZrm": {
+            "type": "string",
+            "description": "DVKM-inwonergegeven: ZRM-score (zelfredzaamheid)"
+        },
+        "dvkmDienstverband": {
+            "type": "string",
+            "description": "DVKM-inwonergegeven: dienstverband LKS/Beschut/STiP"
+        },
+        "dvkmWerknemersvaardigheden": {
+            "type": "string",
+            "description": "DVKM-inwonergegeven: werknemersvaardigheden"
+        },
+        "dvkmTaalniveau": {
+            "type": "string",
+            "description": "DVKM-inwonergegeven: taalniveau"
+        },
+        "dvkmMotivatie": {
+            "type": "string",
+            "description": "DVKM-inwonergegeven: motivatie voor werk"
+        },
+        "inwonerpositieAdvies": {
+            "type": "string",
+            "description": "Advies-inwonerpositie uit de DVKM-beslistabellen (DMN dvkm-inwonerpositie): het aggregaat van de subdoelgroep"
+        },
+        "subdoelgroepAdvies": {
+            "type": "string",
+            "description": "Advies-subdoelgroep uit de DVKM-ruleset (DMN dvkm-subdoelgroep)"
+        },
+        "hoofddoelAdvies": {
+            "type": "string",
+            "description": "Hoofddoel dat aan de advies-subdoelgroep gekoppeld is (subdoelgroep-catalogus in de DMN)"
+        },
+        "subdoelgroep": {
+            "type": "string",
+            "description": "Vastgestelde subdoelgroep van de inwoner (advies overgenomen of beargumenteerd afgeweken)"
+        },
+        "adviesOvergenomen": {
+            "type": "string",
+            "description": "Of de behandelaar het DVKM-advies heeft overgenomen (ja/nee)"
+        },
+        "afwijkGrond": {
+            "type": "string",
+            "description": "Grond voor afwijken van het DVKM-advies (een van de acht DVKM-afwijkgronden)"
+        },
+        "planNotitie": {
+            "type": "string",
+            "description": "Toelichting bij het hoofddoel"
+        },
+        "dienstverlening": {
+            "type": "string",
+            "description": "Plantype/dienstverlening (werk/pip/inkomen)"
+        },
+        "hoofddoel": {
+            "type": "string",
+            "description": "Naam van het hoofddoel in het doeltype-register"
+        },
+        "beginPositie": {
+            "type": "string",
+            "description": "Positie uit het positietype-register van het plan-dossiertype"
+        },
+        "doelen": {
+            "type": "array",
+            "description": "Intake-doelen: doelType (registernaam), beschrijving, status, voortgang, toelichting",
+            "items": {
+                "type": "object"
+            }
+        },
+        "instrumenten": {
+            "type": "array",
+            "description": "Intake-instrumenten: titel, product (code), doel (doelType-naam), status, urenBesteed, effectiviteit",
+            "items": {
+                "type": "object"
+            }
+        },
+        "betrokkenen": {
+            "type": "array",
+            "description": "Intake-betrokkenen: naam, rol (relatietype), organisatie, email, hoofdverantwoordelijke",
+            "items": {
+                "type": "object"
+            }
+        },
+        "planId": {
+            "type": "string",
+            "description": "UUID van het aangemaakte plan in Open Plan (gevuld door het create-plan taakformulier)"
+        },
+        "planTitel": {
+            "type": "string",
+            "description": "Titel van het aangemaakte plan (gevuld door het create-plan taakformulier)"
+        },
+        "planStatus": {
+            "type": "string",
+            "description": "Status van het aangemaakte plan (actief/afgerond/geannuleerd)"
+        },
+        "planDossierId": {
+            "type": "string",
+            "description": "DocumentId van het aangemaakte plan-dossier (plan = dossier 1:1)"
+        }
+    }
+}

@@ -1,0 +1,92 @@
+{
+    "$id": "renovatie-intake.schema",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Intake renovatie (PDCA)",
+    "type": "object",
+    "properties": {
+        "objectId": {
+            "type": "string",
+            "description": "Object-id in het objectenregister (subject van het aan te maken plan)"
+        },
+        "objectNaam": {
+            "type": "string",
+            "description": "Naam van het object"
+        },
+        "toelichting": {
+            "type": "string",
+            "description": "Toelichting bij de intake"
+        },
+        "planTitel": {
+            "type": "string",
+            "description": "Titel van het aan te maken plan"
+        },
+        "planNotitie": {
+            "type": "string",
+            "description": "Toelichting bij het hoofddoel"
+        },
+        "dienstverlening": {
+            "type": "string",
+            "description": "Plantype/dienstverlening (werk/pip/inkomen)"
+        },
+        "hoofddoel": {
+            "type": "string",
+            "description": "Naam van het hoofddoel in het doeltype-register"
+        },
+        "weergaveStatus": {
+            "type": "string",
+            "description": "PDCA-weergavestatus van het plan (Concept, Vastgesteld, ...)"
+        },
+        "beginPositie": {
+            "type": "string",
+            "description": "Positie uit het positietype-register van het plan-dossiertype"
+        },
+        "startdatum": {
+            "type": "string",
+            "description": "Startdatum van het plan (jjjj-mm-dd)"
+        },
+        "streefEinddatum": {
+            "type": "string",
+            "description": "Streefeinddatum van het plan (jjjj-mm-dd)"
+        },
+        "doelen": {
+            "type": "array",
+            "description": "Intake-doelen: doelType (registernaam), beschrijving, status, voortgang, toelichting",
+            "items": {
+                "type": "object"
+            }
+        },
+        "instrumenten": {
+            "type": "array",
+            "description": "Intake-instrumenten: titel, product (code), doel (doelType-naam), status, urenBesteed, effectiviteit",
+            "items": {
+                "type": "object"
+            }
+        },
+        "contactmomenten": {
+            "type": "array",
+            "description": "Intake-contactmomenten: datum, evaluatieType, status, notitie, deelnemers",
+            "items": {
+                "type": "object"
+            }
+        },
+        "betrokkenen": {
+            "type": "array",
+            "description": "Intake-betrokkenen: naam, rol (relatietype), organisatie, email, hoofdverantwoordelijke",
+            "items": {
+                "type": "object"
+            }
+        },
+        "planId": {
+            "type": "string",
+            "description": "UUID van het aangemaakte plan in Open Plan (gevuld door het create-plan taakformulier)"
+        },
+        "planStatus": {
+            "type": "string",
+            "description": "Status van het aangemaakte plan (actief/afgerond/geannuleerd)"
+        },
+        "planDossierId": {
+            "type": "string",
+            "description": "DocumentId van het aangemaakte plan-dossier (plan = dossier 1:1)"
+        }
+    }
+}

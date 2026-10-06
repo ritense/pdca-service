@@ -1,0 +1,39 @@
+[
+    {
+        "activityId": "start-event",
+        "activityType": "bpmn:StartEvent:start",
+        "processLinkType": "form",
+        "formDefinitionName": "pdca-actie-start"
+    },
+    {
+        "activityId": "actie-uitvoeren",
+        "activityType": "bpmn:UserTask:create",
+        "processLinkType": "form",
+        "formDefinitionName": "pdca-actie-afronden"
+    },
+    {
+        "activityId": "actie-starten",
+        "activityType": "bpmn:ServiceTask:start",
+        "processLinkType": "external_plugin",
+        "actionKey": "update-actie",
+        "pluginDefinitionKey": "pdca",
+        "pluginVersion": "0.2.0",
+        "actionProperties": {
+            "actieId": "doc:/actieId",
+            "gebeurtenis": "GESTART"
+        }
+    },
+    {
+        "activityId": "actie-afronden",
+        "activityType": "bpmn:ServiceTask:start",
+        "processLinkType": "external_plugin",
+        "actionKey": "update-actie",
+        "pluginDefinitionKey": "pdca",
+        "pluginVersion": "0.2.0",
+        "actionProperties": {
+            "actieId": "doc:/actieId",
+            "gebeurtenis": "AFGEROND",
+            "resultaat": "doc:/resultaat"
+        }
+    }
+]

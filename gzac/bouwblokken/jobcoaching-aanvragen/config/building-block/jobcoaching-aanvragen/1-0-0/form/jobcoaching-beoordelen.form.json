@@ -1,0 +1,45 @@
+{
+    "display": "form",
+    "components": [
+        {
+            "type": "content",
+            "key": "info",
+            "input": false,
+            "tableView": false,
+            "html": "<p>Vanuit het PDCA-plan is het product <strong>Jobcoaching</strong> aangevraagd voor een doel. Bij toekenning wordt het instrument automatisch in het plan gezet; bij afwijzing gebeurt er niets in het plan.</p>"
+        },
+        {
+            "label": "Besluit",
+            "key": "pv.besluit",
+            "type": "select",
+            "input": true,
+            "tableView": false,
+            "widget": "html5",
+            "data": {
+                "values": [
+                    { "label": "Toekennen", "value": "toekennen" },
+                    { "label": "Afwijzen", "value": "afwijzen" }
+                ]
+            },
+            "validate": {
+                "required": true
+            }
+        },
+        {
+            "label": "Toelichting",
+            "key": "pv.besluitToelichting",
+            "type": "textarea",
+            "input": true,
+            "tableView": false,
+            "defaultValue": ""
+        },
+        {
+            "type": "button",
+            "label": "Besluit vastleggen",
+            "key": "submit",
+            "disableOnInvalid": true,
+            "input": true,
+            "tableView": false
+        }
+    ]
+}

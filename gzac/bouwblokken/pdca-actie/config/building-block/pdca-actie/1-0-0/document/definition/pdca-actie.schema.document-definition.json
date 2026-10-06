@@ -1,0 +1,36 @@
+{
+    "$id": "pdca-actie.schema",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "PDCA Actie",
+    "type": "object",
+    "properties": {
+        "actieId": {
+            "type": "string",
+            "description": "UUID van de actie in de PDCA-app (correlatiesleutel; via de input mapping uit /bouwblokStart van het plandossier)"
+        },
+        "actieTitel": {
+            "type": "string",
+            "description": "Titel van de actie (via de input mapping uit /bouwblokStart)"
+        },
+        "actieOmschrijving": {
+            "type": "string",
+            "description": "Omschrijving van de actie (via de input mapping uit /bouwblokStart)"
+        },
+        "planUuid": {
+            "type": "string",
+            "description": "UUID van het plan in Open Plan (via de input mapping uit /bouwblokStart)"
+        },
+        "doelUuid": {
+            "type": "string",
+            "description": "UUID van het doel waaronder de actie hangt (via de input mapping uit /bouwblokStart)"
+        },
+        "subjectId": {
+            "type": "string",
+            "description": "Subject van het plan: bsn (persoon) of object-id (via de input mapping uit /bouwblokStart)"
+        },
+        "resultaat": {
+            "type": "string",
+            "description": "Resultaat van de actie, vastgelegd met het formulier pdca-actie-afronden; de plugin-action update-actie (AFGEROND) leest dit als doc:/resultaat"
+        }
+    }
+}

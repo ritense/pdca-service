@@ -1,0 +1,116 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/ritense/pdca-app
+  pullPolicy: IfNotPresent
+  tag: ""
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+
+config:
+  serverPort: 7500
+  seedDemoData: "false"
+  javaOpts: "-XX:MaxRAMPercentage=75"
+
+database:
+  host: ""
+  port: "5432"
+  name: "pdca"
+  user: "pdca"
+  existingSecret: ""
+  existingSecretKey: "password"
+
+externalServices:
+  openplan:
+    url: ""
+    existingSecret: ""
+    existingSecretKey: "openplan-token"
+  openproduct:
+    url: ""
+    existingSecret: ""
+    existingSecretKey: "openproduct-token"
+  # Normally left disabled: the app then calls GZAC on the callback URL that
+  # GZAC pushes with the plugin configuration. Enable only to override that URL
+  # or to use the Keycloak client-credentials fallback.
+  gzac:
+    enabled: false
+    url: ""
+    tokenUrl: ""
+    clientId: ""
+    existingSecret: ""
+    existingSecretKey: "gzac-client-secret"
+
+service:
+  type: ClusterIP
+  port: 7500
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+  host: ""
+  tls:
+    enabled: true
+    secretName: ""
+
+resources:
+  limits:
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 60
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 5
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+startupProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 5
+  failureThreshold: 30
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+extraEnv: []
+extraVolumeMounts: []
+extraVolumes: []

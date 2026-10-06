@@ -1,0 +1,302 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PDCA overlay schema (consolidated baseline, re-consolidated 2026-09 for the
+  W&P model — no upgrade path, all environments start fresh). Plans, doelen,
+  instrumenten, contactmomenten and personen live in Open Plan; producttypen
+  in Open Product. These tables only hold the PDCA process data those
+  registers do not model, keyed by register uuid. See docker/openplan/init.py
+  for the matching register seed and ARCHITECTURE.md §5 for the data model.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="001-01-create-plan-details" author="pdca">
+        <!-- Per-plan overlay: the direct 1:1 dossier link, typed start/target
+             position (positietype register), the subdoelgroep (W&amp;P
+             segmentation, advised by the DVKM decision tables), hoofddoel
+             reference and the configurable display status. -->
+        <createTable tableName="plan_details">
+            <column name="plan_uuid" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="persoon_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="case_definition_key" type="VARCHAR(255)"/>
+            <column name="begin_positie" type="TEXT"/>
+            <column name="doel_positie" type="TEXT"/>
+            <column name="subdoelgroep" type="VARCHAR(255)"/>
+            <column name="streef_einddatum" type="DATE"/>
+            <column name="hoofddoel_type_uuid" type="UUID"/>
+            <column name="weergave_status" type="VARCHAR(100)"/>
+            <column name="dossier_id" type="VARCHAR(64)">
+                <constraints unique="true" uniqueConstraintName="uc_plan_details_dossier_id"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="001-02-create-doel-details" author="pdca">
+        <createTable tableName="doel_details">
+            <column name="doel_uuid" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="plan_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="voortgang_score" type="INT"/>
+            <column name="voortgang_toelichting" type="TEXT"/>
+            <column name="sortering" type="INT" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <!-- Execution refinement (GEPLAND/GESTART) next to the register status. -->
+            <column name="uitvoerings_status" type="VARCHAR(20)" defaultValue="GEPLAND">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="doel_details" indexName="idx_doel_details_plan">
+            <column name="plan_uuid"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="001-03-create-instrument-details" author="pdca">
+        <createTable tableName="instrument_details">
+            <column name="instrument_uuid" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="plan_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="uren_besteed" type="INT"/>
+            <column name="effectiviteit_score" type="INT"/>
+            <column name="effectiviteit_toelichting" type="TEXT"/>
+            <column name="afbreek_reden" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="instrument_details" indexName="idx_instrument_details_plan">
+            <column name="plan_uuid"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="001-04-create-contactmoment-details" author="pdca">
+        <createTable tableName="contactmoment_details">
+            <column name="contactmoment_uuid" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="plan_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="evaluatie_type" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="geplande_datum" type="DATE"/>
+            <column name="deelnemers" type="TEXT"/>
+            <column name="doel_voortgang" type="TEXT"/>
+            <column name="actiepunten" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="contactmoment_details" indexName="idx_contactmoment_details_plan">
+            <column name="plan_uuid"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="001-05-create-action" author="pdca">
+        <!-- Actions per doel, optionally attached to an instrument (W&amp;P:
+             an instrument has 0..n taken/opdrachten). Uitvoering LOKAAL
+             (tracked in the tab only) or BOUWBLOK (executed by a GZAC
+             building block process, with the started process instance and
+             the originating koppeling). -->
+        <createTable tableName="action">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="doel_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="instrument_uuid" type="UUID"/>
+            <column name="title" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="TEXT"/>
+            <column name="status" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="assignee_type" type="VARCHAR(50)"/>
+            <column name="assignee_name" type="VARCHAR(255)"/>
+            <column name="priority" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="start_date" type="DATE"/>
+            <column name="due_date" type="DATE"/>
+            <column name="contactmoment_uuid" type="UUID"/>
+            <column name="completed_date" type="DATE"/>
+            <column name="result" type="TEXT"/>
+            <column name="uitvoering" type="VARCHAR(20)" defaultValue="LOKAAL">
+                <constraints nullable="false"/>
+            </column>
+            <column name="gzac_process_instance_id" type="VARCHAR(64)"/>
+            <column name="bouwblok_koppeling_id" type="UUID"/>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="action" indexName="idx_action_doel">
+            <column name="doel_uuid"/>
+        </createIndex>
+        <createIndex tableName="action" indexName="idx_action_instrument">
+            <column name="instrument_uuid"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="001-06-create-involved-party" author="pdca">
+        <createTable tableName="involved_party">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="plan_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="role" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="email" type="VARCHAR(255)"/>
+            <column name="phone" type="VARCHAR(255)"/>
+            <column name="organization" type="VARCHAR(255)"/>
+            <column name="is_primary" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="involved_party" indexName="idx_involved_party_plan">
+            <column name="plan_uuid"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="001-07-create-phase-config" author="pdca">
+        <!-- Case configuration per case definition: evaluation types, plan
+             display statuses, position types, intake prefill mapping and the
+             intake -> plan case type reference. -->
+        <createTable tableName="phase_config">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="case_definition_key" type="VARCHAR(255)">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="evaluation_types" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="plan_statussen" type="TEXT"/>
+            <column name="positie_typen" type="TEXT"/>
+            <column name="prefill_mapping" type="TEXT"/>
+            <column name="plan_case_definition_key" type="VARCHAR(255)"/>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="001-08-create-plugin-configuration" author="pdca">
+        <!-- Plugin configurations pushed by GZAC (serviceToken + gzacBaseUrl
+             + title), persisted so the app keeps its GZAC access across
+             restarts. -->
+        <createTable tableName="plugin_configuration">
+            <column name="config_id" type="VARCHAR(255)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="properties" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="service_token" type="TEXT"/>
+            <column name="gzac_base_url" type="VARCHAR(2083)"/>
+            <column name="event_subscriptions" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="title" type="VARCHAR(255)"/>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="001-09-create-actie-bouwblok-koppeling" author="pdca">
+        <!-- Building block koppelingen per plan case type (PDCA Beheer).
+             soort ACTIE starts an action under a doel; soort PRODUCT starts a
+             request that manages the instrument in Open Plan itself (plugin
+             actions aanmaak-instrument/update-instrument). Uitvoeringsvorm
+             BOUWBLOK runs on the plan dossier; DOSSIER starts a full product
+             case (eigen dossier, product_case_definition_key) and leaves the
+             bouwblok columns empty. -->
+        <createTable tableName="actie_bouwblok_koppeling">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="case_definition_key" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="soort" type="VARCHAR(10)" defaultValue="ACTIE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="uitvoeringsvorm" type="VARCHAR(10)" defaultValue="BOUWBLOK">
+                <constraints nullable="false"/>
+            </column>
+            <column name="naam" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="omschrijving" type="TEXT"/>
+            <column name="building_block_key" type="VARCHAR(255)"/>
+            <column name="building_block_version" type="VARCHAR(50)"/>
+            <column name="process_definition_key" type="VARCHAR(255)"/>
+            <column name="product_case_definition_key" type="VARCHAR(255)"/>
+            <column name="plugin_config_id" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="doeltype_uuids" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="actie_bouwblok_koppeling" indexName="idx_actie_bouwblok_case_def">
+            <column name="case_definition_key"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

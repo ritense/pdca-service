@@ -1,0 +1,44 @@
+{
+    "$id": "binnenhof-renovatie.schema",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Binnenhof-renovatie (PDCA)",
+    "type": "object",
+    "properties": {
+        "objectId": {
+            "type": "string",
+            "description": "Object-id in het objectenregister (subject van het plan in Open Plan)"
+        },
+        "objectNaam": {
+            "type": "string",
+            "description": "Naam van het object"
+        },
+        "toelichting": {
+            "type": "string",
+            "description": "Toelichting bij het renovatieplan"
+        },
+        "planId": {
+            "type": "string",
+            "description": "UUID van het plan in Open Plan (gevuld door het create-plan taakformulier)"
+        },
+        "planTitel": {
+            "type": "string",
+            "description": "Titel van het plan in Open Plan"
+        },
+        "planStatus": {
+            "type": "string",
+            "description": "Status van het plan in Open Plan (actief/afgerond/geannuleerd)"
+        },
+        "bouwblokStart": {
+            "type": "object",
+            "description": "Startgegevens van de laatst gestarte bouwblok (geschreven door het startformulier van het bouwblok; de input mappings van de bouwbloklink kopiëren ze naar het bouwblokdocument)",
+            "properties": {
+                "actieId": { "type": "string" },
+                "actieTitel": { "type": "string" },
+                "actieOmschrijving": { "type": "string" },
+                "planUuid": { "type": "string" },
+                "doelUuid": { "type": "string" },
+                "subjectId": { "type": "string" }
+            }
+        }
+    }
+}

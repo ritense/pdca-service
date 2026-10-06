@@ -1,0 +1,26 @@
+{
+    "display": "form",
+    "components": [
+        {
+            "label": "Plan-uuid",
+            "key": "bouwblokStart.planUuid",
+            "type": "hidden",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "label": "Doel-uuid",
+            "key": "bouwblokStart.doelUuid",
+            "type": "hidden",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "label": "Subject-id (bsn of object-id)",
+            "key": "bouwblokStart.subjectId",
+            "type": "hidden",
+            "input": true,
+            "tableView": false
+        }
+    ]
+}

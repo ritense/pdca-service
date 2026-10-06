@@ -1,0 +1,208 @@
+# Local development stack for the PDCA app:
+#
+#   pdca-database    PostgreSQL for the PDCA app's own overlay data (localhost:7503)
+#   openplan-*       Maykin Open Plan   (plannen register, http://localhost:7501)
+#   openproduct-*    Maykin Open Product (producttypen register, http://localhost:7502)
+#   pdca-app         The app itself (http://localhost:7500) — only with --profile app
+#
+# Two ways to run:
+#
+#   docker compose up -d                           # deps only, app via ./gradlew bootRun
+#   docker compose --profile app up -d --build     # entire stack in Docker
+#
+# The 7500-7503 block (app itself on 7500) deliberately avoids every port used
+# by the Valtimo project and its dependencies: GZAC stack (8001-8012, 8080,
+# 8081), plugin host samples (8090-8108), module databases (33xx, 543xx),
+# opensearch (3920x) and rabbitmq (4567x, 5567x).
+#
+# Open Plan has no published Docker image yet, so it is built from GitHub source
+# (pinned commit) on first `docker compose up`; subsequent runs use the cached
+# image. Open Product is pulled from Docker Hub.
+#
+# The *-init one-shot services run migrations, create an `admin`/`admin`
+# superuser and provision fixed dev API tokens (see docker/*/init.py) that match
+# the defaults in src/main/resources/application.yml — no manual setup needed.
+#
+# Admin UIs: http://localhost:7501/admin/ and http://localhost:7502/admin/ (admin/admin)
+
+services:
+  # The app itself, opt-in via `--profile app` so the default `up -d` (used by
+  # ./gradlew bootRunWithDocker) keeps starting the dependencies only.
+  # PDCA_APP_IMAGE lets a cluster host run a pre-built registry image instead
+  # of building from source: PDCA_APP_IMAGE=<registry>/pdca-app:<tag> \
+  #   docker compose --profile app up -d --no-build
+  pdca-app:
+    profiles: ["app"]
+    build: .
+    image: ${PDCA_APP_IMAGE:-pdca-app:local}
+    ports:
+      - "7500:7500"
+    environment:
+      PDCA_DB_HOST: pdca-database
+      PDCA_DB_PORT: "5432"
+      OPENPLAN_URL: http://openplan:8000
+      OPENPRODUCT_URL: http://openproduct:8000
+      # GZAC runs outside this compose project (its own stack on the host).
+      GZAC_URL: http://host.docker.internal:8080
+      GZAC_TOKEN_URL: http://host.docker.internal:8081/auth/realms/valtimo/protocol/openid-connect/token
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    depends_on:
+      pdca-database:
+        condition: service_healthy
+      openplan:
+        condition: service_healthy
+      openproduct:
+        condition: service_healthy
+
+  pdca-database:
+    image: postgres:17.4-alpine
+    ports:
+      - "7503:5432"
+    environment:
+      POSTGRES_DB: pdca
+      POSTGRES_USER: pdca
+      POSTGRES_PASSWORD: pdca
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pdca -d pdca"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    volumes:
+      - pdca-database-data:/var/lib/postgresql/data
+
+  # ------------------------------ Open Plan ------------------------------
+
+  openplan-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - ./docker/openplan/init-db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+      - openplan-db-data:/var/lib/postgresql/data
+
+  openplan-redis:
+    image: redis:7-alpine
+
+  openplan-init:
+    build:
+      context: https://github.com/maykinmedia/open-plan.git#b1f945de592a5e5e0f1a6c993d30138db36eaa59
+    image: pdca/openplan:local
+    environment: &openplan-env
+      DJANGO_SETTINGS_MODULE: openplan.conf.docker
+      SECRET_KEY: pdca-dev-only-openplan-secret
+      DB_NAME: openplan
+      DB_USER: openplan
+      DB_HOST: openplan-db
+      ALLOWED_HOSTS: "*"
+      CACHE_DEFAULT: openplan-redis:6379/0
+      CACHE_AXES: openplan-redis:6379/1
+      DISABLE_2FA: "true"
+      OTEL_SDK_DISABLED: "true"
+      PGHOST: openplan-db
+      PGPORT: "5432"
+    volumes:
+      - ./docker/openplan/init.py:/init/init.py:ro
+      - ./docker/openplan/reference_data.py:/init/reference_data.py:ro
+    command:
+      - sh
+      - -c
+      - >-
+        until pg_isready; do echo 'waiting for openplan-db...'; sleep 1; done
+        && python src/manage.py migrate
+        && python src/manage.py createinitialsuperuser --username admin --password admin --email admin@example.com --no-input
+        && python src/manage.py shell -c "exec(open('/init/init.py').read())"
+    restart: "no"
+    depends_on:
+      - openplan-db
+
+  openplan:
+    build:
+      context: https://github.com/maykinmedia/open-plan.git#b1f945de592a5e5e0f1a6c993d30138db36eaa59
+    image: pdca/openplan:local
+    environment: *openplan-env
+    ports:
+      - "7501:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/admin/login/')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      openplan-db:
+        condition: service_started
+      openplan-redis:
+        condition: service_started
+      openplan-init:
+        condition: service_completed_successfully
+
+  # ---------------------------- Open Product ----------------------------
+
+  openproduct-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - ./docker/openproduct/init-db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+      - openproduct-db-data:/var/lib/postgresql/data
+
+  openproduct-redis:
+    image: redis:7-alpine
+
+  openproduct-init:
+    image: maykinmedia/open-product:1.8.0
+    environment: &openproduct-env
+      DJANGO_SETTINGS_MODULE: openproduct.conf.docker
+      SECRET_KEY: pdca-dev-only-openproduct-secret
+      DB_NAME: openproduct
+      DB_USER: openproduct
+      DB_HOST: openproduct-db
+      ALLOWED_HOSTS: "*"
+      CACHE_DEFAULT: openproduct-redis:6379/0
+      CACHE_AXES: openproduct-redis:6379/1
+      CELERY_BROKER_URL: redis://openproduct-redis:6379/2
+      CELERY_RESULT_BACKEND: redis://openproduct-redis:6379/2
+      DISABLE_2FA: "true"
+      OTEL_SDK_DISABLED: "true"
+      PGHOST: openproduct-db
+      PGPORT: "5432"
+    volumes:
+      - ./docker/openproduct/init.py:/init/init.py:ro
+      - ./docker/openproduct/reference_data.py:/init/reference_data.py:ro
+    command:
+      - sh
+      - -c
+      - >-
+        until pg_isready; do echo 'waiting for openproduct-db...'; sleep 1; done
+        && python src/manage.py migrate
+        && python src/manage.py createinitialsuperuser --username admin --password admin --email admin@example.com --no-input
+        && python src/manage.py shell -c "exec(open('/init/init.py').read())"
+    restart: "no"
+    depends_on:
+      - openproduct-db
+
+  openproduct:
+    image: maykinmedia/open-product:1.8.0
+    environment: *openproduct-env
+    ports:
+      - "7502:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/admin/login/')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      openproduct-db:
+        condition: service_started
+      openproduct-redis:
+        condition: service_started
+      openproduct-init:
+        condition: service_completed_successfully
+
+volumes:
+  pdca-database-data:
+  openplan-db-data:
+  openproduct-db-data:

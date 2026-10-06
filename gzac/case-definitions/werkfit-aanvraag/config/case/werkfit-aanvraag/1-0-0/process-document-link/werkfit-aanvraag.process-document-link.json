@@ -1,0 +1,7 @@
+[
+    {
+        "processDefinitionKey": "werkfit-aanvraag",
+        "canInitializeDocument": true,
+        "startableByUser": false
+    }
+]

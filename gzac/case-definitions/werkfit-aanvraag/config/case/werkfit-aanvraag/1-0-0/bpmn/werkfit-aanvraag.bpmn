@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  id="Definitions_werkfit_aanvraag"
+                  targetNamespace="http://bpmn.io/schema/bpmn"
+                  exporter="pdca-app" exporterVersion="0.2.0">
+    <!--
+      Product DOSSIER "werkfit-aanvraag": requests the product Werkfit
+      Traject WIO for a doel of a PDCA plan as a full case — its own
+      dossier (optionally with a zaak via the case type's zaaktype-link),
+      own PBAC and documents. Started by the PDCA app with
+      new-document-and-start-process; the start payload IS the dossier
+      document (planUuid, doelUuid, subjectId, productTitel, dossierUrn).
+      All product logic lives in THIS process: the assessor grants or
+      rejects; on granting, the plugin action aanmaak-instrument puts the
+      instrument in the plan with the dossier's URN in its zaak field
+      (result mapping -> doc:/instrumentUuid), after execution
+      update-instrument completes it — all doc: references on this
+      dossier's document. On rejection nothing appears in the plan. Copy
+      this case for another product: change the literal titel/product URN
+      in the instrument-aanmaken process link.
+    -->
+    <bpmn:process camunda:versionTag="CD:werkfit-aanvraag:1.0.0" id="werkfit-aanvraag"
+                  isExecutable="true" name="Werkfit-traject aanvraag">
+        <bpmn:startEvent id="start-event" name="Werkfit-traject aangevraagd vanuit het plan">
+            <bpmn:outgoing>flow-start-beoordelen</bpmn:outgoing>
+        </bpmn:startEvent>
+        <!-- besluit stays a process variable (pv. key on the form): the
+             gateway condition can only read process variables; the
+             toelichting goes into the dossier document. -->
+        <bpmn:userTask camunda:candidateGroups="ROLE_USER" id="aanvraag-beoordelen"
+                       name="Werkfit-aanvraag beoordelen">
+            <bpmn:documentation>Beoordeel de aanvraag met het formulier "werkfit-beoordelen"
+                (procesvariabele besluit, documentveld besluitToelichting).
+            </bpmn:documentation>
+            <bpmn:incoming>flow-start-beoordelen</bpmn:incoming>
+            <bpmn:outgoing>flow-beoordelen-gateway</bpmn:outgoing>
+        </bpmn:userTask>
+        <bpmn:exclusiveGateway default="flow-afgewezen" id="besluit-gateway" name="Toegekend?">
+            <bpmn:incoming>flow-beoordelen-gateway</bpmn:incoming>
+            <bpmn:outgoing>flow-toegekend</bpmn:outgoing>
+            <bpmn:outgoing>flow-afgewezen</bpmn:outgoing>
+        </bpmn:exclusiveGateway>
+        <!-- Deliberately synchronous (no async-before): if the register call
+             fails, the error stays visible on the task completion instead of
+             a silent process incident. -->
+        <bpmn:serviceTask camunda:expression="${true}" id="instrument-aanmaken"
+                          name="Werkfit-traject in het plan zetten">
+            <bpmn:documentation>Plugin action aanmaak-instrument: creates the instrument under the
+                doel in Open Plan (doelUuid from doc:/doelUuid) with this dossier's URN in the
+                instrument's zaak field (doc:/dossierUrn); the result mapping writes the returned
+                instrumentUuid to doc:/instrumentUuid.
+            </bpmn:documentation>
+            <bpmn:incoming>flow-toegekend</bpmn:incoming>
+            <bpmn:outgoing>flow-aanmaken-uitvoeren</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:userTask camunda:candidateGroups="ROLE_USER" id="traject-uitvoeren"
+                       name="Werkfit-traject: uitvoeren en afronden">
+            <bpmn:documentation>Rond het traject af met het formulier "werkfit-afronden"
+                (documentvelden productResultaat + productToelichting).
+            </bpmn:documentation>
+            <bpmn:incoming>flow-aanmaken-uitvoeren</bpmn:incoming>
+            <bpmn:outgoing>flow-uitvoeren-afronden</bpmn:outgoing>
+        </bpmn:userTask>
+        <bpmn:serviceTask camunda:expression="${true}" id="instrument-afronden"
+                          name="Werkfit-traject afronden in het plan">
+            <bpmn:documentation>Plugin action update-instrument: sets the instrument
+                (doc:/instrumentUuid) to afgerond with resultaat behaald/gefaald from
+                doc:/productResultaat; the toelichting goes to the PDCA overlay.
+            </bpmn:documentation>
+            <bpmn:incoming>flow-uitvoeren-afronden</bpmn:incoming>
+            <bpmn:outgoing>flow-afronden-einde</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:endEvent id="einde-afgerond" name="Werkfit-traject afgerond">
+            <bpmn:incoming>flow-afronden-einde</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:endEvent id="einde-afgewezen" name="Aanvraag afgewezen">
+            <bpmn:incoming>flow-afgewezen</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="flow-start-beoordelen" sourceRef="start-event" targetRef="aanvraag-beoordelen"/>
+        <bpmn:sequenceFlow id="flow-beoordelen-gateway" sourceRef="aanvraag-beoordelen" targetRef="besluit-gateway"/>
+        <bpmn:sequenceFlow id="flow-toegekend" name="toekennen" sourceRef="besluit-gateway"
+                           targetRef="instrument-aanmaken">
+            <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${besluit == 'toekennen'}</bpmn:conditionExpression>
+        </bpmn:sequenceFlow>
+        <bpmn:sequenceFlow id="flow-afgewezen" name="afwijzen" sourceRef="besluit-gateway" targetRef="einde-afgewezen"/>
+        <bpmn:sequenceFlow id="flow-aanmaken-uitvoeren" sourceRef="instrument-aanmaken" targetRef="traject-uitvoeren"/>
+        <bpmn:sequenceFlow id="flow-uitvoeren-afronden" sourceRef="traject-uitvoeren" targetRef="instrument-afronden"/>
+        <bpmn:sequenceFlow id="flow-afronden-einde" sourceRef="instrument-afronden" targetRef="einde-afgerond"/>
+    </bpmn:process>
+    <bpmndi:BPMNDiagram id="BPMNDiagram_werkfit_aanvraag">
+        <bpmndi:BPMNPlane bpmnElement="werkfit-aanvraag" id="BPMNPlane_werkfit_aanvraag">
+            <bpmndi:BPMNShape bpmnElement="start-event" id="Shape_start-event">
+                <dc:Bounds height="36" width="36" x="152" y="152"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="aanvraag-beoordelen" id="Shape_aanvraag-beoordelen">
+                <dc:Bounds height="80" width="100" x="250" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="besluit-gateway" id="Shape_besluit-gateway" isMarkerVisible="true">
+                <dc:Bounds height="50" width="50" x="410" y="145"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="instrument-aanmaken" id="Shape_instrument-aanmaken">
+                <dc:Bounds height="80" width="100" x="520" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="traject-uitvoeren" id="Shape_traject-uitvoeren">
+                <dc:Bounds height="80" width="100" x="680" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="instrument-afronden" id="Shape_instrument-afronden">
+                <dc:Bounds height="80" width="100" x="840" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="einde-afgerond" id="Shape_einde-afgerond">
+                <dc:Bounds height="36" width="36" x="1002" y="152"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="einde-afgewezen" id="Shape_einde-afgewezen">
+                <dc:Bounds height="36" width="36" x="417" y="280"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNEdge bpmnElement="flow-start-beoordelen" id="Edge_flow-start-beoordelen">
+                <di:waypoint x="188" y="170"/>
+                <di:waypoint x="250" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-beoordelen-gateway" id="Edge_flow-beoordelen-gateway">
+                <di:waypoint x="350" y="170"/>
+                <di:waypoint x="410" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-toegekend" id="Edge_flow-toegekend">
+                <di:waypoint x="460" y="170"/>
+                <di:waypoint x="520" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-afgewezen" id="Edge_flow-afgewezen">
+                <di:waypoint x="435" y="195"/>
+                <di:waypoint x="435" y="280"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-aanmaken-uitvoeren" id="Edge_flow-aanmaken-uitvoeren">
+                <di:waypoint x="620" y="170"/>
+                <di:waypoint x="680" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-uitvoeren-afronden" id="Edge_flow-uitvoeren-afronden">
+                <di:waypoint x="780" y="170"/>
+                <di:waypoint x="840" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-afronden-einde" id="Edge_flow-afronden-einde">
+                <di:waypoint x="940" y="170"/>
+                <di:waypoint x="1002" y="170"/>
+            </bpmndi:BPMNEdge>
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -1,0 +1,59 @@
+# Ports 7500-7503 are deliberately outside every range used by the Valtimo
+# project and its dependencies (GZAC stack 8001-8012/8080/8081, plugin host
+# 8090-8108, module databases 33xx/543xx, opensearch 3920x, rabbitmq 4567x/5567x).
+server:
+  port: 7500
+  error:
+    # Prototype: expose the reason of ResponseStatusExceptions in the error response.
+    include-message: always
+
+spring:
+  application:
+    name: pdca-app
+  datasource:
+    url: jdbc:postgresql://${PDCA_DB_HOST:localhost}:${PDCA_DB_PORT:7503}/${PDCA_DB_NAME:pdca}
+    username: ${PDCA_DB_USER:pdca}
+    password: ${PDCA_DB_PASS:pdca}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  liquibase:
+    change-log: classpath:config/liquibase/changelog-master.xml
+
+pdca:
+  # Maykin Open Plan — system of record for plannen, doelen, instrumenten,
+  # personen and contactmomenten. Runs locally via docker compose (port 7501).
+  openplan:
+    base-url: ${OPENPLAN_URL:http://localhost:7501}
+    token: ${OPENPLAN_TOKEN:pdca-openplan-dev-token-0123456789abcdef}
+  # Maykin Open Product — producttypen catalog backing the instrument picker.
+  # Runs locally via docker compose (port 7502).
+  openproduct:
+    base-url: ${OPENPRODUCT_URL:http://localhost:7502}
+    token: ${OPENPRODUCT_TOKEN:pdca-openproduct-dev-token-0123456789abc}
+  # GZAC itself: dossier reads/creation and the bouwblok support calls. The
+  # preferred credential is the serviceToken + gzacBaseUrl (the host's
+  # server-to-server callback URL) GZAC pushes with the plugin configuration.
+  # GZAC_URL is an explicit override of that pushed URL, only set where the
+  # app sees GZAC under a different address (the compose pdca-app service:
+  # host.docker.internal, see docker-compose.yml); it has no default, so a
+  # deployment without it always uses the pushed URL. Keycloak client
+  # credentials (the standard gzac-docker-compose m2m client) are the dev
+  # fallback without a plugin configuration and then require GZAC_URL.
+  gzac:
+    base-url: ${GZAC_URL:}
+    token-url: ${GZAC_TOKEN_URL:http://localhost:8081/auth/realms/valtimo/protocol/openid-connect/token}
+    client-id: ${GZAC_CLIENT_ID:valtimo-user-m2m-client}
+    client-secret: ${GZAC_CLIENT_SECRET:6ef6ca16-6b86-482a-a3d9-0561704c1db9}
+  # Namespace used for URNs this app mints (plan.domeinregister,
+  # instrument.product, persoon.klant, ...): urn:<namespace>:<component>:<resource>:<id>
+  urn-namespace: pdca
+
+logging:
+  level:
+    com.ritense.pdca: DEBUG

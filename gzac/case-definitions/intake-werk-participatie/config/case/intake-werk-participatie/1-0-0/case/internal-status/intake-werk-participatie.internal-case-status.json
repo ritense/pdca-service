@@ -1,0 +1,42 @@
+[
+    {
+        "key": "intakegesprek",
+        "title": "Intakegesprek",
+        "label": "Gesprek met de inwoner: de DVKM-vragen, betrokkenen en gespreksnotitie",
+        "retentionPeriodInDays": -1,
+        "visibleInCaseListByDefault": true,
+        "color": "BLUE"
+    },
+    {
+        "key": "positie-bepalen",
+        "title": "Inwonerpositie bepalen (DVKM)",
+        "label": "De DVKM-beslistabel bepaalt uit de inwonergegevens de advies-inwonerpositie",
+        "retentionPeriodInDays": -1,
+        "visibleInCaseListByDefault": true,
+        "color": "MAGENTA"
+    },
+    {
+        "key": "vervolggesprek",
+        "title": "Vervolggesprek",
+        "label": "DVKM-advies bespreken: overnemen of beargumenteerd afwijken; doelen en aanpak uitwerken",
+        "retentionPeriodInDays": -1,
+        "visibleInCaseListByDefault": true,
+        "color": "PURPLE"
+    },
+    {
+        "key": "plan-aanmaken",
+        "title": "Plan aanmaken (PDCA)",
+        "label": "De intake omzetten in het plan en het plan-dossier",
+        "retentionPeriodInDays": -1,
+        "visibleInCaseListByDefault": true,
+        "color": "WARMGRAY"
+    },
+    {
+        "key": "afgerond",
+        "title": "Intake afgerond",
+        "label": "Plan en plan-dossier aangemaakt",
+        "retentionPeriodInDays": -1,
+        "visibleInCaseListByDefault": true,
+        "color": "GREEN"
+    }
+]

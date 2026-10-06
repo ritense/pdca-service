@@ -1,0 +1,371 @@
+{
+  "display": "form",
+  "components": [
+    {
+      "label": "HTML",
+      "key": "intro",
+      "type": "htmlelement",
+      "tag": "div",
+      "input": false,
+      "tableView": false,
+      "content": "<h4>Intakegesprek</h4><p>Leg de uitkomsten van het gesprek tussen behandelaar en inwoner vast. De <strong>DVKM-vragen</strong> hieronder zijn de inwonergegevens waaruit de beslistabel (DMN) na dit gesprek een <strong>advies-inwonerpositie</strong> bepaalt. Per vraag staat de bron waaruit het antwoord in het echt zou komen.</p>",
+      "refreshOnChange": false
+    },
+    {
+      "label": "Werkt de inwoner op dit moment?",
+      "description": "Bron: SUWI",
+      "key": "dvkmWerk",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "Nee",
+            "value": "nee"
+          },
+          {
+            "label": "Ja, maximaal haalbaar deeltijdwerk",
+            "value": "deeltijd"
+          },
+          {
+            "label": "Ja, maar onvoldoende duurzaam werk",
+            "value": "onduurzaam"
+          },
+          {
+            "label": "Ja, duurzaam werk",
+            "value": "duurzaam"
+          }
+        ]
+      },
+      "defaultValue": "nee",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Is er sprake van een acute, spoedeisende situatie?",
+      "description": "Bron: handmatig — onderscheidt crisis (terminaal, ontheffing UWV, instelling) van de overige posities",
+      "key": "dvkmAcuut",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "Ja — terminaal, ontheffing UWV of instelling",
+            "value": "ja"
+          },
+          {
+            "label": "Nee",
+            "value": "nee"
+          }
+        ]
+      },
+      "defaultValue": "nee",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Is er een ontheffing van de arbeidsverplichting?",
+      "description": "Bron: SUWI/Socrates — onderscheidt de subdoelgroep Ontheffing van Crisis binnen positie 1",
+      "key": "dvkmOntheffing",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "Ja",
+            "value": "ja"
+          },
+          {
+            "label": "Nee",
+            "value": "nee"
+          }
+        ]
+      },
+      "defaultValue": "nee",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Gemiddelde ZRM-score over de leefgebieden",
+      "description": "Bron: handmatig, eventueel keuringsrapport",
+      "key": "dvkmZrm",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "Score 1 — acuut instabiel",
+            "value": "1"
+          },
+          {
+            "label": "Score 2 tot 3 — kwetsbaar",
+            "value": "2-3"
+          },
+          {
+            "label": "Score 3 — beperkt belastbaar",
+            "value": "3"
+          },
+          {
+            "label": "Score 3 tot 5 — belastbaar",
+            "value": "3-5"
+          },
+          {
+            "label": "Score 4 tot 5 — stabiel",
+            "value": "4-5"
+          }
+        ]
+      },
+      "defaultValue": "3-5",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Dienstverband met LKS, Beschut Werk, STiP of Ontwikkelbaan?",
+      "description": "Bron: LKS Portaal",
+      "key": "dvkmDienstverband",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "Ja",
+            "value": "ja"
+          },
+          {
+            "label": "Nee",
+            "value": "nee"
+          }
+        ]
+      },
+      "defaultValue": "nee",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Hoe zijn de werknemersvaardigheden?",
+      "description": "Bron: handmatig en arbeidsdeskundig onderzoek",
+      "key": "dvkmWerknemersvaardigheden",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "Laag",
+            "value": "laag"
+          },
+          {
+            "label": "Goed",
+            "value": "goed"
+          }
+        ]
+      },
+      "defaultValue": "laag",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Wat is het taalniveau?",
+      "description": "Bron: SUWI — voor 'Snel aan het werk' geldt minimaal A2",
+      "key": "dvkmTaalniveau",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "A0",
+            "value": "A0"
+          },
+          {
+            "label": "A1",
+            "value": "A1"
+          },
+          {
+            "label": "A2",
+            "value": "A2"
+          },
+          {
+            "label": "B1 of hoger",
+            "value": "B1"
+          }
+        ]
+      },
+      "defaultValue": "B1",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Hoe is de motivatie voor werk?",
+      "description": "Bron: handmatig — belangrijke voorspeller voor het ontwikkelpotentieel",
+      "key": "dvkmMotivatie",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "Afwezig",
+            "value": "afwezig"
+          },
+          {
+            "label": "Laag",
+            "value": "laag"
+          },
+          {
+            "label": "Groeiend",
+            "value": "groeiend"
+          },
+          {
+            "label": "Aanwezig",
+            "value": "aanwezig"
+          }
+        ]
+      },
+      "defaultValue": "groeiend",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Gespreksnotitie",
+      "key": "gespreksNotitie",
+      "type": "textarea",
+      "input": true,
+      "tableView": false,
+      "rows": 3,
+      "defaultValue": "Intakegesprek gevoerd. Motivatie groeit; werkritme en sollicitatievaardigheden verdienen aandacht. Financiele situatie zorgelijk maar beheersbaar. MBO-4 administratie, zes jaar werkervaring."
+    },
+    {
+      "label": "Betrokkenen",
+      "key": "betrokkenen",
+      "type": "datagrid",
+      "input": true,
+      "tableView": false,
+      "reorder": false,
+      "addAnotherPosition": "bottom",
+      "defaultValue": [
+        {
+          "naam": "S. Jansen",
+          "rol": "Regiebehandelaar",
+          "organisatie": "Gemeente Den Haag",
+          "email": "s.jansen@denhaag.nl",
+          "hoofdverantwoordelijke": true
+        },
+        {
+          "naam": "M. de Boer",
+          "rol": "Arbeidscoach",
+          "organisatie": "Werkse!",
+          "email": "m.deboer@werkse.nl",
+          "hoofdverantwoordelijke": false
+        },
+        {
+          "naam": "Erika de Goede",
+          "rol": "Inwoner / Eigenaar",
+          "organisatie": "",
+          "email": "",
+          "hoofdverantwoordelijke": false
+        }
+      ],
+      "components": [
+        {
+          "label": "Naam",
+          "key": "naam",
+          "type": "textfield",
+          "input": true,
+          "tableView": true
+        },
+        {
+          "label": "Rol",
+          "key": "rol",
+          "type": "select",
+          "input": true,
+          "tableView": true,
+          "widget": "html5",
+          "data": {
+            "values": [
+              {
+                "label": "Procesbegeleider",
+                "value": "Procesbegeleider"
+              },
+              {
+                "label": "Regiebehandelaar",
+                "value": "Regiebehandelaar"
+              },
+              {
+                "label": "Arbeidscoach",
+                "value": "Arbeidscoach"
+              },
+              {
+                "label": "Schuldhulpverlener",
+                "value": "Schuldhulpverlener"
+              },
+              {
+                "label": "Inwoner / Eigenaar",
+                "value": "Inwoner / Eigenaar"
+              },
+              {
+                "label": "Aanbieder",
+                "value": "Aanbieder"
+              },
+              {
+                "label": "Coach",
+                "value": "Coach"
+              }
+            ]
+          }
+        },
+        {
+          "label": "Organisatie",
+          "key": "organisatie",
+          "type": "textfield",
+          "input": true,
+          "tableView": true
+        },
+        {
+          "label": "E-mail",
+          "key": "email",
+          "type": "textfield",
+          "input": true,
+          "tableView": true
+        },
+        {
+          "label": "Hoofdverantwoordelijke",
+          "key": "hoofdverantwoordelijke",
+          "type": "checkbox",
+          "input": true,
+          "tableView": false,
+          "defaultValue": false
+        }
+      ]
+    },
+    {
+      "type": "button",
+      "label": "Gesprek vastleggen",
+      "key": "submit",
+      "disableOnInvalid": true,
+      "input": true,
+      "tableView": false
+    }
+  ]
+}

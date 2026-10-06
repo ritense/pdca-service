@@ -1,0 +1,577 @@
+[
+    {
+        "key": "summary",
+        "widgetLayout": "MUURI_GAP_FREE",
+        "widgets": [
+            {
+                "type": "metroline",
+                "key": "intakefase",
+                "title": "Intakefase",
+                "width": 4,
+                "highContrast": false,
+                "properties": {
+                    "orientation": "HORIZONTAL",
+                    "mode": "INTERNAL_CASE_STATUS"
+                }
+            },
+            {
+                "type": "divider",
+                "key": "divider-aanmelding",
+                "title": "Aanmelding",
+                "width": 4,
+                "highContrast": false
+            },
+            {
+                "type": "person-card",
+                "key": "inwoner",
+                "title": "Inwoner",
+                "width": 1,
+                "highContrast": false,
+                "properties": {
+                    "person": {
+                        "fullName": "doc:naam",
+                        "bsn": "doc:bsn"
+                    }
+                }
+            },
+            {
+                "type": "fields",
+                "key": "aanmelding",
+                "title": "Aanmeldgegevens",
+                "width": 3,
+                "highContrast": false,
+                "properties": {
+                    "columns": [
+                        [
+                            {
+                                "key": "dienstverlening",
+                                "title": "Dienstverlening",
+                                "value": "doc:dienstverlening",
+                                "displayProperties": {
+                                    "type": "enum",
+                                    "values": {
+                                        "werk": "Werk",
+                                        "pip": "PIP",
+                                        "inkomen": "Inkomen"
+                                    }
+                                }
+                            },
+                            {
+                                "key": "aangemeldOp",
+                                "title": "Aangemeld op",
+                                "value": "case:createdOn",
+                                "displayProperties": {
+                                    "type": "date",
+                                    "format": "DD-MM-YYYY"
+                                }
+                            }
+                        ],
+                        [
+                            {
+                                "key": "aanleiding",
+                                "title": "Aanleiding",
+                                "value": "doc:toelichting"
+                            }
+                        ]
+                    ]
+                }
+            },
+            {
+                "type": "divider",
+                "key": "divider-intakegesprek",
+                "title": "Intakegesprek",
+                "width": 4,
+                "highContrast": false,
+                "displayConditions": [
+                    {
+                        "path": "case:internalStatus",
+                        "operator": "in",
+                        "value": [
+                            "positie-bepalen",
+                            "vervolggesprek",
+                            "plan-aanmaken",
+                            "afgerond"
+                        ]
+                    }
+                ]
+            },
+            {
+                "type": "fields",
+                "key": "intakegesprek",
+                "title": "Gespreksverslag",
+                "width": 2,
+                "highContrast": false,
+                "displayConditions": [
+                    {
+                        "path": "case:internalStatus",
+                        "operator": "in",
+                        "value": [
+                            "positie-bepalen",
+                            "vervolggesprek",
+                            "plan-aanmaken",
+                            "afgerond"
+                        ]
+                    }
+                ],
+                "properties": {
+                    "columns": [
+                        [
+                            {
+                                "key": "gespreksNotitie",
+                                "title": "Gespreksnotitie",
+                                "value": "doc:gespreksNotitie"
+                            }
+                        ]
+                    ]
+                }
+            },
+            {
+                "type": "table",
+                "key": "betrokkenen",
+                "title": "Betrokkenen",
+                "width": 2,
+                "highContrast": false,
+                "displayConditions": [
+                    {
+                        "path": "case:internalStatus",
+                        "operator": "in",
+                        "value": [
+                            "positie-bepalen",
+                            "vervolggesprek",
+                            "plan-aanmaken",
+                            "afgerond"
+                        ]
+                    }
+                ],
+                "properties": {
+                    "collection": "doc:betrokkenen",
+                    "defaultPageSize": 5,
+                    "columns": [
+                        {
+                            "key": "naam",
+                            "title": "Naam",
+                            "value": "naam"
+                        },
+                        {
+                            "key": "rol",
+                            "title": "Rol",
+                            "value": "rol"
+                        },
+                        {
+                            "key": "organisatie",
+                            "title": "Organisatie",
+                            "value": "organisatie"
+                        },
+                        {
+                            "key": "hoofdverantwoordelijke",
+                            "title": "Hoofdverantwoordelijke",
+                            "value": "hoofdverantwoordelijke",
+                            "displayProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "fields",
+                "key": "dvkm-inwonergegevens",
+                "title": "DVKM-inwonergegevens",
+                "width": 4,
+                "highContrast": false,
+                "displayConditions": [
+                    {
+                        "path": "case:internalStatus",
+                        "operator": "in",
+                        "value": [
+                            "positie-bepalen",
+                            "vervolggesprek",
+                            "plan-aanmaken",
+                            "afgerond"
+                        ]
+                    }
+                ],
+                "properties": {
+                    "columns": [
+                        [
+                            {
+                                "key": "dvkmWerk",
+                                "title": "Werkt op dit moment",
+                                "value": "doc:dvkmWerk",
+                                "displayProperties": {
+                                    "type": "enum",
+                                    "values": {
+                                        "nee": "Nee",
+                                        "deeltijd": "Ja, max. haalbaar deeltijdwerk",
+                                        "onduurzaam": "Ja, onvoldoende duurzaam",
+                                        "duurzaam": "Ja, duurzaam werk"
+                                    }
+                                }
+                            },
+                            {
+                                "key": "dvkmAcuut",
+                                "title": "Acute situatie",
+                                "value": "doc:dvkmAcuut",
+                                "displayProperties": {
+                                    "type": "enum",
+                                    "values": {
+                                        "ja": "Ja",
+                                        "nee": "Nee"
+                                    }
+                                }
+                            }
+                        ],
+                        [
+                            {
+                                "key": "dvkmOntheffing",
+                                "title": "Ontheffing arbeidsverplichting",
+                                "value": "doc:dvkmOntheffing",
+                                "displayProperties": {
+                                    "type": "enum",
+                                    "values": {
+                                        "ja": "Ja",
+                                        "nee": "Nee"
+                                    }
+                                }
+                            },
+                            {
+                                "key": "dvkmZrm",
+                                "title": "ZRM-score",
+                                "value": "doc:dvkmZrm",
+                                "displayProperties": {
+                                    "type": "enum",
+                                    "values": {
+                                        "1": "1 — acuut instabiel",
+                                        "2-3": "2–3 — kwetsbaar",
+                                        "3": "3 — beperkt belastbaar",
+                                        "3-5": "3–5 — belastbaar",
+                                        "4-5": "4–5 — stabiel"
+                                    }
+                                }
+                            }
+                        ],
+                        [
+                            {
+                                "key": "dvkmDienstverband",
+                                "title": "Dienstverband LKS/Beschut/STiP",
+                                "value": "doc:dvkmDienstverband",
+                                "displayProperties": {
+                                    "type": "enum",
+                                    "values": {
+                                        "ja": "Ja",
+                                        "nee": "Nee"
+                                    }
+                                }
+                            },
+                            {
+                                "key": "dvkmWerknemersvaardigheden",
+                                "title": "Werknemersvaardigheden",
+                                "value": "doc:dvkmWerknemersvaardigheden",
+                                "displayProperties": {
+                                    "type": "enum",
+                                    "values": {
+                                        "laag": "Laag",
+                                        "goed": "Goed"
+                                    }
+                                }
+                            }
+                        ],
+                        [
+                            {
+                                "key": "dvkmTaalniveau",
+                                "title": "Taalniveau",
+                                "value": "doc:dvkmTaalniveau",
+                                "displayProperties": {
+                                    "type": "enum",
+                                    "values": {
+                                        "A0": "A0",
+                                        "A1": "A1",
+                                        "A2": "A2",
+                                        "B1": "B1 of hoger"
+                                    }
+                                }
+                            },
+                            {
+                                "key": "dvkmMotivatie",
+                                "title": "Motivatie voor werk",
+                                "value": "doc:dvkmMotivatie",
+                                "displayProperties": {
+                                    "type": "enum",
+                                    "values": {
+                                        "afwezig": "Afwezig",
+                                        "laag": "Laag",
+                                        "groeiend": "Groeiend",
+                                        "aanwezig": "Aanwezig"
+                                    }
+                                }
+                            }
+                        ]
+                    ]
+                }
+            },
+            {
+                "type": "divider",
+                "key": "divider-vervolggesprek",
+                "title": "Positie, doelen en aanpak",
+                "width": 4,
+                "highContrast": false,
+                "displayConditions": [
+                    {
+                        "path": "case:internalStatus",
+                        "operator": "in",
+                        "value": [
+                            "plan-aanmaken",
+                            "afgerond"
+                        ]
+                    }
+                ]
+            },
+            {
+                "type": "fields",
+                "key": "dvkm-advies",
+                "title": "DVKM-advies en positie",
+                "width": 2,
+                "highContrast": false,
+                "displayConditions": [
+                    {
+                        "path": "case:internalStatus",
+                        "operator": "in",
+                        "value": [
+                            "plan-aanmaken",
+                            "afgerond"
+                        ]
+                    }
+                ],
+                "properties": {
+                    "columns": [
+                        [
+                            {
+                                "key": "subdoelgroepAdvies",
+                                "title": "DVKM-advies subdoelgroep",
+                                "value": "doc:subdoelgroepAdvies"
+                            },
+                            {
+                                "key": "inwonerpositieAdvies",
+                                "title": "DVKM-advies inwonerpositie",
+                                "value": "doc:inwonerpositieAdvies"
+                            },
+                            {
+                                "key": "hoofddoelAdvies",
+                                "title": "DVKM-advies hoofddoel",
+                                "value": "doc:hoofddoelAdvies"
+                            },
+                            {
+                                "key": "adviesOvergenomen",
+                                "title": "Advies overgenomen?",
+                                "value": "doc:adviesOvergenomen",
+                                "displayProperties": {
+                                    "type": "enum",
+                                    "values": {
+                                        "ja": "Ja",
+                                        "nee": "Nee, beargumenteerd afgeweken"
+                                    }
+                                }
+                            },
+                            {
+                                "key": "afwijkGrond",
+                                "title": "Afwijkgrond",
+                                "value": "doc:afwijkGrond",
+                                "displayProperties": {
+                                    "type": "text",
+                                    "hideWhenEmpty": true
+                                }
+                            }
+                        ],
+                        [
+                            {
+                                "key": "subdoelgroep",
+                                "title": "Subdoelgroep",
+                                "value": "doc:subdoelgroep"
+                            },
+                            {
+                                "key": "beginPositie",
+                                "title": "Beginpositie",
+                                "value": "doc:beginPositie"
+                            },
+                            {
+                                "key": "hoofddoel",
+                                "title": "Hoofddoel",
+                                "value": "doc:hoofddoel"
+                            },
+                            {
+                                "key": "planNotitie",
+                                "title": "Toelichting hoofddoel",
+                                "value": "doc:planNotitie"
+                            }
+                        ]
+                    ]
+                }
+            },
+            {
+                "type": "table",
+                "key": "instrumenten",
+                "title": "Beoogde instrumenten",
+                "width": 2,
+                "highContrast": false,
+                "displayConditions": [
+                    {
+                        "path": "case:internalStatus",
+                        "operator": "in",
+                        "value": [
+                            "plan-aanmaken",
+                            "afgerond"
+                        ]
+                    }
+                ],
+                "properties": {
+                    "collection": "doc:instrumenten",
+                    "defaultPageSize": 5,
+                    "columns": [
+                        {
+                            "key": "titel",
+                            "title": "Instrument",
+                            "value": "titel"
+                        },
+                        {
+                            "key": "doel",
+                            "title": "Bij doel",
+                            "value": "doel"
+                        },
+                        {
+                            "key": "status",
+                            "title": "Status",
+                            "value": "status",
+                            "displayProperties": {
+                                "type": "enum",
+                                "values": {
+                                    "actief": "Actief",
+                                    "afgerond": "Afgerond"
+                                }
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "table",
+                "key": "doelen",
+                "title": "Doelen",
+                "width": 4,
+                "highContrast": false,
+                "displayConditions": [
+                    {
+                        "path": "case:internalStatus",
+                        "operator": "in",
+                        "value": [
+                            "plan-aanmaken",
+                            "afgerond"
+                        ]
+                    }
+                ],
+                "properties": {
+                    "collection": "doc:doelen",
+                    "defaultPageSize": 10,
+                    "columns": [
+                        {
+                            "key": "doelType",
+                            "title": "Doel",
+                            "value": "doelType"
+                        },
+                        {
+                            "key": "beschrijving",
+                            "title": "Beschrijving",
+                            "value": "beschrijving"
+                        },
+                        {
+                            "key": "status",
+                            "title": "Status",
+                            "value": "status",
+                            "displayProperties": {
+                                "type": "enum",
+                                "values": {
+                                    "actief": "Actief",
+                                    "afgerond": "Afgerond"
+                                }
+                            }
+                        },
+                        {
+                            "key": "voortgang",
+                            "title": "Voortgang (%)",
+                            "value": "voortgang",
+                            "displayProperties": {
+                                "type": "number",
+                                "digitsInfo": "1.0-0"
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "divider",
+                "key": "divider-resultaat",
+                "title": "Resultaat",
+                "width": 4,
+                "highContrast": false,
+                "displayConditions": [
+                    {
+                        "path": "case:internalStatus",
+                        "operator": "==",
+                        "value": "afgerond"
+                    }
+                ]
+            },
+            {
+                "type": "fields",
+                "key": "aangemaakt-plan",
+                "title": "Aangemaakt plan",
+                "width": 2,
+                "highContrast": true,
+                "displayConditions": [
+                    {
+                        "path": "case:internalStatus",
+                        "operator": "==",
+                        "value": "afgerond"
+                    }
+                ],
+                "actions": [
+                    {
+                        "name": "Open plan-dossier",
+                        "navigateTo": "/cases/inwonerplan/document/${doc:planDossierId}/pdca-plan-overview",
+                        "openInNewTab": false
+                    }
+                ],
+                "properties": {
+                    "columns": [
+                        [
+                            {
+                                "key": "planStatus",
+                                "title": "Status in Open Plan",
+                                "value": "doc:planStatus",
+                                "displayProperties": {
+                                    "type": "enum",
+                                    "values": {
+                                        "actief": "Actief",
+                                        "afgerond": "Afgerond",
+                                        "geannuleerd": "Geannuleerd"
+                                    }
+                                }
+                            }
+                        ],
+                        [
+                            {
+                                "key": "planId",
+                                "title": "Plan-ID (Open Plan)",
+                                "value": "doc:planId"
+                            },
+                            {
+                                "key": "planDossierId",
+                                "title": "Plan-dossier (documentId)",
+                                "value": "doc:planDossierId"
+                            }
+                        ]
+                    ]
+                }
+            }
+        ]
+    }
+]

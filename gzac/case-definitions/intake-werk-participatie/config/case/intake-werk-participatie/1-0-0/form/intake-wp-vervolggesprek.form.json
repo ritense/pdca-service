@@ -1,0 +1,563 @@
+{
+  "display": "form",
+  "components": [
+    {
+      "label": "HTML",
+      "key": "intro",
+      "type": "htmlelement",
+      "tag": "div",
+      "input": false,
+      "tableView": false,
+      "content": "<h4>Vervolggesprek: positie, doelen en aanpak</h4><p>De DVKM-beslistabellen hebben uit de inwonergegevens de <strong>subdoelgroep</strong> bepaald, met de bijbehorende <strong>inwonerpositie</strong> en het daaraan <strong>gekoppelde hoofddoel</strong>. Bespreek het advies met de inwoner: neem het over of wijk <strong>beargumenteerd</strong> af (de professionele afweging staat boven het model; de reden wordt vastgelegd zodat het model ervan kan leren). Werk daarna de doelen en beoogde inzet uit.</p>",
+      "refreshOnChange": false
+    },
+    {
+      "label": "pv positie-advies (technisch)",
+      "key": "pv.inwonerpositieAdvies",
+      "type": "hidden",
+      "input": true,
+      "tableView": false
+    },
+    {
+      "label": "pv subdoelgroep-advies (technisch)",
+      "key": "pv.subdoelgroepAdvies",
+      "type": "hidden",
+      "input": true,
+      "tableView": false
+    },
+    {
+      "label": "pv hoofddoel-advies (technisch)",
+      "key": "pv.hoofddoelAdvies",
+      "type": "hidden",
+      "input": true,
+      "tableView": false
+    },
+    {
+      "label": "DVKM-advies subdoelgroep",
+      "description": "Uitkomst van de ruleset op basis van de DVKM-vragen",
+      "key": "subdoelgroepAdvies",
+      "type": "textfield",
+      "input": true,
+      "tableView": true,
+      "disabled": true,
+      "calculateValue": "value = (data.pv && data.pv.subdoelgroepAdvies) ? data.pv.subdoelgroepAdvies : value;"
+    },
+    {
+      "label": "DVKM-advies inwonerpositie",
+      "description": "De inwonerpositie is het aggregaat van de subdoelgroep (subdoelgroep-catalogus)",
+      "key": "inwonerpositieAdvies",
+      "type": "textfield",
+      "input": true,
+      "tableView": true,
+      "disabled": true,
+      "calculateValue": "value = (data.pv && data.pv.inwonerpositieAdvies) ? data.pv.inwonerpositieAdvies : value;"
+    },
+    {
+      "label": "DVKM-advies hoofddoel",
+      "description": "Aan een subdoelgroep is één hoofddoel gekoppeld",
+      "key": "hoofddoelAdvies",
+      "type": "textfield",
+      "input": true,
+      "tableView": true,
+      "disabled": true,
+      "calculateValue": "value = (data.pv && data.pv.hoofddoelAdvies) ? data.pv.hoofddoelAdvies : value;"
+    },
+    {
+      "label": "Subdoelgroep",
+      "description": "Volgt het DVKM-advies; kies een andere subdoelgroep om af te wijken",
+      "key": "subdoelgroep",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "Crisis",
+            "value": "Crisis"
+          },
+          {
+            "label": "Ontheffing",
+            "value": "Ontheffing"
+          },
+          {
+            "label": "Meedoen voor stabiliteit",
+            "value": "Meedoen voor stabiliteit"
+          },
+          {
+            "label": "Meedoen als eerste stap naar werk",
+            "value": "Meedoen als eerste stap naar werk"
+          },
+          {
+            "label": "Ontwikkelen naar werk",
+            "value": "Ontwikkelen naar werk"
+          },
+          {
+            "label": "Ontwikkelen tijdens werk",
+            "value": "Ontwikkelen tijdens werk"
+          },
+          {
+            "label": "Snel aan het werk",
+            "value": "Snel aan het werk"
+          },
+          {
+            "label": "Aan het werk blijven",
+            "value": "Aan het werk blijven"
+          }
+        ]
+      },
+      "calculateValue": "value = (data.pv && data.pv.subdoelgroepAdvies) ? data.pv.subdoelgroepAdvies : value;",
+      "allowCalculateOverride": true,
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Positie (inwonerpositie)",
+      "description": "Volgt het DVKM-advies; kies een andere positie om af te wijken",
+      "key": "beginPositie",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "1. Nog niet beschikbaar voor meedoen of werk",
+            "value": "1. Nog niet beschikbaar voor meedoen of werk"
+          },
+          {
+            "label": "2. Meedoen voor stabiliteit",
+            "value": "2. Meedoen voor stabiliteit"
+          },
+          {
+            "label": "3. Meedoen als eerste stap naar werk",
+            "value": "3. Meedoen als eerste stap naar werk"
+          },
+          {
+            "label": "4. Ontwikkelen richting werk",
+            "value": "4. Ontwikkelen richting werk"
+          },
+          {
+            "label": "5. Snel aan het werk",
+            "value": "5. Snel aan het werk"
+          },
+          {
+            "label": "6. Aan het werk blijven",
+            "value": "6. Aan het werk blijven"
+          }
+        ]
+      },
+      "calculateValue": "value = (data.pv && data.pv.inwonerpositieAdvies) ? data.pv.inwonerpositieAdvies : value;",
+      "allowCalculateOverride": true,
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Advies overgenomen?",
+      "key": "adviesOvergenomen",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "Ja",
+            "value": "ja"
+          },
+          {
+            "label": "Nee, beargumenteerd afgeweken",
+            "value": "nee"
+          }
+        ]
+      },
+      "defaultValue": "ja",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Grond voor afwijken van het advies",
+      "description": "De acht afwijkgronden uit het DVKM",
+      "key": "afwijkGrond",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "De inwoner is het niet eens met de voorgestelde route",
+            "value": "De inwoner is het niet eens met de voorgestelde route"
+          },
+          {
+            "label": "Er speelt iets dat de vragenlijst niet uitvraagt",
+            "value": "Er speelt iets dat de vragenlijst niet uitvraagt"
+          },
+          {
+            "label": "Eerdere ervaring met deze inwoner wijst een andere kant op",
+            "value": "Eerdere ervaring met deze inwoner wijst een andere kant op"
+          },
+          {
+            "label": "Het geadviseerde aanbod is niet beschikbaar of heeft een wachtlijst",
+            "value": "Het geadviseerde aanbod is niet beschikbaar of heeft een wachtlijst"
+          },
+          {
+            "label": "Timing: nu niet passend, op een later moment wel",
+            "value": "Timing: nu niet passend, op een later moment wel"
+          },
+          {
+            "label": "Werkgever of ketenpartner vraagt iets anders",
+            "value": "Werkgever of ketenpartner vraagt iets anders"
+          },
+          {
+            "label": "Wettelijke verplichting of recht dwingt een andere route af",
+            "value": "Wettelijke verplichting of recht dwingt een andere route af"
+          },
+          {
+            "label": "Anders, zie toelichting",
+            "value": "Anders, zie toelichting"
+          }
+        ]
+      },
+      "conditional": {
+        "show": true,
+        "when": "adviesOvergenomen",
+        "eq": "nee"
+      }
+    },
+    {
+      "label": "Hoofddoel (uit het doeltype-register)",
+      "description": "Volgt het hoofddoel dat aan de subdoelgroep gekoppeld is; kies een ander hoofddoel om af te wijken",
+      "key": "hoofddoel",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "Duurzaam aan het werk",
+            "value": "Duurzaam aan het werk"
+          },
+          {
+            "label": "Financieel zelfredzaam",
+            "value": "Financieel zelfredzaam"
+          },
+          {
+            "label": "Zelfstandig meedoen in de samenleving",
+            "value": "Zelfstandig meedoen in de samenleving"
+          }
+        ]
+      },
+      "calculateValue": "value = (data.pv && data.pv.hoofddoelAdvies) ? data.pv.hoofddoelAdvies : value;",
+      "allowCalculateOverride": true,
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Toelichting bij hoofddoel (t.b.v. de inwoner)",
+      "key": "planNotitie",
+      "type": "textarea",
+      "input": true,
+      "tableView": false,
+      "rows": 2,
+      "defaultValue": "Ik wil duurzaam aan het werk zodat ik financieel onafhankelijk ben"
+    },
+    {
+      "label": "Doelen (uit het doeltype-register)",
+      "key": "doelen",
+      "type": "datagrid",
+      "input": true,
+      "tableView": false,
+      "reorder": false,
+      "addAnotherPosition": "bottom",
+      "defaultValue": [
+        {
+          "doelType": "Financiele situatie in kaart brengen",
+          "beschrijving": "Volledig overzicht van inkomsten, schulden, toeslagen en lopende financiele verplichtingen.",
+          "status": "actief",
+          "voortgang": 0,
+          "toelichting": ""
+        },
+        {
+          "doelType": "Competenties en werkervaring beoordelen",
+          "beschrijving": "Beroepsprofielanalyse, overdraagbare vaardigheden en scholingsbehoefte vaststellen.",
+          "status": "actief",
+          "voortgang": 0,
+          "toelichting": ""
+        },
+        {
+          "doelType": "Werkfit vaardigheden ontwikkelen",
+          "beschrijving": "Sollicitatievaardigheden, presentatie en werkritme opbouwen via het Werkfit-traject.",
+          "status": "actief",
+          "voortgang": 0,
+          "toelichting": ""
+        },
+        {
+          "doelType": "Kinderopvang regelen",
+          "beschrijving": "Structurele kinderopvang voor Daan en Lisa zodat werken mogelijk wordt.",
+          "status": "actief",
+          "voortgang": 0,
+          "toelichting": ""
+        },
+        {
+          "doelType": "Orientatie op passende functies",
+          "beschrijving": "Administratieve functies verkennen die aansluiten op MBO-4 en zes jaar ervaring.",
+          "status": "actief",
+          "voortgang": 0,
+          "toelichting": ""
+        },
+        {
+          "doelType": "Duurzame plaatsing realiseren",
+          "beschrijving": "Plaatsing op een passende werkplek met jobcoaching.",
+          "status": "actief",
+          "voortgang": 0,
+          "toelichting": ""
+        },
+        {
+          "doelType": "Nazorg en borging",
+          "beschrijving": "Monitoring na plaatsing; terugval voorkomen.",
+          "status": "actief",
+          "voortgang": 0,
+          "toelichting": ""
+        }
+      ],
+      "components": [
+        {
+          "label": "Doel",
+          "key": "doelType",
+          "type": "select",
+          "input": true,
+          "tableView": true,
+          "widget": "html5",
+          "data": {
+            "custom": "var map = {\"Duurzaam aan het werk\": [\"Competenties en werkervaring beoordelen\", \"Werkfit vaardigheden ontwikkelen\", \"Orientatie op passende functies\", \"Duurzame plaatsing realiseren\", \"Nazorg en borging\", \"Kinderopvang regelen\", \"Financiele situatie in kaart brengen\"], \"Financieel zelfredzaam\": [\"Financiele situatie in kaart brengen\", \"Schulden stabiliseren\"], \"Zelfstandig meedoen in de samenleving\": [\"Taalniveau verbeteren\", \"Kinderopvang regelen\", \"Financiele situatie in kaart brengen\"]};\nvar alle = [\"Financiele situatie in kaart brengen\", \"Competenties en werkervaring beoordelen\", \"Werkfit vaardigheden ontwikkelen\", \"Kinderopvang regelen\", \"Orientatie op passende functies\", \"Duurzame plaatsing realiseren\", \"Nazorg en borging\", \"Taalniveau verbeteren\", \"Schulden stabiliseren\"];\n// Subdoelen die bij het gekozen hoofddoel horen; geen hoofddoel of geen\n// invulling = alle subdoelen (zelfde conventie als de PDCA-app).\nvar toegestaan = (data.hoofddoel && map[data.hoofddoel]) || alle;\n// Een al gekozen waarde blijft kiesbaar, zodat wisselen van hoofddoel\n// een ingevulde regel niet stilletjes leegmaakt.\nif (row && row.doelType && toegestaan.indexOf(row.doelType) < 0) {\n  toegestaan = toegestaan.concat([row.doelType]);\n}\nvalues = toegestaan.map(function (n) { return { label: n, value: n }; });"
+          },
+          "description": "Subdoelen die horen bij het gekozen hoofddoel",
+          "dataSrc": "custom",
+          "valueProperty": "value",
+          "template": "<span>{{ item.label }}</span>",
+          "refreshOn": "hoofddoel",
+          "clearOnRefresh": false
+        },
+        {
+          "label": "Beschrijving",
+          "key": "beschrijving",
+          "type": "textfield",
+          "input": true,
+          "tableView": true
+        },
+        {
+          "label": "Status",
+          "key": "status",
+          "type": "select",
+          "input": true,
+          "tableView": true,
+          "widget": "html5",
+          "data": {
+            "values": [
+              {
+                "label": "actief",
+                "value": "actief"
+              },
+              {
+                "label": "afgerond",
+                "value": "afgerond"
+              }
+            ]
+          },
+          "defaultValue": "actief"
+        },
+        {
+          "label": "Voortgang %",
+          "key": "voortgang",
+          "type": "number",
+          "input": true,
+          "tableView": true
+        },
+        {
+          "label": "Toelichting voortgang",
+          "key": "toelichting",
+          "type": "textfield",
+          "input": true,
+          "tableView": true
+        }
+      ]
+    },
+    {
+      "label": "Beoogde instrumenten (uit de Open Product catalogus)",
+      "key": "instrumenten",
+      "type": "datagrid",
+      "input": true,
+      "tableView": false,
+      "reorder": false,
+      "addAnotherPosition": "bottom",
+      "defaultValue": [
+        {
+          "titel": "Leerbaarheidstoets",
+          "product": "LEERBAARHEIDSTOETS",
+          "doel": "Competenties en werkervaring beoordelen",
+          "status": "afgerond",
+          "urenBesteed": 12,
+          "effectiviteit": 4
+        },
+        {
+          "titel": "Werkfit Traject WIO",
+          "product": "WERKFIT-TRAJECT",
+          "doel": "Werkfit vaardigheden ontwikkelen",
+          "status": "actief",
+          "urenBesteed": null,
+          "effectiviteit": null
+        },
+        {
+          "titel": "Jobcoaching",
+          "product": "JOBCOACHING",
+          "doel": "Duurzame plaatsing realiseren",
+          "status": "actief",
+          "urenBesteed": null,
+          "effectiviteit": null
+        }
+      ],
+      "components": [
+        {
+          "label": "Titel",
+          "key": "titel",
+          "type": "textfield",
+          "input": true,
+          "tableView": true
+        },
+        {
+          "label": "Productcode",
+          "key": "product",
+          "type": "select",
+          "input": true,
+          "tableView": true,
+          "widget": "html5",
+          "data": {
+            "values": [
+              {
+                "label": "WERKFIT-TRAJECT",
+                "value": "WERKFIT-TRAJECT"
+              },
+              {
+                "label": "JOBCOACHING",
+                "value": "JOBCOACHING"
+              },
+              {
+                "label": "LEERBAARHEIDSTOETS",
+                "value": "LEERBAARHEIDSTOETS"
+              },
+              {
+                "label": "ORIENTEREND-AANBOD",
+                "value": "ORIENTEREND-AANBOD"
+              },
+              {
+                "label": "NAZORGTRAJECT",
+                "value": "NAZORGTRAJECT"
+              },
+              {
+                "label": "FINANCIELE-INTAKE",
+                "value": "FINANCIELE-INTAKE"
+              }
+            ]
+          }
+        },
+        {
+          "label": "Bij doel",
+          "key": "doel",
+          "type": "select",
+          "input": true,
+          "tableView": true,
+          "widget": "html5",
+          "data": {
+            "values": [
+              {
+                "label": "Financiele situatie in kaart brengen",
+                "value": "Financiele situatie in kaart brengen"
+              },
+              {
+                "label": "Competenties en werkervaring beoordelen",
+                "value": "Competenties en werkervaring beoordelen"
+              },
+              {
+                "label": "Werkfit vaardigheden ontwikkelen",
+                "value": "Werkfit vaardigheden ontwikkelen"
+              },
+              {
+                "label": "Kinderopvang regelen",
+                "value": "Kinderopvang regelen"
+              },
+              {
+                "label": "Orientatie op passende functies",
+                "value": "Orientatie op passende functies"
+              },
+              {
+                "label": "Duurzame plaatsing realiseren",
+                "value": "Duurzame plaatsing realiseren"
+              },
+              {
+                "label": "Nazorg en borging",
+                "value": "Nazorg en borging"
+              },
+              {
+                "label": "Taalniveau verbeteren",
+                "value": "Taalniveau verbeteren"
+              },
+              {
+                "label": "Schulden stabiliseren",
+                "value": "Schulden stabiliseren"
+              }
+            ]
+          }
+        },
+        {
+          "label": "Status",
+          "key": "status",
+          "type": "select",
+          "input": true,
+          "tableView": true,
+          "widget": "html5",
+          "data": {
+            "values": [
+              {
+                "label": "actief",
+                "value": "actief"
+              },
+              {
+                "label": "afgerond",
+                "value": "afgerond"
+              }
+            ]
+          },
+          "defaultValue": "actief"
+        },
+        {
+          "label": "Uren besteed",
+          "key": "urenBesteed",
+          "type": "number",
+          "input": true,
+          "tableView": true
+        },
+        {
+          "label": "Effectiviteit (1-5)",
+          "key": "effectiviteit",
+          "type": "number",
+          "input": true,
+          "tableView": true
+        }
+      ]
+    },
+    {
+      "type": "button",
+      "label": "Gesprek vastleggen",
+      "key": "submit",
+      "disableOnInvalid": true,
+      "input": true,
+      "tableView": false
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+    "key": "werkfit-aanvraag",
+    "name": "Werkfit-traject aanvraag",
+    "versionTag": "1.0.0",
+    "final": false,
+    "canHaveAssignee": true,
+    "autoAssignTasks": false
+}

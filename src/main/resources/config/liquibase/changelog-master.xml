@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <include file="config/liquibase/001-schema.xml"/>
+    <include file="config/liquibase/002-seed-data.xml"/>
+    <include file="config/liquibase/003-subdoel-mapping.xml"/>
+    <include file="config/liquibase/004-drop-doelpositie.xml"/>
+    <include file="config/liquibase/005-plan-details-intake-dossier.xml"/>
+
+</databaseChangeLog>

@@ -1,0 +1,47 @@
+{
+    "display": "form",
+    "components": [
+        {
+            "label": "Actie-id",
+            "key": "bouwblokStart.actieId",
+            "type": "hidden",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "label": "Actietitel",
+            "key": "bouwblokStart.actieTitel",
+            "type": "hidden",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "label": "Actieomschrijving",
+            "key": "bouwblokStart.actieOmschrijving",
+            "type": "hidden",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "label": "Plan-uuid",
+            "key": "bouwblokStart.planUuid",
+            "type": "hidden",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "label": "Doel-uuid",
+            "key": "bouwblokStart.doelUuid",
+            "type": "hidden",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "label": "Subject-id (bsn of object-id)",
+            "key": "bouwblokStart.subjectId",
+            "type": "hidden",
+            "input": true,
+            "tableView": false
+        }
+    ]
+}

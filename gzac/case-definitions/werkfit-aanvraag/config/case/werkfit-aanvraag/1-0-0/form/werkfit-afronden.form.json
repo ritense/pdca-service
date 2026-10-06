@@ -1,0 +1,46 @@
+{
+    "display": "form",
+    "components": [
+        {
+            "type": "content",
+            "key": "info",
+            "input": false,
+            "tableView": false,
+            "html": "<p>Het Werkfit-traject staat als instrument in het PDCA-plan (met dit dossier als zaakverwijzing). Rond het hier af; het resultaat en de toelichting komen op het instrument in het plan te staan.</p>"
+        },
+        {
+            "label": "Resultaat",
+            "key": "productResultaat",
+            "type": "select",
+            "input": true,
+            "tableView": false,
+            "widget": "html5",
+            "defaultValue": "behaald",
+            "data": {
+                "values": [
+                    { "label": "Behaald", "value": "behaald" },
+                    { "label": "Gefaald", "value": "gefaald" }
+                ]
+            },
+            "validate": {
+                "required": true
+            }
+        },
+        {
+            "label": "Toelichting",
+            "key": "productToelichting",
+            "type": "textarea",
+            "input": true,
+            "tableView": false,
+            "defaultValue": ""
+        },
+        {
+            "type": "button",
+            "label": "Traject afronden",
+            "key": "submit",
+            "disableOnInvalid": true,
+            "input": true,
+            "tableView": false
+        }
+    ]
+}

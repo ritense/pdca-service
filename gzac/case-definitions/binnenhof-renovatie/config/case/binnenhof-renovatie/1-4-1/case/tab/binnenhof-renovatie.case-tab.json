@@ -1,0 +1,45 @@
+[
+    {
+        "name": "Samenvatting",
+        "key": "summary",
+        "type": "standard",
+        "contentKey": "summary"
+    },
+    {
+        "name": "Planoverzicht",
+        "key": "pdca-plan-overview",
+        "type": "external_plugin",
+        "contentKey": "00000000-0000-4000-8000-00000000dca0:plan-overview",
+        "pluginDefinitionKey": "pdca",
+        "pluginVersion": "0.2.0"
+    },
+    {
+        "name": "Doelen & Acties",
+        "key": "pdca-plan-goals",
+        "type": "external_plugin",
+        "contentKey": "00000000-0000-4000-8000-00000000dca0:plan-goals",
+        "pluginDefinitionKey": "pdca",
+        "pluginVersion": "0.2.0"
+    },
+    {
+        "name": "Evaluaties",
+        "key": "pdca-plan-evaluations",
+        "type": "external_plugin",
+        "contentKey": "00000000-0000-4000-8000-00000000dca0:plan-evaluations",
+        "pluginDefinitionKey": "pdca",
+        "pluginVersion": "0.2.0"
+    },
+    {
+        "name": "Voortgang",
+        "key": "progress",
+        "type": "standard",
+        "contentKey": "progress",
+        "showTasks": true
+    },
+    {
+        "name": "Audit",
+        "key": "audit",
+        "type": "standard",
+        "contentKey": "audit"
+    }
+]

@@ -1,0 +1,44 @@
+{
+    "display": "form",
+    "components": [
+        {
+            "label": "HTML",
+            "content": "<h4>PDCA-cyclus</h4><p>Werk doelen, acties en instrumenten bij via het tabblad <strong>Doelen &amp; Acties</strong> en leg evaluaties vast via het tabblad <strong>Evaluaties</strong> (of koppel de externe taakformulieren <code>update-goals</code> / <code>evaluate</code> aan deze taak).</p>",
+            "refreshOnChange": false,
+            "key": "html",
+            "type": "htmlelement",
+            "tag": "div",
+            "input": false,
+            "tableView": false
+        },
+        {
+            "label": "Vervolg",
+            "key": "pv.vervolg",
+            "type": "radio",
+            "input": true,
+            "tableView": false,
+            "defaultValue": "doorgaan",
+            "values": [
+                {
+                    "label": "Doorgaan met de PDCA-cyclus",
+                    "value": "doorgaan"
+                },
+                {
+                    "label": "Plan afronden",
+                    "value": "afronden"
+                }
+            ],
+            "validate": {
+                "required": true
+            }
+        },
+        {
+            "type": "button",
+            "label": "Opslaan",
+            "key": "submit",
+            "disableOnInvalid": true,
+            "input": true,
+            "tableView": false
+        }
+    ]
+}

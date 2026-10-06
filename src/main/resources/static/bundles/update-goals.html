@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doelen bewerken</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'IBM Plex Sans',sans-serif;color:#161616;background:#fff;font-size:14px;line-height:1.5}
+  h2{font-size:20px;font-weight:600;margin-bottom:8px}
+  .subtitle{color:#525252;font-size:13px;margin-bottom:20px}
+  .form-group{margin-bottom:14px}
+  label{display:block;font-size:12px;font-weight:500;color:#525252;margin-bottom:4px;letter-spacing:.32px}
+  input[type=text],textarea,select{
+    width:100%;padding:10px 14px;border:1px solid #8d8d8d;border-radius:0;background:#fff;
+    font-family:inherit;font-size:14px;color:#161616;outline:none;
+  }
+  input:focus,textarea:focus,select:focus{border-color:#0f62fe;box-shadow:inset 0 0 0 1px #0f62fe}
+  textarea{min-height:60px;resize:vertical}
+  .btn{padding:8px 20px;font-family:inherit;font-size:14px;font-weight:500;border:none;cursor:pointer}
+  .btn-primary{background:#0f62fe;color:#fff}.btn-primary:hover{background:#0353e9}
+  .btn-secondary{background:#e0e0e0;color:#161616}.btn-secondary:hover{background:#c6c6c6}
+  .btn-danger{background:#da1e28;color:#fff;padding:4px 12px;font-size:12px}.btn-danger:hover{background:#b81922}
+  .btn-sm{padding:6px 14px;font-size:13px}
+  .actions{display:flex;gap:12px;margin-top:24px;justify-content:flex-end}
+  .add-section{background:#f4f4f4;padding:16px;margin-bottom:20px;border-top:2px solid #0f62fe}
+  .add-section h3{font-size:15px;font-weight:600;margin-bottom:12px}
+  .add-row{display:grid;grid-template-columns:160px 1fr;gap:12px;margin-bottom:8px}
+  .goals-list{margin-top:16px}
+  .goal-card{background:#fff;border:1px solid #e0e0e0;padding:14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start}
+  .goal-info{flex:1}
+  .goal-title{font-weight:500;margin-bottom:2px}
+  .goal-meta{font-size:12px;color:#525252}
+  .status-badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:500}
+  .status-PLANNED{background:#e0e0e0;color:#161616}
+  .status-ACTIVE{background:#d0e2ff;color:#0043ce}
+  .status-ACHIEVED{background:#defbe6;color:#0e6027}
+  .status-NOT_ACHIEVED{background:#fff1f1;color:#b81922}
+  .status-CANCELLED{background:#e0e0e0;color:#525252}
+  .loading{text-align:center;padding:40px;color:#525252}
+  .empty{text-align:center;padding:24px;color:#a8a8a8;font-style:italic}
+  .msg{padding:12px;margin-bottom:12px;display:none}
+  .msg-success{background:#defbe6;border-left:3px solid #24a148}
+  .msg-error{background:#fff1f1;border-left:3px solid #da1e28}
+</style>
+</head>
+<body>
+<div class="msg msg-success" id="successMsg"></div>
+<div class="msg msg-error" id="errorMsg"></div>
+<h2>Doelen bewerken</h2>
+<p class="subtitle" id="planTitle">Laden...</p>
+
+<div class="add-section">
+  <h3>Subdoel toevoegen</h3>
+  <div class="form-group"><label>Subdoel (uit doeltype-register)</label><select id="newDoeltype"></select></div>
+  <div class="form-group"><label>Toelichting (t.b.v. de inwoner)</label><textarea id="newDesc" placeholder="Optionele toelichting"></textarea></div>
+  <button class="btn btn-primary btn-sm" onclick="addGoal()">Toevoegen</button>
+</div>
+
+<h3 style="margin-bottom:12px">Huidige doelen</h3>
+<div id="goalsList" class="goals-list"><div class="loading">Laden...</div></div>
+
+<div class="actions">
+  <button class="btn btn-primary" onclick="submitForm()">Opslaan en doorgaan</button>
+</div>
+
+<script>
+// Direct integration: doelen live in Open Plan (via the token proxy) and
+// are chosen from the doeltype register (no free-text doelen). The plan's
+// hoofddoel shows as a fixed block (managed on the overview tab); the
+// subdoelen render as one flat list and new subdoelen reference the active
+// hoofddoel via doel.hoofdDoel. Plan = dossier (1:1).
+var API=location.origin.indexOf('http')===0?location.origin:'http://localhost:7500';
+var OPENPLAN=API+'/openplan/plannen/api/v0';
+var planId=null;
+var persoonUuid=null;
+var doeltypen=[];
+var goals=[];
+var goalDetails={};
+var initialized=false;
+
+window.addEventListener('message',function(e){
+  if(e.data&&e.data.source==='valtimo-host'&&e.data.event==='init'&&!initialized){
+    initialized=true;
+    init(e.data.payload&&e.data.payload.context||{});
+  }
+});
+window.parent.postMessage({source:'valtimo-plugin',event:'ready'},'*');
+setTimeout(function(){if(!initialized){initialized=true;init({})}},500);
+
+function isHoofddoelType(dt){
+  return (dt.categorieen||[]).some(function(c){return c.naam==='Hoofddoel'});
+}
+
+// Plan = dossier (1:1): the plan directly linked to this dossier (overlay).
+function init(context,naResolve){
+  if(!context.documentId){
+    document.getElementById('planTitle').textContent='Geen dossiercontext ontvangen (plan = dossier).';
+    return;
+  }
+  Promise.all([
+    fetch(API+'/api/v1/pdca/dossiers/'+context.documentId+'/plan').then(function(r){return r.ok?r.json():null}),
+    fetch(OPENPLAN+'/doeltype').then(function(r){return r.json()})
+  ]).then(function(res){
+    var details=res[0];
+    if(!details&&!naResolve){
+      // Start-form route: the backend links a planId from the dossier content under water.
+      return fetch(API+'/api/v1/pdca/dossiers/'+context.documentId+'/resolve-plan',{method:'POST'})
+        .then(function(r){
+          if(r.ok)return init(context,true);
+          document.getElementById('planTitle').textContent='Geen plan voor dit dossier. Maak eerst een plan aan.';
+          return Promise.reject('no plan');
+        });
+    }
+    if(!details){document.getElementById('planTitle').textContent='Geen plan voor dit dossier. Maak eerst een plan aan.';return Promise.reject('no plan')}
+    planId=details.planUuid;
+    persoonUuid=details.persoonUuid;
+    doeltypen=res[1].results||[];
+    fetch(OPENPLAN+'/plan/'+planId).then(function(r){return r.json()})
+      .then(function(plan){document.getElementById('planTitle').textContent=plan.titel})
+      .catch(function(){});
+    // Register-driven choice list: named subdoelen, no hoofddoel types or
+    // legacy anonymous types; the title becomes the register name.
+    var sel=document.getElementById('newDoeltype');
+    sel.innerHTML='';
+    doeltypen.filter(function(dt){
+      return !isHoofddoelType(dt)&&dt.doelType!=='subdoel'&&dt.doelType!=='hoofddoel';
+    }).forEach(function(dt){
+      var o=document.createElement('option');o.value=dt.uuid;o.textContent=dt.doelType;sel.appendChild(o);
+    });
+    return loadGoals();
+  }).catch(function(err){if(err!=='no plan')showError('Fout bij laden: '+err.message)});
+}
+
+function loadGoals(){
+  return Promise.all([
+    fetch(OPENPLAN+'/doel?plannen__uuid='+planId).then(function(r){return r.json()}),
+    fetch(API+'/api/v1/pdca/doeldetails?planUuid='+planId).then(function(r){return r.ok?r.json():[]})
+  ]).then(function(res){
+    goals=res[0].results||[];
+    goalDetails={};
+    (res[1]||[]).forEach(function(d){goalDetails[d.doelUuid]=d});
+    renderGoals();
+  });
+}
+
+function isHoofddoelDoel(g){
+  var dt=g.doeltype&&doeltypen.filter(function(t){return t.uuid===g.doeltype.uuid})[0];
+  return dt?isHoofddoelType(dt):false;
+}
+
+function actiefHoofddoel(){
+  return goals.filter(function(g){return isHoofddoelDoel(g)&&g.status==='actief'})[0]||null;
+}
+
+function goalCard(g,verwijderbaar){
+  var uitv=(goalDetails[g.uuid]||{}).uitvoeringsStatus;
+  var statusTekst=g.status==='geannuleerd'?'afgebroken':g.status==='actief'&&uitv?uitv.toLowerCase():g.status;
+  var html='<div class="goal-card"><div class="goal-info"><div class="goal-title">'
+    +(isHoofddoelDoel(g)?'&#9733; ':'')+esc(g.titel)+'</div>';
+  html+='<div class="goal-meta"><span class="status-badge status-'+g.status+'">'+esc(statusTekst+(g.resultaat?' ('+g.resultaat+')':''))+'</span>';
+  if(g.beschrijving)html+=' &middot; '+esc(g.beschrijving.substring(0,80))+(g.beschrijving.length>80?'...':'');
+  html+='</div></div>';
+  if(verwijderbaar)html+='<button class="btn-danger" onclick="deleteGoal(\''+g.uuid+'\')">Verwijder</button>';
+  html+='</div>';
+  return html;
+}
+
+function renderGoals(){
+  var el=document.getElementById('goalsList');
+  // Hoofddoel block first (managed on the overview tab, not deletable here),
+  // then the flat subdoelen list.
+  var hoofddoelen=goals.filter(isHoofddoelDoel);
+  var subdoelen=goals.filter(function(g){return !isHoofddoelDoel(g)});
+  if(goals.length===0){el.innerHTML='<div class="empty">Nog geen doelen toegevoegd</div>';return}
+  var html='';
+  hoofddoelen.forEach(function(g){html+=goalCard(g,false)});
+  subdoelen.forEach(function(g){html+=goalCard(g,true)});
+  if(subdoelen.length===0)html+='<div class="empty">Nog geen subdoelen toegevoegd</div>';
+  el.innerHTML=html;
+}
+
+function addGoal(){
+  var doeltypeUuid=document.getElementById('newDoeltype').value;
+  if(!doeltypeUuid){alert('Kies een doel uit het register');return}
+  if(!persoonUuid){showError('Plan mist PDCA-details');return}
+  var gekozen=doeltypen.filter(function(dt){return dt.uuid===doeltypeUuid})[0];
+  var hoofddoel=actiefHoofddoel();
+  fetch(OPENPLAN+'/doel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+    plannenUuids:[planId],
+    persoonUuid:persoonUuid,
+    doeltypeUuid:doeltypeUuid,
+    hoofdDoel:hoofddoel?hoofddoel.uuid:null,
+    titel:gekozen.doelType,
+    beschrijving:document.getElementById('newDesc').value.trim()||'',
+    startdatum:new Date().toISOString()
+  })})
+  .then(function(r){if(!r.ok)throw new Error('Fout');return r.json()})
+  .then(function(doel){
+    return fetch(API+'/api/v1/pdca/doeldetails/'+doel.uuid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({planUuid:planId,uitvoeringsStatus:'GEPLAND'})});
+  })
+  .then(function(){
+    document.getElementById('newDesc').value='';
+    showSuccess('Doel toegevoegd');
+    return loadGoals();
+  }).catch(function(err){showError('Fout: '+err.message)});
+}
+
+function deleteGoal(uuid){
+  if(!confirm('Doel verwijderen?'))return;
+  fetch(OPENPLAN+'/doel/'+uuid,{method:'DELETE'}).then(function(){
+    return fetch(API+'/api/v1/pdca/doeldetails/'+uuid,{method:'DELETE'});
+  }).then(function(){
+    showSuccess('Doel verwijderd');
+    return loadGoals();
+  }).catch(function(err){showError('Fout: '+err.message)});
+}
+
+function submitForm(){
+  window.parent.postMessage({source:'valtimo-plugin',event:'submitTask',payload:{data:{updated:true,goalCount:goals.length}}},'*');
+}
+
+function showSuccess(msg){var el=document.getElementById('successMsg');el.textContent=msg;el.style.display='block';setTimeout(function(){el.style.display='none'},3000)}
+function showError(msg){var el=document.getElementById('errorMsg');el.textContent=msg;el.style.display='block';setTimeout(function(){el.style.display='none'},5000)}
+function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML}
+
+</script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+[
+    {
+        "buildingBlockDefinitionKey": "pdca-actie",
+        "buildingBlockDefinitionVersionTag": "1.0.0",
+        "inputMappings": [
+            { "source": "doc:/bouwblokStart/actieId", "target": "/actieId" },
+            { "source": "doc:/bouwblokStart/actieTitel", "target": "/actieTitel" },
+            { "source": "doc:/bouwblokStart/actieTitel", "target": "pv:actieTitel" },
+            { "source": "doc:/bouwblokStart/actieOmschrijving", "target": "/actieOmschrijving" },
+            { "source": "doc:/bouwblokStart/planUuid", "target": "/planUuid" },
+            { "source": "doc:/bouwblokStart/doelUuid", "target": "/doelUuid" },
+            { "source": "doc:/bouwblokStart/subjectId", "target": "/subjectId" }
+        ],
+        "outputMappings": [],
+        "pluginConfigurationMappings": {},
+        "startableByUser": false
+    }
+]

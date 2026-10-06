@@ -1,0 +1,57 @@
+{
+    "display": "form",
+    "components": [
+        {
+            "label": "HTML",
+            "content": "<h4>Nieuw brandveiligheidsplan (object)</h4><p>Start een PDCA-plan voor een object. Vul een <strong>Plan-ID</strong> in om een bestaand (los) plan automatisch aan dit dossier te koppelen; laat het leeg om via de taak \"Plan aanmaken\" een nieuw plan in te vullen.</p><p>Demo-object: binnenhof-001 (Binnenhof)</p><p>Demo-plan Binnenhof: <code>33333333-3333-3333-3333-333333333333</code></p>",
+            "refreshOnChange": false,
+            "key": "html",
+            "type": "htmlelement",
+            "tag": "div",
+            "input": false,
+            "tableView": false
+        },
+        {
+            "label": "Object-id",
+            "key": "objectId",
+            "type": "textfield",
+            "input": true,
+            "tableView": true,
+            "defaultValue": "binnenhof-001",
+            "validate": {
+                "required": true
+            }
+        },
+        {
+            "label": "Objectnaam",
+            "key": "objectNaam",
+            "type": "textfield",
+            "input": true,
+            "tableView": true,
+            "defaultValue": "Binnenhof"
+        },
+        {
+            "label": "Toelichting",
+            "key": "toelichting",
+            "type": "textarea",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "label": "Plan-ID (bestaand plan koppelen, optioneel)",
+            "description": "UUID van een bestaand los plan in Open Plan; de PDCA-app koppelt het plan automatisch aan dit dossier.",
+            "key": "planId",
+            "type": "textfield",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "type": "button",
+            "label": "Start renovatieplan",
+            "key": "submit",
+            "disableOnInvalid": true,
+            "input": true,
+            "tableView": false
+        }
+    ]
+}

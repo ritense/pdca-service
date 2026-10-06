@@ -1,0 +1,78 @@
+{
+  "display": "form",
+  "components": [
+    {
+      "label": "HTML",
+      "key": "html716",
+      "type": "htmlelement",
+      "tag": "div",
+      "input": false,
+      "tableView": false,
+      "content": "<h4>Aanmelding — Intake werk en participatie</h4><p>De intake verloopt in stappen: <strong>intakegesprek</strong> (met de DVKM-vragen) → <strong>DVKM-advies inwonerpositie</strong> (beslistabel) → <strong>vervolggesprek</strong> → <strong>Plan aanmaken (PDCA)</strong>. Het dossier groeit per gesprek mee. De defaultwaarden vormen de demo voor Erika de Goede — doorklikken volstaat. Het <strong>BSN is elke aanmelding nieuw</strong>, zodat de demo herhaalbaar blijft: een inwoner mag maar één actief plan per plantype hebben.</p>",
+      "refreshOnChange": false
+    },
+    {
+      "label": "BSN",
+      "key": "bsn",
+      "description": "Elke aanmelding krijgt een nieuw, elfproef-geldig BSN, zodat de demo herhaalbaar is: een inwoner mag maar één actief plan per plantype hebben. Overschrijf het met een bestaand BSN om een echte inwoner te gebruiken.",
+      "type": "textfield",
+      "input": true,
+      "tableView": true,
+      "allowCalculateOverride": true,
+      "calculateValue": "value = value ? value : (function(){for(var poging=0;poging<100;poging++){var cijfers=[1+Math.floor(Math.random()*8)];for(var i=1;i<8;i++)cijfers.push(Math.floor(Math.random()*10));var som=0;for(var j=0;j<8;j++)som+=cijfers[j]*(9-j);var laatste=som%11;if(laatste<10)return cijfers.join('')+laatste}return '111222333'})();",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Naam",
+      "key": "naam",
+      "type": "textfield",
+      "input": true,
+      "tableView": true,
+      "defaultValue": "Erika de Goede"
+    },
+    {
+      "label": "Dienstverlening",
+      "key": "dienstverlening",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "werk",
+            "value": "werk"
+          },
+          {
+            "label": "pip",
+            "value": "pip"
+          },
+          {
+            "label": "inkomen",
+            "value": "inkomen"
+          }
+        ]
+      },
+      "defaultValue": "werk"
+    },
+    {
+      "label": "Aanleiding van de aanmelding",
+      "key": "toelichting",
+      "type": "textarea",
+      "input": true,
+      "tableView": false,
+      "rows": 2,
+      "defaultValue": "Aanmelding via de inkomensconsulent: mevrouw De Goede wil na een periode van bijstand weer aan het werk."
+    },
+    {
+      "type": "button",
+      "label": "Start intake",
+      "key": "submit",
+      "disableOnInvalid": true,
+      "input": true,
+      "tableView": false
+    }
+  ]
+}

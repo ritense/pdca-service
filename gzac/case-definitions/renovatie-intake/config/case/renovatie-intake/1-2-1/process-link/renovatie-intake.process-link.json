@@ -1,0 +1,17 @@
+[
+    {
+        "activityId": "start-event",
+        "activityType": "bpmn:StartEvent:start",
+        "processLinkType": "form",
+        "formDefinitionName": "renovatie-intake"
+    },
+    {
+        "activityId": "plan-aanmaken",
+        "activityType": "bpmn:UserTask:create",
+        "processLinkType": "external_plugin_task_form",
+        "externalPluginConfigurationId": "00000000-0000-4000-8000-00000000dca0",
+        "pluginDefinitionKey": "pdca",
+        "pluginVersion": "0.2.0",
+        "bundleKey": "create-plan"
+    }
+]
