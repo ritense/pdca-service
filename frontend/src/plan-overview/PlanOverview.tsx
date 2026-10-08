@@ -23,7 +23,10 @@ import {
 } from '@carbon/react';
 import { TrashCan } from '@carbon/react/icons';
 import { onInit, resizeIframe, GzacContext } from '../shared/bridge';
-import { syncEvaluationPanel } from '../shared/evaluationSession';
+import {
+  EvaluationSession, EvaluationChangeInput, syncEvaluationPanel, recordEvaluationChange, onEvaluationEvent,
+} from '../shared/evaluationSession';
+import { EvaluatieBanner } from '../shared/EvaluatieBanner';
 import {
   openplan,
   pdca,
@@ -112,8 +115,15 @@ export function PlanOverview() {
   const [editValue, setEditValue] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [partyForm, setPartyForm] = useState({ name: '', role: '', email: '', phone: '', isPrimary: false });
+  /** The user's running evaluation; while it is on this plan, every change here is recorded in it. */
+  const [session, setSession] = useState<EvaluationSession | null>(null);
 
   useEffect(() => { resizeIframe(); });
+
+  useEffect(() => onEvaluationEvent(event => {
+    if (event.type === 'started') setSession(event.session);
+    if (event.type === 'completed') setSession(null);
+  }), []);
 
   useEffect(() => {
     onInit(async (ctx: GzacContext) => {
@@ -125,7 +135,7 @@ export function PlanOverview() {
           setLoading(false);
           return;
         }
-        syncEvaluationPanel(ctx.documentId);
+        syncEvaluationPanel(ctx.documentId).then(setSession);
         const result = await planVoorDossier(ctx.documentId);
         if (!result.plan) {
           setError(result.fout);
@@ -188,18 +198,31 @@ export function PlanOverview() {
   const detailsByDoel = useMemo(() => new Map(doelDetails.map(d => [d.doelUuid, d])), [doelDetails]);
   const cmDetailsByUuid = useMemo(() => new Map(cmDetails.map(d => [d.contactmomentUuid, d])), [cmDetails]);
 
+  /** Records a plan change in the running evaluation of this plan (no-op without one). */
+  const rec = useCallback((change: Omit<EvaluationChangeInput, 'subjectType' | 'subjectUuid' | 'subjectTitel'>) => {
+    if (plan) recordEvaluationChange(plan.uuid, { subjectType: 'PLAN', subjectUuid: plan.uuid, subjectTitel: plan.titel, ...change });
+  }, [plan]);
+
   const kpi = useMemo(() => {
-    const scored = doelDetails.filter(d => typeof d.voortgangScore === 'number' && d.voortgangScore! > 0);
-    const progressPct = scored.length > 0
-      ? Math.round(scored.reduce((sum, d) => sum + d.voortgangScore!, 0) / scored.length)
-      : 0;
+    // Voortgang = how the active subdoelen are going (overlay voortgangsstatus).
+    const actieveSubdoelen = doelen.filter(d => {
+      const type = doeltypen.find(t => t.uuid === d.doeltype?.uuid);
+      return d.status === 'actief' && !(type && isHoofddoelType(type));
+    });
+    const statusTelling = (status: string) =>
+      actieveSubdoelen.filter(d => detailsByDoel.get(d.uuid)?.voortgangStatus === status).length;
+    const voortgang = {
+      opKoers: statusTelling('OP_KOERS'),
+      aandacht: statusTelling('AANDACHT_NODIG') + statusTelling('LOOPT_ACHTER'),
+      actief: actieveSubdoelen.length,
+    };
     const actieveDoelen = doelen.filter(d => d.status === 'actief').length;
     const openActies = acties.filter(a =>
       a.status === 'PLANNED' || a.status === 'IN_PROGRESS' || a.status === 'PENDING_REVIEW'
     ).length;
     const afgerondeEvaluaties = contactmomenten.filter(c => c.status === 'afgerond').length;
-    return { progressPct, actieveDoelen, totalDoelen: doelen.length, openActies, afgerondeEvaluaties };
-  }, [doelen, doelDetails, acties, contactmomenten]);
+    return { voortgang, actieveDoelen, totalDoelen: doelen.length, openActies, afgerondeEvaluaties };
+  }, [doelen, doeltypen, detailsByDoel, acties, contactmomenten]);
 
   const recentEvals = useMemo(() =>
     [...contactmomenten].sort((a, b) => (b.datum || '').localeCompare(a.datum || '')).slice(0, 3),
@@ -216,24 +239,26 @@ export function PlanOverview() {
       const body: any = { status: newStatus };
       if (newStatus === 'afgerond') body.einddatum = new Date().toISOString();
       const updated = await openplan.plannen.update(plan.uuid, body);
+      rec({ soort: 'PLAN_STATUS', samenvoegen: true, vanWaarde: statusLabel(plan.status), naarWaarde: statusLabel(newStatus) });
       setPlan(updated);
       showSuccess('Status gewijzigd naar ' + statusLabel(newStatus));
     } catch (err: any) {
       setError('Status wijzigen mislukt: ' + err.message);
     }
-  }, [plan, showSuccess]);
+  }, [plan, showSuccess, rec]);
 
   // Configurable plan status (Concept, Vastgesteld, ...) — overlay.
   const handleWeergaveStatus = useCallback(async (weergaveStatus: string) => {
     if (!plan || !weergaveStatus) return;
     try {
       const updated = await pdca.plandetails.upsert(plan.uuid, { weergaveStatus });
+      rec({ soort: 'WEERGAVESTATUS', samenvoegen: true, vanWaarde: details?.weergaveStatus, naarWaarde: weergaveStatus });
       setDetails(updated);
       showSuccess('Planstatus gewijzigd naar ' + weergaveStatus);
     } catch (err: any) {
       setError('Planstatus wijzigen mislukt: ' + err.message);
     }
-  }, [plan, showSuccess]);
+  }, [plan, details, showSuccess, rec]);
 
   // notitie/procesbegeleider live on the Open Plan plan; positions and
   // hoofddoel in the PDCA overlay. Positions and hoofddoel are
@@ -273,12 +298,14 @@ export function PlanOverview() {
     try {
       if (editingField === 'notitie') {
         const updated = await openplan.plannen.update(plan.uuid, { notitie: editValue.trim() });
+        rec({ soort: 'HOOFDDOEL_TOELICHTING', samenvoegen: true, vanWaarde: plan.notitie, naarWaarde: editValue.trim() });
         setPlan(updated);
       } else if (editingField === 'medewerker') {
         const value = editValue.trim();
         const updated = await openplan.plannen.update(plan.uuid, {
           medewerker: value ? urn('medewerkers', 'medewerker', value.replace(/\s+/g, '.').toLowerCase()) : '',
         });
+        rec({ soort: 'PROCESBEGELEIDER', samenvoegen: true, vanWaarde: urnId(plan.medewerker), naarWaarde: urnId(updated.medewerker) });
         setPlan(updated);
       } else if (editingField === 'hoofddoelTypeUuid') {
         // W&P: "een plan heeft maar 1 hoofddoel actief". Switching completes
@@ -305,6 +332,7 @@ export function PlanOverview() {
           });
           const subdoelen = doelen.filter(d => !isHoofddoelDoel(d));
           await Promise.all(subdoelen.map(d => openplan.doelen.update(d.uuid, { hoofdDoel: nieuw.uuid })));
+          rec({ soort: 'HOOFDDOEL_GEWISSELD', vanWaarde: huidig?.titel, naarWaarde: nieuw.titel });
           setDoelen(await openplan.doelen.listByPlan(plan.uuid));
         }
         const updated = await pdca.plandetails.upsert(plan.uuid, { hoofddoelTypeUuid: editValue } as any);
@@ -312,6 +340,12 @@ export function PlanOverview() {
       } else {
         // Register-driven fields (beginPositie, subdoelgroep).
         const updated = await pdca.plandetails.upsert(plan.uuid, { [editingField]: editValue.trim() } as any);
+        if (editingField === 'beginPositie' || editingField === 'subdoelgroep') {
+          rec({
+            soort: editingField === 'beginPositie' ? 'POSITIE' : 'SUBDOELGROEP', samenvoegen: true,
+            vanWaarde: details?.[editingField], naarWaarde: editValue.trim(),
+          });
+        }
         setDetails(updated);
       }
       setEditingField(null);
@@ -319,7 +353,7 @@ export function PlanOverview() {
     } catch (err: any) {
       setError('Opslaan mislukt: ' + err.message);
     }
-  }, [plan, editingField, editValue, doelen, doeltypen, details, showSuccess]);
+  }, [plan, editingField, editValue, doelen, doeltypen, details, showSuccess, rec]);
 
   // Every plan has at least one main responsible: the first responsibility
   // is marked as the main responsible by default.
@@ -343,23 +377,26 @@ export function PlanOverview() {
         phone: partyForm.phone.trim() || undefined,
         isPrimary: partyForm.isPrimary,
       });
+      rec({ soort: 'BETROKKENE_TOEGEVOEGD', naarWaarde: `${partyForm.name.trim()} (${partyForm.role})` });
       setBetrokkenen(await pdca.betrokkenen.listByPlan(plan.uuid));
       setModalOpen(false);
       showSuccess('Verantwoordelijkheid toegevoegd');
     } catch (err: any) {
       setError('Toevoegen mislukt: ' + err.message);
     }
-  }, [plan, partyForm, showSuccess]);
+  }, [plan, partyForm, showSuccess, rec]);
 
   const handleDeleteParty = useCallback(async (partyId: string) => {
     try {
+      const party = betrokkenen.find(p => p.id === partyId);
       await pdca.betrokkenen.delete(partyId);
+      if (party) rec({ soort: 'BETROKKENE_VERWIJDERD', naarWaarde: `${party.name} (${party.role})` });
       setBetrokkenen(prev => prev.filter(p => p.id !== partyId));
       showSuccess('Verantwoordelijkheid verwijderd');
     } catch (err: any) {
       setError('Verwijderen mislukt: ' + err.message);
     }
-  }, [showSuccess]);
+  }, [betrokkenen, showSuccess, rec]);
 
   if (loading) {
     return <Loading description="Plan laden..." withOverlay={false} />;
@@ -372,7 +409,11 @@ export function PlanOverview() {
   if (!plan) return null;
 
   const kpiItems = [
-    { label: 'Voortgang', value: `${kpi.progressPct}%`, sub: 'Gemiddelde score van doelen', color: KPI_COLORS[0] },
+    {
+      label: 'Voortgang', value: `${kpi.voortgang.opKoers}/${kpi.voortgang.actief}`,
+      sub: `actieve subdoelen op koers${kpi.voortgang.aandacht ? ` · ${kpi.voortgang.aandacht} vragen aandacht` : ''}`,
+      color: KPI_COLORS[0],
+    },
     { label: 'Actieve doelen', value: String(kpi.actieveDoelen), sub: `van ${kpi.totalDoelen} totaal`, color: KPI_COLORS[1] },
     { label: 'Open acties', value: String(kpi.openActies), sub: 'openstaand', color: KPI_COLORS[2] },
     { label: 'Evaluaties', value: String(contactmomenten.length), sub: `${kpi.afgerondeEvaluaties} afgerond`, color: KPI_COLORS[3] },
@@ -420,6 +461,7 @@ export function PlanOverview() {
             onCloseButtonClick={() => setSuccessMsg(null)}
           />
         )}
+        {session?.planUuid === plan.uuid && <EvaluatieBanner />}
 
         {/* Plan header */}
         <div className="pdca-page-header">

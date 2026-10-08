@@ -55,8 +55,8 @@ import java.util.UUID
  * consumed directly from Open Plan / Open Product through the
  * [com.ritense.pdca.registers.RegisterProxyController]; this resource only
  * stores what those registers do not model (uitvoeringsstatus, voortgang,
- * weergavestatus, uren/effectiviteit, evaluatietype, doelvoortgang,
- * actiepunten) plus the GZAC case link.
+ * internal/external notes, weergavestatus, uren/effectiviteit,
+ * evaluatietype, doelvoortgang, actiepunten) plus the GZAC case link.
  *
  * The DELETE endpoints clean up local overlay rows after the caller removed
  * the register resource through the proxy.
@@ -166,6 +166,9 @@ class PdcaResource(
                 uitvoeringsStatus = request.uitvoeringsStatus ?: UitvoeringsStatus.GEPLAND,
                 voortgangScore = request.voortgangScore,
                 voortgangToelichting = request.voortgangToelichting,
+                voortgangStatus = request.voortgangStatus,
+                interneNotitie = request.interneNotitie,
+                externeNotitie = request.externeNotitie,
                 sortering = sortering
             )
         } else {
@@ -173,6 +176,9 @@ class PdcaResource(
                 uitvoeringsStatus = request.uitvoeringsStatus ?: uitvoeringsStatus
                 voortgangScore = request.voortgangScore ?: voortgangScore
                 voortgangToelichting = request.voortgangToelichting ?: voortgangToelichting
+                voortgangStatus = request.voortgangStatus ?: voortgangStatus
+                interneNotitie = request.interneNotitie ?: interneNotitie
+                externeNotitie = request.externeNotitie ?: externeNotitie
                 sortering = request.sortering ?: sortering
                 updatedAt = LocalDateTime.now()
             }
@@ -210,7 +216,9 @@ class PdcaResource(
                 urenBesteed = request.urenBesteed,
                 effectiviteitScore = request.effectiviteitScore,
                 effectiviteitToelichting = request.effectiviteitToelichting,
-                afbreekReden = request.afbreekReden
+                afbreekReden = request.afbreekReden,
+                interneNotitie = request.interneNotitie,
+                externeNotitie = request.externeNotitie
             )
         } else {
             existing.apply {
@@ -218,6 +226,8 @@ class PdcaResource(
                 effectiviteitScore = request.effectiviteitScore ?: effectiviteitScore
                 effectiviteitToelichting = request.effectiviteitToelichting ?: effectiviteitToelichting
                 afbreekReden = request.afbreekReden ?: afbreekReden
+                interneNotitie = request.interneNotitie ?: interneNotitie
+                externeNotitie = request.externeNotitie ?: externeNotitie
                 updatedAt = LocalDateTime.now()
             }
         }

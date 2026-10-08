@@ -17,6 +17,7 @@
 package com.ritense.pdca.web.rest.dto
 
 import com.ritense.pdca.domain.UitvoeringsStatus
+import com.ritense.pdca.domain.VoortgangStatus
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import java.time.LocalDate
@@ -39,6 +40,9 @@ data class DoelDetailsRequest(
     val uitvoeringsStatus: UitvoeringsStatus? = null,
     val voortgangScore: Int? = null,
     val voortgangToelichting: String? = null,
+    val voortgangStatus: VoortgangStatus? = null,
+    val interneNotitie: String? = null,
+    val externeNotitie: String? = null,
     val sortering: Int? = null
 )
 
@@ -58,5 +62,7 @@ data class InstrumentDetailsRequest(
     @field:Max(5)
     val effectiviteitScore: Int? = null,
     val effectiviteitToelichting: String? = null,
-    val afbreekReden: String? = null
+    val afbreekReden: String? = null,
+    val interneNotitie: String? = null,
+    val externeNotitie: String? = null
 )

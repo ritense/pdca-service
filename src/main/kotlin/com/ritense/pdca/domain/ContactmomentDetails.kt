@@ -28,6 +28,8 @@ import java.util.UUID
  * PDCA evaluation overlay for a contactmoment in Open Plan (pk = Open Plan
  * contactmoment uuid). The contactmoment carries datum/status/notitie; the
  * structured check-fase data (type, doelvoortgang, actiepunten) lives here.
+ * A contactmoment that is the result of a completed evaluation session
+ * points to it through [evaluationSessionId] (its plan changes).
  */
 @Entity
 @Table(name = "contactmoment_details")
@@ -55,6 +57,9 @@ data class ContactmomentDetails(
     /** JSON: ["actiepunt", ...] */
     @Column(columnDefinition = "TEXT")
     var actiepunten: String? = null,
+
+    @Column(name = "evaluation_session_id")
+    var evaluationSessionId: UUID? = null,
 
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),

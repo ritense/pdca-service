@@ -7,9 +7,12 @@
  *   behaald/gefaald, ISO datetimes, paginated {count, results}.
  * - Open Product (producttypen) likewise via /openproduct/... (snake_case).
  * - The PDCA overlay (/api/v1/pdca) stores only what the registers don't
- *   model: fase/voortgang per doel, evaluatietype/actiepunten per
- *   contactmoment, acties, betrokkenen and phase-configs.
+ *   model: fase/voortgang/notities per doel and instrument,
+ *   evaluatietype/actiepunten per contactmoment, completed evaluations with
+ *   their plan changes, acties, betrokkenen and phase-configs.
  */
+
+import type { EvaluationChange, EvaluationSession } from './evaluationSession';
 
 // The bundles are always served by the PDCA app itself (also when iframed
 // into GZAC), so the app origin is the API origin. Fallback for non-http
@@ -150,6 +153,10 @@ export const pdca = {
       request<InstrumentDetails>(`${PDCA}/instrumentdetails/${instrumentUuid}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (instrumentUuid: string) =>
       request<void>(`${PDCA}/instrumentdetails/${instrumentUuid}`, { method: 'DELETE' }),
+  },
+  /** Completed evaluations with their plan changes; running ones are never listed here. */
+  evaluaties: {
+    listByPlan: (planUuid: string) => request<CompletedEvaluation[]>(`${PDCA}/evaluaties?planUuid=${planUuid}`),
   },
   acties: {
     listByPlan: (planUuid: string) => request<Actie[]>(`${PDCA}/acties?planUuid=${planUuid}`),
@@ -469,13 +476,22 @@ export interface PlanDetails {
 
 export type UitvoeringsStatus = 'GEPLAND' | 'GESTART';
 
+/** How an active subdoel is going. */
+export type VoortgangStatus = 'OP_KOERS' | 'AANDACHT_NODIG' | 'LOOPT_ACHTER';
+
 export interface DoelDetails {
   doelUuid: string;
   planUuid: string;
   /** Refinement of register status actief: gepland or gestart. */
   uitvoeringsStatus: UitvoeringsStatus;
+  /** Numeric score from the intake and the evaluate task form; the plan tabs show voortgangStatus. */
   voortgangScore?: number;
   voortgangToelichting?: string;
+  voortgangStatus?: VoortgangStatus;
+  /** Note for colleagues only. */
+  interneNotitie?: string;
+  /** Note that may be shared with the inwoner. */
+  externeNotitie?: string;
   sortering: number;
 }
 
@@ -486,6 +502,8 @@ export interface InstrumentDetails {
   effectiviteitScore?: number;
   effectiviteitToelichting?: string;
   afbreekReden?: string;
+  interneNotitie?: string;
+  externeNotitie?: string;
 }
 
 export interface ContactmomentDetails {
@@ -496,6 +514,14 @@ export interface ContactmomentDetails {
   deelnemers?: string;
   doelVoortgang?: string;
   actiepunten?: string;
+  /** Set when the contactmoment is the result of a completed evaluation session. */
+  evaluationSessionId?: string;
+}
+
+/** A completed evaluation: its session (contactmoment fields) and the plan changes made during it. */
+export interface CompletedEvaluation {
+  sessie: EvaluationSession;
+  wijzigingen: EvaluationChange[];
 }
 
 export interface Actie {

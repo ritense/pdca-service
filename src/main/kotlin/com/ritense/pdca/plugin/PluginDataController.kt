@@ -16,8 +16,13 @@
 
 package com.ritense.pdca.plugin
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.ritense.pdca.domain.EvaluationChange
 import com.ritense.pdca.domain.EvaluationSession
 import com.ritense.pdca.domain.EvaluationSessionStatus
+import com.ritense.pdca.domain.EvaluationSubjectType
+import com.ritense.pdca.service.EvaluationChangeRequest
+import com.ritense.pdca.service.EvaluationDraft
 import com.ritense.pdca.service.EvaluationSessionConflictException
 import com.ritense.pdca.service.EvaluationSessionService
 import com.ritense.pdca.service.GzacClient
@@ -49,8 +54,53 @@ data class EvaluationSessionDto(
     val userLogin: String,
     val status: EvaluationSessionStatus,
     val startedAt: LocalDateTime,
-    val endedAt: LocalDateTime?
+    val endedAt: LocalDateTime?,
+    val evaluatieType: String?,
+    val deelnemers: String?,
+    val verslag: String?,
+    val contactmomentUuid: UUID?
 )
+
+data class EvaluationChangeDto(
+    val id: UUID,
+    val subjectType: EvaluationSubjectType,
+    val subjectUuid: UUID,
+    val subjectTitel: String?,
+    val soort: String,
+    val vanWaarde: String?,
+    val naarWaarde: String?,
+    val toelichting: String?,
+    val createdAt: LocalDateTime
+)
+
+fun EvaluationSession.toDto() = EvaluationSessionDto(
+    id = id,
+    dossierId = dossierId,
+    caseDefinitionKey = caseDefinitionKey,
+    planUuid = planUuid,
+    userLogin = userLogin,
+    status = status,
+    startedAt = startedAt,
+    endedAt = endedAt,
+    evaluatieType = evaluatieType,
+    deelnemers = deelnemers,
+    verslag = verslag,
+    contactmomentUuid = contactmomentUuid
+)
+
+fun EvaluationChange.toDto() = EvaluationChangeDto(
+    id = id,
+    subjectType = subjectType,
+    subjectUuid = subjectUuid,
+    subjectTitel = subjectTitel,
+    soort = soort,
+    vanWaarde = vanWaarde,
+    naarWaarde = naarWaarde,
+    toelichting = toelichting,
+    createdAt = createdAt
+)
+
+data class ChangeToelichtingRequest(val id: UUID, val toelichting: String? = null)
 
 /**
  * The contract's `/data` route: GZAC's frontend proxies the iframe's
@@ -58,12 +108,15 @@ data class EvaluationSessionDto(
  * depends on who the user is goes through this route, because only here the
  * user is verified (token introspection against GZAC). `context` comes from
  * the GZAC frontend but is not trusted: dossier access is checked as the user.
+ * The running evaluation (its contactmoment fields and recorded plan changes)
+ * is only reachable here, so only its owner sees it.
  */
 @RestController
 class PluginDataController(
     private val configurationStore: ConfigurationStore,
     private val gzacClient: GzacClient,
-    private val evaluationSessionService: EvaluationSessionService
+    private val evaluationSessionService: EvaluationSessionService,
+    private val objectMapper: ObjectMapper
 ) {
 
     @PostMapping("/plugins/pdca/{version}/data")
@@ -85,8 +138,23 @@ class PluginDataController(
                     ?.let { ResponseEntity.ok<Any>(it.toDto()) }
                     ?: ResponseEntity.noContent().build()
             "POST" to "/evaluation-sessions" -> startSession(configurationId, userToken, userLogin, request.context)
-            "POST" to "/evaluation-sessions/current/complete" -> endSession(userLogin, EvaluationSessionStatus.COMPLETED)
-            "POST" to "/evaluation-sessions/current/cancel" -> endSession(userLogin, EvaluationSessionStatus.CANCELLED)
+            "POST" to "/evaluation-sessions/current/draft" ->
+                ResponseEntity.ok<Any>(evaluationSessionService.updateDraft(userLogin, request.bodyAs<EvaluationDraft>()).toDto())
+            "GET" to "/evaluation-sessions/current/changes" -> {
+                val session = evaluationSessionService.current(userLogin)
+                    ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Er loopt geen evaluatie")
+                ResponseEntity.ok<Any>(evaluationSessionService.changes(session).map { it.toDto() })
+            }
+            "POST" to "/evaluation-sessions/current/changes" ->
+                evaluationSessionService.recordChange(userLogin, request.bodyAs<EvaluationChangeRequest>())
+                    ?.let { ResponseEntity.ok<Any>(it.toDto()) }
+                    ?: ResponseEntity.noContent().build()
+            "POST" to "/evaluation-sessions/current/change-toelichting" -> {
+                val body = request.bodyAs<ChangeToelichtingRequest>()
+                ResponseEntity.ok<Any>(evaluationSessionService.updateChangeToelichting(userLogin, body.id, body.toelichting).toDto())
+            }
+            "POST" to "/evaluation-sessions/current/complete" ->
+                ResponseEntity.ok<Any>(evaluationSessionService.complete(userLogin).toDto())
             else -> throw ResponseStatusException(HttpStatus.NOT_FOUND, "Onbekend pad ${request.path}")
         }
     } catch (e: ResponseStatusException) {
@@ -110,20 +178,9 @@ class PluginDataController(
         return ResponseEntity.status(HttpStatus.CREATED).body(session.toDto())
     }
 
-    private fun endSession(userLogin: String, status: EvaluationSessionStatus): ResponseEntity<Any> {
-        val session = evaluationSessionService.end(userLogin, status)
-            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Er loopt geen evaluatie")
-        return ResponseEntity.ok(session.toDto())
+    private inline fun <reified T> PluginDataRequest.bodyAs(): T = try {
+        objectMapper.convertValue(body ?: emptyMap<String, Any>(), T::class.java)
+    } catch (e: IllegalArgumentException) {
+        throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Ongeldige aanvraag")
     }
-
-    private fun EvaluationSession.toDto() = EvaluationSessionDto(
-        id = id,
-        dossierId = dossierId,
-        caseDefinitionKey = caseDefinitionKey,
-        planUuid = planUuid,
-        userLogin = userLogin,
-        status = status,
-        startedAt = startedAt,
-        endedAt = endedAt
-    )
 }

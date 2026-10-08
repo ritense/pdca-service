@@ -27,9 +27,10 @@ import java.util.UUID
 
 /**
  * PDCA process overlay for a doel in Open Plan (pk = Open Plan doel uuid):
- * voortgang, the list ordering ([sortering] orders the flat doelen list) and
- * the fine-grained uitvoeringsstatus (the register only knows
- * actief/afgerond/geannuleerd).
+ * voortgang, the list ordering ([sortering] orders the flat doelen list), the
+ * fine-grained uitvoeringsstatus (the register only knows
+ * actief/afgerond/geannuleerd) and the internal and external note. Applies to
+ * subdoelen and the hoofddoel alike; [voortgangStatus] is used for subdoelen.
  */
 @Entity
 @Table(name = "doel_details")
@@ -52,6 +53,19 @@ data class DoelDetails(
     @Column(name = "voortgang_toelichting", columnDefinition = "TEXT")
     var voortgangToelichting: String? = null,
 
+    /** How an active subdoel is going; replaces [voortgangScore] in the plan tabs. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "voortgang_status")
+    var voortgangStatus: VoortgangStatus? = null,
+
+    /** Note for colleagues only. */
+    @Column(name = "interne_notitie", columnDefinition = "TEXT")
+    var interneNotitie: String? = null,
+
+    /** Note that may be shared with the inwoner. */
+    @Column(name = "externe_notitie", columnDefinition = "TEXT")
+    var externeNotitie: String? = null,
+
     @Column(nullable = false)
     var sortering: Int = 0,
 
@@ -63,3 +77,5 @@ data class DoelDetails(
 )
 
 enum class UitvoeringsStatus { GEPLAND, GESTART }
+
+enum class VoortgangStatus { OP_KOERS, AANDACHT_NODIG, LOOPT_ACHTER }

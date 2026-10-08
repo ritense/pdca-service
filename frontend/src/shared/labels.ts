@@ -168,3 +168,88 @@ export function doelgroepVoorSubject(domeinregister: string | null | undefined):
   if (resource === 'object') return 'bedrijven_en_instellingen';
   return undefined;
 }
+
+/** Voortgangsstatus of an active subdoel (overlay DoelDetails.voortgangStatus). */
+export const VOORTGANG_STATUSSEN = ['OP_KOERS', 'AANDACHT_NODIG', 'LOOPT_ACHTER'] as const;
+
+const VOORTGANG_STATUS_LABELS: Record<string, string> = {
+  OP_KOERS: 'Op koers', AANDACHT_NODIG: 'Aandacht nodig', LOOPT_ACHTER: 'Loopt achter',
+};
+
+const VOORTGANG_STATUS_TAGS: Record<string, string> = {
+  OP_KOERS: 'green', AANDACHT_NODIG: 'magenta', LOOPT_ACHTER: 'red',
+};
+
+export function voortgangStatusLabel(s: string | null | undefined): string {
+  return s ? VOORTGANG_STATUS_LABELS[s] || s : 'Geen status';
+}
+
+export function voortgangStatusTag(s: string | null | undefined): string {
+  return (s && VOORTGANG_STATUS_TAGS[s]) || 'gray';
+}
+
+/**
+ * Plan changes as recorded in an evaluation (EvaluationChange.soort). The
+ * tabs record them; the side panel and the Evaluaties tab describe them.
+ */
+const WIJZIGING_LABELS: Record<string, string> = {
+  SUBDOEL_TOEGEVOEGD: 'Subdoel toegevoegd',
+  SUBDOEL_BEWERKT: 'Subdoel bewerkt',
+  SUBDOEL_GESTART: 'Subdoel gestart',
+  SUBDOEL_AFGEROND: 'Subdoel afgerond',
+  SUBDOEL_AFGEBROKEN: 'Subdoel afgebroken',
+  SUBDOEL_VERWIJDERD: 'Subdoel verwijderd',
+  VOORTGANG: 'Voortgang',
+  INTERNE_NOTITIE: 'Interne notitie',
+  EXTERNE_NOTITIE: 'Externe notitie',
+  INSTRUMENT_TOEGEVOEGD: 'Instrument toegevoegd',
+  INSTRUMENT_AFGEROND: 'Instrument afgerond',
+  INSTRUMENT_AFGEBROKEN: 'Instrument afgebroken',
+  INSTRUMENT_REGISTRATIE: 'Uren/effectiviteit',
+  ACTIE_TOEGEVOEGD: 'Actie toegevoegd',
+  ACTIE_STATUS: 'Actiestatus',
+  BOUWBLOK_GESTART: 'Bouwblok-actie gestart',
+  PRODUCT_AANGEVRAAGD: 'Product aangevraagd',
+  HOOFDDOEL_GEWISSELD: 'Hoofddoel gewisseld',
+  HOOFDDOEL_TOELICHTING: 'Toelichting bij hoofddoel',
+  PLAN_STATUS: 'Status plan',
+  WEERGAVESTATUS: 'Planstatus',
+  POSITIE: 'Positie',
+  SUBDOELGROEP: 'Subdoelgroep',
+  PROCESBEGELEIDER: 'Procesbegeleider',
+  BETROKKENE_TOEGEVOEGD: 'Verantwoordelijke toegevoegd',
+  BETROKKENE_VERWIJDERD: 'Verantwoordelijke verwijderd',
+};
+
+/** Text changes: only the new text is shown, not old → new. */
+const TEKST_WIJZIGINGEN = new Set(['INTERNE_NOTITIE', 'EXTERNE_NOTITIE', 'HOOFDDOEL_TOELICHTING']);
+
+const SUBJECT_TYPE_LABELS: Record<string, string> = {
+  PLAN: 'Plan', HOOFDDOEL: 'Hoofddoel', SUBDOEL: 'Subdoel', INSTRUMENT: 'Instrument', ACTIE: 'Actie',
+};
+
+export function subjectTypeLabel(s: string): string { return SUBJECT_TYPE_LABELS[s] || s; }
+
+export function wijzigingOmschrijving(w: { soort: string; vanWaarde?: string | null; naarWaarde?: string | null }): string {
+  const label = WIJZIGING_LABELS[w.soort] || w.soort;
+  if (TEKST_WIJZIGINGEN.has(w.soort)) return w.naarWaarde ? `${label}: ${w.naarWaarde}` : `${label} verwijderd`;
+  if (w.vanWaarde && w.naarWaarde) return `${label}: ${w.vanWaarde} → ${w.naarWaarde}`;
+  if (w.naarWaarde) return `${label}: ${w.naarWaarde}`;
+  if (w.vanWaarde) return `${label}: ${w.vanWaarde} → leeg`;
+  return label;
+}
+
+/** Changes grouped per plan onderdeel, in the order the onderdelen were first changed. */
+export function wijzigingenPerOnderdeel<T extends { subjectType: string; subjectUuid: string; subjectTitel?: string | null }>(
+  wijzigingen: T[],
+): { key: string; subjectType: string; titel: string; wijzigingen: T[] }[] {
+  const groepen = new Map<string, { key: string; subjectType: string; titel: string; wijzigingen: T[] }>();
+  for (const w of wijzigingen) {
+    const key = `${w.subjectType}:${w.subjectUuid}`;
+    const groep = groepen.get(key) ?? { key, subjectType: w.subjectType, titel: '', wijzigingen: [] };
+    groep.titel = w.subjectTitel || groep.titel || subjectTypeLabel(w.subjectType);
+    groep.wijzigingen.push(w);
+    groepen.set(key, groep);
+  }
+  return [...groepen.values()];
+}

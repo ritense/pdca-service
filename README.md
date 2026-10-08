@@ -23,11 +23,12 @@ statuses `actief`/`afgerond`/`geannuleerd`, resultaat `behaald`/`gefaald`, pagin
 
 The Spring Boot backend itself only keeps what the registers don't model, keyed by register uuid
 (`/api/v1/pdca/*`): the **direct dossier link** (`plan_details.dossier_id`, plan = dossier
-1:1), execution status (gepland/gestart) + progress per doel, configurable plan
-display statuses (Concept, Vastgesteld, ...), positie + subdoelgroep (W&P
+1:1), execution status (gepland/gestart) + voortgangsstatus + internal/external note per doel,
+configurable plan display statuses (Concept, Vastgesteld, ...), positie + subdoelgroep (W&P
 segmentation, advised by the intake DMN) + hoofddoel reference per
-plan, hours/effectiveness/abort reason per instrument, evaluation type + doel progress + action
-points per contactmoment, actions, responsibilities (betrokkenen incl. the main responsible)
+plan, hours/effectiveness/notes/abort reason per instrument, evaluation type + doel progress + action
+points per contactmoment, evaluation sessions with the plan changes made during them (run in
+GZAC's side panel), actions, responsibilities (betrokkenen incl. the main responsible)
 and the case config (evaluation types, plan statuses, **position types**). Doelen are shown
 as one flat list ordered by the overlay `sortering`;
 the plan owner is the procesbegeleider/main responsible (`plan.medewerker` URN). Cross-register

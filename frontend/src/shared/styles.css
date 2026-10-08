@@ -1,5 +1,7 @@
 :root {
+  --pdca-spacing-02: 0.25rem;
   --pdca-spacing-03: 0.5rem;
+  --pdca-spacing-04: 0.75rem;
   --pdca-spacing-05: 1rem;
   --pdca-spacing-06: 1.5rem;
   --pdca-spacing-07: 2rem;
@@ -527,13 +529,13 @@ html, body {
 }
 
 /* Side panel (evaluation): fills the whole panel height on the host theme's
-   background, which is the same surface GZAC's panel uses. */
+   layer, the same surface as GZAC's panel and menu. */
 
 .pdca-panel-theme {
   display: flex;
   flex-direction: column;
   min-height: 100%;
-  background: var(--cds-background);
+  background: var(--cds-layer);
   color: var(--cds-text-primary);
 }
 
@@ -558,7 +560,71 @@ html, body {
 .pdca-panel-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--pdca-spacing-03);
+}
+
+.pdca-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pdca-spacing-03);
+}
+
+.pdca-panel-save {
+  font-size: 0.75rem;
+  color: var(--cds-text-helper, #6f6f6f);
+}
+
+/* Plan changes of an evaluation, grouped per onderdeel (panel and Evaluaties tab). */
+
+.pdca-wijzigingen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-04);
+}
+
+.pdca-wijziging-onderdeel {
+  display: flex;
+  align-items: center;
+  gap: var(--pdca-spacing-03);
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: var(--pdca-spacing-02);
+}
+
+.pdca-wijziging {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-02);
+  padding: var(--pdca-spacing-03) 0 var(--pdca-spacing-03) var(--pdca-spacing-04);
+  border-left: 2px solid var(--cds-border-subtle);
+  font-size: 0.875rem;
+}
+
+.pdca-wijziging-toelichting {
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+/* Notes (internal/external) on doelen and instrumenten. */
+
+.pdca-notities {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+  gap: var(--pdca-spacing-04);
+}
+
+.pdca-notitie-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--cds-text-secondary, #525252);
+  margin-bottom: var(--pdca-spacing-02);
+}
+
+.pdca-notitie-tekst {
+  font-size: 0.875rem;
+  white-space: pre-wrap;
 }
 
 /* Narrow tabs (side panel open, small screens). */

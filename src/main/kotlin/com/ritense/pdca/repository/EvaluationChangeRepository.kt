@@ -16,15 +16,22 @@
 
 package com.ritense.pdca.repository
 
-import com.ritense.pdca.domain.EvaluationSession
-import com.ritense.pdca.domain.EvaluationSessionStatus
+import com.ritense.pdca.domain.EvaluationChange
+import com.ritense.pdca.domain.EvaluationSubjectType
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.stereotype.Repository
 import java.util.UUID
 
 @Repository
-interface EvaluationSessionRepository : JpaRepository<EvaluationSession, UUID> {
-    fun findByUserLoginAndStatus(userLogin: String, status: EvaluationSessionStatus): EvaluationSession?
+interface EvaluationChangeRepository : JpaRepository<EvaluationChange, UUID> {
+    fun findBySessionIdOrderByCreatedAt(sessionId: UUID): List<EvaluationChange>
 
-    fun findByPlanUuidAndStatus(planUuid: UUID, status: EvaluationSessionStatus): List<EvaluationSession>
+    fun findBySessionIdInOrderByCreatedAt(sessionIds: Collection<UUID>): List<EvaluationChange>
+
+    fun findFirstBySessionIdAndSubjectTypeAndSubjectUuidAndSoort(
+        sessionId: UUID,
+        subjectType: EvaluationSubjectType,
+        subjectUuid: UUID,
+        soort: String
+    ): EvaluationChange?
 }

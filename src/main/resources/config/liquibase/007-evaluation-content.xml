@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Evaluation content: an evaluation is the set of plan changes made while its
+  session runs, plus the contactmoment information (type, deelnemers,
+  gespreksverslag). A session is only ever completed, never cancelled.
+  Subdoelen get a voortgangsstatus, and doelen and instrumenten an internal
+  and an external note.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="007-01-drop-cancelled-evaluation-sessions" author="pdca">
+        <delete tableName="evaluation_session">
+            <where>status = 'CANCELLED'</where>
+        </delete>
+    </changeSet>
+
+    <changeSet id="007-02-evaluation-session-content" author="pdca">
+        <addColumn tableName="evaluation_session">
+            <column name="evaluatie_type" type="VARCHAR(255)"/>
+            <column name="deelnemers" type="TEXT"/>
+            <column name="verslag" type="TEXT"/>
+            <!-- Set on completion: the contactmoment in Open Plan this evaluation became. -->
+            <column name="contactmoment_uuid" type="UUID"/>
+        </addColumn>
+        <createIndex tableName="evaluation_session" indexName="idx_evaluation_session_plan_uuid">
+            <column name="plan_uuid"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="007-03-create-evaluation-change" author="pdca">
+        <createTable tableName="evaluation_change">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="session_id" type="UUID">
+                <constraints nullable="false"
+                             foreignKeyName="fk_evaluation_change_session"
+                             referencedTableName="evaluation_session"
+                             referencedColumnNames="id"/>
+            </column>
+            <column name="subject_type" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="subject_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="subject_titel" type="VARCHAR(500)"/>
+            <column name="soort" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="van_waarde" type="TEXT"/>
+            <column name="naar_waarde" type="TEXT"/>
+            <column name="toelichting" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="evaluation_change" indexName="idx_evaluation_change_session">
+            <column name="session_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="007-04-contactmoment-details-evaluation-session" author="pdca">
+        <addColumn tableName="contactmoment_details">
+            <column name="evaluation_session_id" type="UUID"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="007-05-doel-details-status-and-notes" author="pdca">
+        <addColumn tableName="doel_details">
+            <column name="voortgang_status" type="VARCHAR(32)"/>
+            <column name="interne_notitie" type="TEXT"/>
+            <column name="externe_notitie" type="TEXT"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="007-06-instrument-details-notes" author="pdca">
+        <addColumn tableName="instrument_details">
+            <column name="interne_notitie" type="TEXT"/>
+            <column name="externe_notitie" type="TEXT"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

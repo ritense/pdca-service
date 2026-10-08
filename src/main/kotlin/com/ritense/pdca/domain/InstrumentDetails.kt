@@ -25,9 +25,9 @@ import java.util.UUID
 
 /**
  * PDCA voortgangsregistratie for an instrument/voorziening in Open Plan
- * (pk = Open Plan instrument uuid): bestede uren, effectiviteit and — when the
- * instrument is afgebroken — the mandatory reason. The register itself only
- * carries status/resultaat.
+ * (pk = Open Plan instrument uuid): bestede uren, effectiviteit, the internal
+ * and external note and — when the instrument is afgebroken — the mandatory
+ * reason. The register itself only carries status/resultaat.
  */
 @Entity
 @Table(name = "instrument_details")
@@ -51,6 +51,14 @@ data class InstrumentDetails(
 
     @Column(name = "afbreek_reden", columnDefinition = "TEXT")
     var afbreekReden: String? = null,
+
+    /** Note for colleagues only. */
+    @Column(name = "interne_notitie", columnDefinition = "TEXT")
+    var interneNotitie: String? = null,
+
+    /** Note that may be shared with the inwoner. */
+    @Column(name = "externe_notitie", columnDefinition = "TEXT")
+    var externeNotitie: String? = null,
 
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),

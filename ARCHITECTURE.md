@@ -95,6 +95,7 @@ flowchart LR
 | `PdcaResource` | `/api/v1/pdca/{plandetails,doeldetails,instrumentdetails,contactmomentdetails}` | Overlay CRUD per register object |
 | `ActieResource` | `/api/v1/pdca/acties` | Actions per doel (local and building block) |
 | `BetrokkeneResource` | `/api/v1/pdca/betrokkenen` | Responsibilities/involved parties per plan |
+| `EvaluatieResource` | `/api/v1/pdca/evaluaties?planUuid=` | Completed evaluations with their plan changes (§6.1); running ones are never listed |
 | `DossierResource` | `/api/v1/pdca/dossiers/...`, `/plan-intake`, `/plans/{uuid}/dossier`, `/case-definitions` | Plan↔dossier link, prefill and creation routes (§7, §8) |
 | `PhaseConfigResource` | `/api/v1/admin/phase-configs` | Case configuration per case definition (§10) |
 | `ActieBouwblokResource` | `/api/v1/admin/actie-bouwblokken` (admin) and `/api/v1/pdca/actie-bouwblokken` (+ `/{id}/start`) | Action building blocks (§9) |
@@ -107,21 +108,23 @@ flowchart LR
 All tables via Liquibase (`src/main/resources/config/liquibase/`:
 `001-schema.xml` as the consolidated baseline, `002-seed-data.xml` for the
 demo case configs, `003-subdoel-mapping.xml` for the subdoelmapping,
-`004-drop-doelpositie.xml`, `005-plan-details-intake-dossier.xml` and
-`006-evaluation-session.xml`; new changes continue the numbering). Core:
+`004-drop-doelpositie.xml`, `005-plan-details-intake-dossier.xml`,
+`006-evaluation-session.xml` and `007-evaluation-content.xml`; new changes
+continue the numbering). Core:
 
 | Entity | Key | Holds |
 |---|---|---|
 | `PlanDetails` | `planUuid` | `dossierId` (1:1, unique), `intakeDossierId` (the intake this plan came from, §7), `caseDefinitionKey`, execution status (gepland/gestart), plan display status, positie, subdoelgroep (W&P segmentation, advised by the intake DMN), hoofddoel type |
-| `DoelDetails` | `doelUuid` | progress, sort order |
-| `InstrumentDetails` | `instrumentUuid` | hours, effectiveness, abort reason |
-| `ContactmomentDetails` | `contactmomentUuid` | evaluation type, doel progress, action points |
+| `DoelDetails` | `doelUuid` | subdoelen and the hoofddoel: `VoortgangStatus` (OP_KOERS, AANDACHT_NODIG, LOOPT_ACHTER; how an active subdoel is going, shown in the plan tabs), internal and external note, sort order; plus the numeric `voortgangScore`/`voortgangToelichting` that the intake and the `evaluate` task form still write |
+| `InstrumentDetails` | `instrumentUuid` | hours, effectiveness, internal and external note, abort reason |
+| `ContactmomentDetails` | `contactmomentUuid` | evaluation type, deelnemers, doel progress and action points (intake contactmomenten), `evaluationSessionId` when the contactmoment is a completed evaluation |
 | `InvolvedParty` | own id | involved parties per plan, incl. the main responsible |
 | `Action` | own id | actions per doel, optionally attached to an instrument (`instrumentUuid`; W&P: instrument → 0..n taken, shown in the instrument block): title/description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED), `Uitvoering` (LOKAAL or BOUWBLOK), and for building block actions `bouwblokKoppelingId` + `gzacProcessInstanceId` + result |
 | `ActieBouwblokKoppeling` | own id | admin link case type→process (§9): `soort` (ACTIE or PRODUCT), `uitvoeringsvorm` (BOUWBLOK or DOSSIER), name, `caseDefinitionKey`, building block key/version + `processDefinitionKey` (BOUWBLOK) or `productCaseDefinitionKey` (DOSSIER), `pluginConfigId`, doeltype uuids (JSON) |
 | `PhaseConfig` | `caseDefinitionKey` | case configuration (§10) |
 | `StoredPluginConfiguration` | `configId` | plugin configurations pushed by GZAC: serviceToken, gzacBaseUrl, title, properties |
-| `EvaluationSession` | own id | an evaluation a user runs on a plan (§6.1): `dossierId`, `planUuid`, `caseDefinitionKey`, owner `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED/CANCELLED), start/end time; at most one RUNNING per user (partial unique index) |
+| `EvaluationSession` | own id | an evaluation a user runs on a plan (§6.1): `dossierId`, `planUuid`, `caseDefinitionKey`, owner `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED), start/end time, the contactmoment fields (`evaluatieType`, `deelnemers`, `verslag`) and, once completed, `contactmomentUuid`; at most one RUNNING per user (partial unique index) |
+| `EvaluationChange` | own id | one plan change recorded in a session (§6.1): `subjectType` (PLAN, HOOFDDOEL, SUBDOEL, INSTRUMENT, ACTIE) + `subjectUuid` + `subjectTitel`, `soort`, `vanWaarde`/`naarWaarde` (display values), `toelichting` (the reason given in the evaluation) |
 
 ## 6. GZAC integration: the external-plugin host contract
 
@@ -190,18 +193,29 @@ navigation, `/data` calls, side-panel offers) uses the
 `valtimo-plugin`/`valtimo-host` postMessage protocol in
 `frontend/src/shared/bridge.ts`.
 
-### 6.1 Evaluation sessions in GZAC's side panel
+### 6.1 Evaluations in GZAC's side panel
 
 GZAC has an app-wide side panel next to the page content that survives
 navigation. It knows nothing about evaluations: a plugin surface *offers*
 content (`offerPanel`), the latest offer takes the panel over, re-offering the
 same key only shows it again, and closing the panel only hides it. The app
 offers its `side-panel` bundle `evaluation` (`evaluation-panel.html`), keyed
-by the session id. Everything about the evaluation itself lives here:
+by the session id. Everything about the evaluation itself lives here.
+
+**What an evaluation is.** The set of changes made to the plan while the
+evaluation runs, plus the contactmoment information: type (one of the case
+type's evaluation types; EVALUATION when offered), deelnemers and the
+gespreksverslag (how the inwoner is doing, what was discussed, why the plan
+changes). Changes are made where they are always made — in the Planoverzicht
+and Doelen & Acties tabs — and take effect immediately, like any other plan
+edit: an evaluation is not a transaction and cannot be rolled back. The side
+panel shows a live summary of those changes and holds the contactmoment
+fields.
 
 - **Session = user + plan.** `EvaluationSession` records the owner (verified
-  login, §6), the dossier and the plan. A running session is only returned to
-  its owner (`GET /evaluation-sessions/current` on the `/data` route).
+  login, §6), the dossier and the plan. A running session, its contactmoment
+  fields and its changes are only reachable through the `/data` route and
+  only for the owner; colleagues see an evaluation once it is completed.
 - **One running session per user.** Starting a second one returns 409 with
   the running session; the Evaluaties tab then says to finish that one first.
 - **Start** — the "Start evaluatie" button on the Evaluaties tab starts a
@@ -211,16 +225,57 @@ by the session id. Everything about the evaluation itself lives here:
   when the user's running session belongs to this dossier, the panel is
   offered again, so it reappears after it was closed or after a page reload.
   Elsewhere in GZAC the panel only stays while it is open in that browser tab.
-- **End** — only explicitly, in the panel: "Evaluatie afronden"
-  (`/evaluation-sessions/current/complete`) or "Annuleren" with an inline
-  confirmation (`/cancel`); then the panel withdraws itself
-  (`withdrawPanel`). A panel whose session is no longer running says so
-  and offers to close.
+  While the session is on this plan, the Planoverzicht and Doelen & Acties
+  tabs show an "Evaluatie loopt" banner.
+- **Recording changes** — after every successful plan change the tab calls
+  `recordEvaluationChange` (`POST /evaluation-sessions/current/changes`).
+  Without a running session on this plan this is a no-op; a failure to record
+  never blocks or undoes the change. Each change carries the onderdeel
+  (`subjectType` + uuid + title), its `soort` (e.g. `SUBDOEL_TOEGEVOEGD`,
+  `VOORTGANG`, `INTERNE_NOTITIE`, `INSTRUMENT_AFGEBROKEN`,
+  `HOOFDDOEL_GEWISSELD`, `POSITIE`; labels in `labels.ts`) and display values
+  `vanWaarde`/`naarWaarde`. Value changes are sent with `samenvoegen`: a later
+  change of the same kind on the same onderdeel updates the earlier one's
+  `naarWaarde`, and a value changed back to where it started drops out. The
+  backend rejects a change for another plan than the session's (409).
+- **Panel and tabs stay in sync** over a `BroadcastChannel`
+  (`pdca-evaluation`): the panel and the tabs are separate iframes, but all
+  are served from this app's origin. Events: `started`, `changed` (the panel
+  reloads its changes) and `completed` (tabs drop the banner, the Evaluaties
+  tab reloads).
+- **The panel** shows plan and start time, the contactmoment fields (saved
+  automatically, `POST /evaluation-sessions/current/draft`) and the changes
+  grouped per onderdeel, each with an optional reason
+  (`/evaluation-sessions/current/change-toelichting`) — e.g. why an
+  instrument stops, which may matter for subsidies.
+- **End** — only explicitly and only by completing; there is no cancel.
+  "Evaluatie afronden" needs a gespreksverslag and asks for confirmation;
+  `POST /evaluation-sessions/current/complete` creates an afgerond
+  contactmoment in Open Plan with the verslag as notitie, a
+  `ContactmomentDetails` row (type, deelnemers, `evaluationSessionId`) and
+  marks the session COMPLETED. Closing the panel only hides it.
+- **Evaluaties tab** — lists the plan's contactmomenten; a completed
+  evaluation shows who ran it, the deelnemers, the gespreksverslag and its
+  plan changes with their reasons (`GET /api/v1/pdca/evaluaties`). Planned
+  and intake contactmomenten keep their notitie, doelvoortgang and
+  actiepunten.
 - The panel fills the full panel height and follows GZAC's light/dark theme
   (the `theme` in `init` plus `themeChanged`, bridge `onHostThemeChanged`),
-  on the same `--cds-background` surface as GZAC's panel and menu.
-- The panel currently shows session information only (plan, start, owner);
-  the evaluation content itself is not in the panel yet.
+  on the same `--cds-layer` surface as GZAC's panel and menu.
+
+### 6.2 Voortgang and notes in the plan tabs
+
+- **Voortgangsstatus per subdoel** — an active subdoel gets one of *Op
+  koers*, *Aandacht nodig* or *Loopt achter* (`DoelDetails.voortgangStatus`),
+  chosen in the subdoel card and shown as a tag in its header. The
+  Planoverzicht KPI "Voortgang" counts the active subdoelen on koers and
+  those that need attention. The numeric `voortgangScore` is no longer shown
+  in the plan tabs; the intake (doelen grid) and the `evaluate` task form
+  still write it.
+- **Internal and external note** on every subdoel, on the active hoofddoel
+  (expand its card) and on every instrument (under "Voortgang & notities"):
+  internal is for colleagues only, external may be shared with the inwoner.
+  Both are saved together on `DoelDetails` resp. `InstrumentDetails`.
 
 ## 7. Plan ↔ dossier
 
@@ -254,9 +309,9 @@ active hoofddoel → subdoelen. Subdoelen added later (goals tab, update-goals
 task form) attach to the active hoofddoel too. Switching the hoofddoel on
 the overview tab completes the current hoofddoel-doel (it stays visible as
 history in the goals tab), creates a new one and re-points the subdoelen.
-The goals tab renders the active hoofddoel as a fixed card (the strategy)
-above the flat subdoelen list; doelvoortgang in evaluations covers only the
-subdoelen.
+The goals tab renders the active hoofddoel as a fixed card (the strategy,
+expandable for its notes) above the flat subdoelen list; voortgang (status
+and doelvoortgang) covers only the subdoelen.
 2. **Via the start form** — an optional `planId` field in the dossier content;
    when a PDCA view opens a dossier without a linked plan the frontend calls
    `POST /dossiers/{id}/resolve-plan` and the backend links the plan "under
@@ -676,7 +731,9 @@ field once the register owns the catalog.
 
 - **React bundles** in `frontend/src/` (`plan-overview`, `plan-goals`,
   `plan-evaluations`, `pdca-admin`, `evaluation-panel`), shared API clients,
-  bridge and the evaluation-session client (`evaluationSession.ts`) in
+  bridge, the evaluation-session client (`evaluationSession.ts`: session
+  calls, change recording and the `BroadcastChannel` between panel and tabs)
+  and shared components (`WijzigingenLijst`, `EvaluatieBanner`) in
   `frontend/src/shared/`. Vite builds into
   `src/main/resources/static/bundles/react/` (gitignored; build after a fresh
   clone).
