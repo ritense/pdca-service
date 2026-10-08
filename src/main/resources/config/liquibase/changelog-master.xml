@@ -10,5 +10,6 @@
     <include file="config/liquibase/003-subdoel-mapping.xml"/>
     <include file="config/liquibase/004-drop-doelpositie.xml"/>
     <include file="config/liquibase/005-plan-details-intake-dossier.xml"/>
+    <include file="config/liquibase/006-evaluation-session.xml"/>
 
 </databaseChangeLog>

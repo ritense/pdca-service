@@ -8,6 +8,7 @@ const bundles = [
   'plan-goals',
   'plan-evaluations',
   'pdca-admin',
+  'evaluation-panel',
 ];
 
 const outDir = resolve(__dirname, '../src/main/resources/static/bundles/react');

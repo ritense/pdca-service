@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Evaluation sessions: an evaluation a user runs on a plan (dossier), shown in
+  GZAC's side panel while it is running. One running session per user, enforced
+  by a partial unique index.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="006-01-create-evaluation-session" author="pdca">
+        <createTable tableName="evaluation_session">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="dossier_id" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="case_definition_key" type="VARCHAR(255)"/>
+            <column name="plan_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="user_login" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="started_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ended_at" type="TIMESTAMP"/>
+        </createTable>
+        <createIndex tableName="evaluation_session" indexName="idx_evaluation_session_dossier_id">
+            <column name="dossier_id"/>
+        </createIndex>
+        <sql>
+            CREATE UNIQUE INDEX uq_evaluation_session_running_user
+                ON evaluation_session (user_login) WHERE status = 'RUNNING'
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

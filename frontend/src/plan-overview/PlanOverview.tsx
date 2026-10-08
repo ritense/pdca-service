@@ -23,6 +23,7 @@ import {
 } from '@carbon/react';
 import { TrashCan } from '@carbon/react/icons';
 import { onInit, resizeIframe, GzacContext } from '../shared/bridge';
+import { syncEvaluationPanel } from '../shared/evaluationSession';
 import {
   openplan,
   pdca,
@@ -124,6 +125,7 @@ export function PlanOverview() {
           setLoading(false);
           return;
         }
+        syncEvaluationPanel(ctx.documentId);
         const result = await planVoorDossier(ctx.documentId);
         if (!result.plan) {
           setError(result.fout);
@@ -457,7 +459,7 @@ export function PlanOverview() {
             {plan.startdatum && <span>Start: {formatDate(plan.startdatum)}</span>}
             {details?.streefEinddatum && <span>Streefdatum: {formatDate(details.streefEinddatum)}</span>}
             {plan.einddatum && <span>Einde: {formatDate(plan.einddatum)}</span>}
-            {details?.dossierId && <span>Gekoppeld dossier: <code style={{fontSize: 11}}>{details.dossierId}</code></span>}
+            {details?.dossierId && <span>Gekoppeld dossier: <code className="pdca-text-wrap" style={{fontSize: 11}}>{details.dossierId}</code></span>}
           </div>
         </div>
 
@@ -618,6 +620,7 @@ export function PlanOverview() {
                 {betrokkenen.length === 0 ? (
                   <p className="pdca-empty">Geen verantwoordelijkheden</p>
                 ) : (
+                  <div className="pdca-table-scroll">
                   <DataTable rows={partyRows} headers={partyHeaders}>
                     {({ rows, headers, getTableProps, getHeaderProps, getRowProps }: any) => (
                       <Table {...getTableProps()} size="sm">
@@ -657,6 +660,7 @@ export function PlanOverview() {
                       </Table>
                     )}
                   </DataTable>
+                  </div>
                 )}
               </div>
             </Tile>

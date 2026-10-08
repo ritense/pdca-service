@@ -5,6 +5,7 @@ import {
 } from '@carbon/react';
 import { Add, Edit, TrashCan, ChevronRight, ChevronDown, Checkmark, Close, StopOutline, Launch } from '@carbon/react/icons';
 import { onInit, resizeIframe, navigateHost } from '../shared/bridge';
+import { syncEvaluationPanel } from '../shared/evaluationSession';
 import {
   openplan, openproduct, pdca, planVoorDossier, urn, deleteDoelCascade, afbreekDoelCascade, afbreekInstrument, productTypeByUrn,
   parseDossierUrn,
@@ -59,6 +60,7 @@ export function PlanGoals() {
     onInit(ctx => {
       docRef.current = ctx.documentId || null;
       loadData();
+      syncEvaluationPanel(docRef.current);
     });
   }, []);
 
@@ -345,9 +347,9 @@ export function PlanGoals() {
       <div className="pdca-container">
         {error && <InlineNotification kind="error" title="Fout" subtitle={error} lowContrast onCloseButtonClick={() => setError(null)} />}
         {productStarted && (
-          <div style={{display: 'flex', alignItems: 'center', gap: 8}}>
+          <div className="pdca-row">
             <InlineNotification kind="success" title="Product aangevraagd" subtitle={productStarted.message}
-              lowContrast onCloseButtonClick={() => setProductStarted(null)} style={{flex: 1}} />
+              lowContrast onCloseButtonClick={() => setProductStarted(null)} style={{flex: '1 1 16rem'}} />
             {productStarted.dossier && (
               <Button size="sm" kind="tertiary" renderIcon={Launch}
                 onClick={() => openDossier(productStarted.dossier!.caseDefinitionKey, productStarted.dossier!.documentId)}>
@@ -361,11 +363,11 @@ export function PlanGoals() {
         {actiefHoofddoel && (
           <div className="pdca-goal-card" style={{marginBottom: '1rem'}}>
             <div className="pdca-goal-header" style={{cursor: 'default'}}>
-              <div style={{display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0}}>
+              <div className="pdca-row-main">
                 <Tag size="sm" type="high-contrast">Hoofddoel</Tag>
-                <span style={{fontWeight: 600}}>{actiefHoofddoel.titel}</span>
+                <span className="pdca-text-wrap" style={{fontWeight: 600}}>{actiefHoofddoel.titel}</span>
                 {actiefHoofddoel.beschrijving && (
-                  <span style={{fontSize: 12, color: 'var(--cds-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                  <span className="pdca-text-ellipsis" style={{fontSize: 12, color: 'var(--cds-text-secondary)'}}>
                     — {actiefHoofddoel.beschrijving}
                   </span>
                 )}
@@ -377,8 +379,8 @@ export function PlanGoals() {
           </div>
         )}
         {eerdereHoofddoelen.map(d => (
-          <div key={d.uuid} style={{display: 'flex', alignItems: 'center', gap: 8, margin: '0 0 8px 4px', fontSize: 12, color: 'var(--cds-text-secondary)'}}>
-            <span>Eerder hoofddoel: {d.titel}</span>
+          <div key={d.uuid} className="pdca-tags" style={{alignItems: 'center', margin: '0 0 8px 4px', fontSize: 12, color: 'var(--cds-text-secondary)'}}>
+            <span className="pdca-text-wrap">Eerder hoofddoel: {d.titel}</span>
             <Tag size="sm" type={doelStatusTag(d.status, d.resultaat) as any}>{doelStatusLabel(d.status, d.resultaat)}</Tag>
           </div>
         ))}
@@ -400,11 +402,11 @@ export function PlanGoals() {
           return (
             <div key={doel.uuid} className={`pdca-goal-card status-${doel.status}`}>
               <div className="pdca-goal-header" onClick={() => toggle(doel.uuid, setExpanded)}>
-                <div style={{display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0}}>
+                <div className="pdca-row-main" style={{flexWrap: 'nowrap'}}>
                   <ChevronRight size={16} style={{transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0}} />
-                  <span style={{fontWeight: 500}}>{doel.titel}</span>
+                  <span className="pdca-text-wrap" style={{fontWeight: 500}}>{doel.titel}</span>
                 </div>
-                <div style={{display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0}}>
+                <div className="pdca-row-actions">
                   <div className="pdca-progress-mini">
                     <div className={`pdca-progress-mini-fill ${pct >= 75 ? 'high' : pct >= 40 ? 'mid' : ''}`} style={{width: `${pct}%`}} />
                   </div>
@@ -415,7 +417,7 @@ export function PlanGoals() {
                 </div>
               </div>
               {isOpen && (
-                <div className="pdca-goal-body" style={{ padding: '1rem 1.25rem 1.25rem 3.25rem' }}>
+                <div className="pdca-goal-body">
                   {doel.beschrijving && <p style={{color: 'var(--cds-text-secondary)', fontSize: 13, marginBottom: 16}}>{doel.beschrijving}</p>}
                   {doel.status === 'geannuleerd' && doel.toelichtingResultaat && (
                     <InlineNotification kind="warning" title="Afgebroken" subtitle={doel.toelichtingResultaat} lowContrast hideCloseButton style={{marginBottom: 16}} />
@@ -448,7 +450,7 @@ export function PlanGoals() {
                   <div className="pdca-section-block">
                     <div className="pdca-section-title">
                       <span>Acties ({da.length})</span>
-                      <div style={{display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end'}}>
+                      <div className="pdca-row-actions">
                         <Button size="sm" kind="ghost" renderIcon={Add} onClick={() => setActionModal({ doelUuid: doel.uuid })}>Handmatige actie</Button>
                         {/* Actie building blocks (PDCA Beheer) with a matching doeltype:
                             choosing one creates the action and starts the building block
@@ -468,22 +470,12 @@ export function PlanGoals() {
                                 Actie kiezen
                               </Button>
                               {open && !unavailable && (
-                                <div style={{
-                                  position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 10,
-                                  minWidth: 260, background: 'var(--cds-layer, #fff)',
-                                  border: '1px solid var(--cds-border-subtle)',
-                                  boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-                                }}>
+                                <div className="pdca-menu">
                                   {available.map(k => (
                                     <button key={k.id} type="button"
                                       disabled={startingBouwblok === k.id + doel.uuid}
                                       onClick={() => handleStartBouwblok(k, doel.uuid)}
-                                      style={{
-                                        display: 'block', width: '100%', textAlign: 'left',
-                                        padding: '10px 12px', background: 'none', border: 'none',
-                                        borderBottom: '1px solid var(--cds-border-subtle)',
-                                        cursor: 'pointer', font: 'inherit',
-                                      }}>
+                                      className="pdca-menu-item">
                                       <span style={{fontSize: 13, fontWeight: 500}}>
                                         {startingBouwblok === k.id + doel.uuid ? 'Starten…' : k.naam}
                                       </span>
@@ -506,7 +498,7 @@ export function PlanGoals() {
                   <div className="pdca-section-block">
                     <div className="pdca-section-title">
                       <span>Instrumenten / voorzieningen ({di.length})</span>
-                      <div style={{display: 'flex', gap: 4, alignItems: 'center', justifyContent: 'flex-end'}}>
+                      <div className="pdca-row-actions">
                         <Button size="sm" kind="ghost" renderIcon={Add} onClick={() => setInstrumentModal(doel.uuid)}>Handmatig product</Button>
                         {/* Product building blocks (PDCA Beheer) with a matching doeltype:
                             choosing one starts the request building block on the dossier.
@@ -527,22 +519,12 @@ export function PlanGoals() {
                                 Start product
                               </Button>
                               {open && !unavailable && (
-                                <div style={{
-                                  position: 'absolute', right: 0, top: 'calc(100% + 4px)', zIndex: 10,
-                                  minWidth: 260, background: 'var(--cds-layer, #fff)',
-                                  border: '1px solid var(--cds-border-subtle)',
-                                  boxShadow: '0 2px 6px rgba(0,0,0,0.2)',
-                                }}>
+                                <div className="pdca-menu">
                                   {available.map(k => (
                                     <button key={k.id} type="button"
                                       disabled={startingBouwblok === k.id + doel.uuid}
                                       onClick={() => handleStartProduct(k, doel.uuid)}
-                                      style={{
-                                        display: 'block', width: '100%', textAlign: 'left',
-                                        padding: '10px 12px', background: 'none', border: 'none',
-                                        borderBottom: '1px solid var(--cds-border-subtle)',
-                                        cursor: 'pointer', font: 'inherit',
-                                      }}>
+                                      className="pdca-menu-item">
                                       <span style={{fontSize: 13, fontWeight: 500}}>
                                         {startingBouwblok === k.id + doel.uuid ? 'Starten…' : k.naam}
                                       </span>
@@ -568,13 +550,13 @@ export function PlanGoals() {
                       return (
                         <div key={inst.uuid} style={{borderBottom: '1px solid var(--cds-border-subtle)'}}>
                           <div className="pdca-action-row" style={{borderBottom: 'none'}}>
-                            <div style={{display: 'flex', alignItems: 'center', gap: 8, flex: 1}}>
-                              <span>{inst.titel}</span>
+                            <div className="pdca-row-main">
+                              <span className="pdca-text-wrap">{inst.titel}</span>
                               {pt && <span style={{fontSize: 11, color: 'var(--cds-text-secondary)'}}>— {pt.organisaties[0]?.naam || pt.code}{pt.themas[0] ? ` · ${pt.themas[0].naam}` : ''}</span>}
                               {idet?.urenBesteed != null && <Tag size="sm" type="cool-gray">{idet.urenBesteed} uur</Tag>}
                               {idet?.effectiviteitScore != null && <Tag size="sm" type="teal">effectiviteit {idet.effectiviteitScore}/5</Tag>}
                             </div>
-                            <div style={{display: 'flex', alignItems: 'center', gap: 6}}>
+                            <div className="pdca-row-actions">
                               <Tag size="sm" type={doelStatusTag(inst.status, inst.resultaat) as any}>{doelStatusLabel(inst.status, inst.resultaat)}</Tag>
                               {dossierRef && (
                                 <Button size="sm" kind="ghost" renderIcon={Launch}
@@ -649,17 +631,17 @@ function ActieRow({ actie, onStatus }: { actie: Actie; onStatus: (id: string, ac
   const loopt = isBouwblok && actie.status !== 'COMPLETED' && actie.status !== 'REJECTED';
   return (
     <div className="pdca-action-row">
-      <div style={{display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0}}>
-        <span>{actie.title}</span>
+      <div className="pdca-row-main">
+        <span className="pdca-text-wrap">{actie.title}</span>
         {actie.assigneeName && <span style={{fontSize: 11, color: 'var(--cds-text-secondary)'}}>— {actie.assigneeName}</span>}
         {actie.dueDate && <span style={{fontSize: 11, color: 'var(--cds-text-secondary)'}}>({formatDate(actie.dueDate)})</span>}
         {actie.result && (actie.status === 'COMPLETED' || actie.status === 'REJECTED') && (
-          <span style={{fontSize: 11, color: 'var(--cds-text-secondary)', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+          <span className="pdca-text-ellipsis" style={{fontSize: 11, color: 'var(--cds-text-secondary)', fontStyle: 'italic'}}>
             — {actie.result}
           </span>
         )}
       </div>
-      <div style={{display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0}}>
+      <div className="pdca-row-actions">
         {isBouwblok && <Tag size="sm" type="teal" title="Uitgevoerd door een GZAC-bouwblokproces; afronden gaat via de taak in de takenlijst">Bouwblok</Tag>}
         {actie.priority && !isBouwblok && <Tag size="sm" type={actie.priority === 'HIGH' ? 'red' : 'gray'}>{priorityLabel(actie.priority)}</Tag>}
         <Tag size="sm" type={actie.status === 'COMPLETED' ? 'green' : actie.status === 'PENDING_REVIEW' ? 'warm-gray' : actie.status === 'IN_PROGRESS' ? 'blue' : 'gray'}>
@@ -694,7 +676,7 @@ function VoortgangForm({ instrument, details, onSave }: {
         <SelectItem value="" text="-" />
         {[1, 2, 3, 4, 5].map(n => <SelectItem key={n} value={String(n)} text={`${n} - ${['geen effect', 'weinig effect', 'neutraal', 'effectief', 'zeer effectief'][n - 1]}`} />)}
       </Select>
-      <TextInput id={`toel-${instrument.uuid}`} labelText="Toelichting" style={{minWidth: 240}}
+      <TextInput id={`toel-${instrument.uuid}`} labelText="Toelichting" style={{minWidth: 'min(240px, 100%)'}}
         value={toelichting} onChange={(e: any) => setToelichting(e.target.value)} />
       <Button size="sm" onClick={() => onSave(uren ? parseInt(uren, 10) : null, score ? parseInt(score, 10) : null, toelichting)}>Opslaan</Button>
     </div>

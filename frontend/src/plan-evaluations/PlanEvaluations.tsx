@@ -10,6 +10,9 @@ import {
   Plan, PlanDetails, Doel, DoelDetails, Contactmoment, ContactmomentDetails,
 } from '../shared/api';
 import { statusLabel, evalTypeLabel, formatDate, isHoofddoelType } from '../shared/labels';
+import {
+  EvaluationSession, offerEvaluationPanel, startEvaluationSession, syncEvaluationPanel,
+} from '../shared/evaluationSession';
 
 /** Doelvoortgang per evaluatie gaat over de subdoelen; het hoofddoel (de strategie) blijft erbuiten. */
 async function listSubdoelen(planUuid: string): Promise<Doel[]> {
@@ -36,9 +39,31 @@ export function PlanEvaluations() {
   const [filter, setFilter] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [createModal, setCreateModal] = useState(false);
+  const [session, setSession] = useState<EvaluationSession | null>(null);
+  const [sessionMessage, setSessionMessage] = useState<string | null>(null);
   const docRef = useRef<string | null>(null);
 
-  useEffect(() => { onInit(ctx => { docRef.current = ctx.documentId || null; loadData(); }); }, []);
+  useEffect(() => {
+    onInit(ctx => {
+      docRef.current = ctx.documentId || null;
+      loadData();
+      syncEvaluationPanel(docRef.current).then(setSession);
+    });
+  }, []);
+
+  const handleStartSession = async () => {
+    try {
+      setSessionMessage(null);
+      const result = await startEvaluationSession();
+      if (result.session) {
+        setSession(result.session);
+        await offerEvaluationPanel(result.session);
+      } else {
+        setSession(result.conflict);
+        setSessionMessage(result.message);
+      }
+    } catch (e: any) { setError(e.message); }
+  };
   useEffect(() => { resizeIframe(); }, [loading, contactmomenten, expanded]);
 
   const loadData = useCallback(async () => {
@@ -122,17 +147,31 @@ export function PlanEvaluations() {
     <Theme theme="g10">
       <div className="pdca-container">
         {error && <InlineNotification kind="error" title="Fout" subtitle={error} lowContrast onCloseButtonClick={() => setError(null)} />}
-        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24}}>
+        <div className="pdca-page-toolbar">
           <div>
-            <h1 style={{fontSize: '1.75rem', fontWeight: 600, marginBottom: 8}}>Evaluaties</h1>
-            <div style={{display: 'flex', gap: 16}}>
+            <h1>Evaluaties</h1>
+            <div className="pdca-tags">
               <Tag size="sm" type="gray">Totaal: {contactmomenten.length}</Tag>
               <Tag size="sm" type="green">Afgerond: {afgerond}</Tag>
               <Tag size="sm" type="warm-gray">Gepland: {gepland}</Tag>
             </div>
           </div>
-          <Button renderIcon={Add} onClick={() => setCreateModal(true)}>Nieuwe evaluatie</Button>
+          <div className="pdca-toolbar-actions">
+            {session?.dossierId === docRef.current
+              ? <Button kind="tertiary" onClick={() => offerEvaluationPanel(session!)}>Toon lopende evaluatie</Button>
+              : <Button kind="tertiary" disabled={!!session} onClick={handleStartSession}>Start evaluatie</Button>}
+            <Button renderIcon={Add} onClick={() => setCreateModal(true)}>Nieuwe evaluatie</Button>
+          </div>
         </div>
+        {session && session.dossierId !== docRef.current && (
+          <InlineNotification
+            kind="info"
+            title="Je hebt een lopende evaluatie voor een ander plan"
+            subtitle={sessionMessage ?? 'Rond die eerst af of annuleer hem voordat je hier een evaluatie start.'}
+            lowContrast
+            hideCloseButton
+          />
+        )}
 
         <div className="pdca-phase-bar">
           <span style={{fontSize: 12, fontWeight: 600, color: 'var(--cds-text-secondary)'}}>Filter:</span>
@@ -151,9 +190,9 @@ export function PlanEvaluations() {
           const actiepunten = tryParse(cmd?.actiepunten);
           const evalType = cmd?.evaluatieType || '';
           return (
-            <div key={cm.uuid} className={`pdca-eval-card type-${evalType}`} style={{marginBottom: 8}}>
-              <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 20px', cursor: 'pointer'}} onClick={() => toggle(cm.uuid)}>
-                <div style={{display: 'flex', alignItems: 'center', gap: 10, flex: 1}}>
+            <div key={cm.uuid} className={`pdca-eval-card type-${evalType}`}>
+              <div className="pdca-row pdca-eval-header" onClick={() => toggle(cm.uuid)}>
+                <div className="pdca-row-main">
                   <ChevronRight size={16} style={{transform: isOpen ? 'rotate(90deg)' : 'none', transition: '0.2s', flexShrink: 0}} />
                   {evalType && (
                     <Tag size="sm" type={evalType === 'INTAKE' ? 'purple' : evalType === 'CRISIS' ? 'red' : evalType === 'INSPECTION' ? 'warm-gray' : evalType === 'EVALUATION' ? 'green' : 'blue'}>
@@ -164,12 +203,12 @@ export function PlanEvaluations() {
                     {cm.status === 'actief' ? 'Gepland' : statusLabel(cm.status)}
                   </Tag>
                   <span style={{fontSize: 13, color: 'var(--cds-text-secondary)'}}>{cm.datum ? formatDate(cm.datum) : 'Geen datum'}</span>
-                  {cm.notitie && <span style={{fontSize: 13, color: 'var(--cds-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 300}}>{cm.notitie}</span>}
+                  {cm.notitie && <span className="pdca-text-ellipsis" style={{fontSize: 13, color: 'var(--cds-text-primary)', flex: '1 1 8rem'}}>{cm.notitie}</span>}
                 </div>
                 <Button size="sm" kind="danger--ghost" renderIcon={TrashCan} iconDescription="Verwijderen" hasIconOnly onClick={(e: any) => { e.stopPropagation(); handleDelete(cm.uuid); }} />
               </div>
               {isOpen && (
-                <div style={{padding: '0 20px 20px 46px', borderTop: '1px solid var(--cds-border-subtle)'}}>
+                <div className="pdca-eval-body">
                   {cmd?.deelnemers && <p style={{fontSize: 12, color: 'var(--cds-text-secondary)', marginTop: 12}}>Deelnemers: {cmd.deelnemers}</p>}
                   {cm.notitie && <div className="pdca-info-block" style={{marginTop: 12}}>
                     <div className="pdca-info-label">Notitie</div>
@@ -195,8 +234,8 @@ export function PlanEvaluations() {
                       <div className="pdca-section-title">Actiepunten</div>
                       {actiepunten.map((ap: string, j: number) => (
                         <div key={j} className="pdca-action-row">
-                          <span>{ap}</span>
-                          <Select id={`ap-doel-${cm.uuid}-${j}`} size="sm" labelText="" hideLabel style={{minWidth: 180}}>
+                          <span className="pdca-text-wrap" style={{flex: '1 1 12rem'}}>{ap}</span>
+                          <Select id={`ap-doel-${cm.uuid}-${j}`} size="sm" labelText="" hideLabel style={{minWidth: 'min(180px, 100%)'}}>
                             <SelectItem value="" text="Maak actie onder doel..." />
                             {doelen.filter(d => d.status !== 'geannuleerd').map(d => (
                               <SelectItem key={d.uuid} value={d.uuid} text={d.titel} />

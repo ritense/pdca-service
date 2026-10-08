@@ -155,8 +155,8 @@ the proxy.
 
 Runtime integration only: register the app by URL (`http://localhost:7500`) in a GZAC instance
 that supports external plugin tabs, then create a plugin configuration for the discovered
-"PDCA Planbeheer" plugin. The case tabs (`plan-overview`, `plan-goals`, `plan-evaluations`) and
-the `pdca-admin` view are loaded as sandboxed iframes and talk to their host page via the
+"PDCA Planbeheer" plugin. The case tabs (`plan-overview`, `plan-goals`, `plan-evaluations`),
+the `pdca-admin` view and the `evaluation` side panel are loaded as sandboxed iframes and talk to their host page via the
 `valtimo-plugin`/`valtimo-host` postMessage protocol implemented in
 [`frontend/src/shared/bridge.ts`](./frontend/src/shared/bridge.ts).
 

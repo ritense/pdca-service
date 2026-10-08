@@ -41,12 +41,14 @@ class PluginHostController(
         /**
          * This app's GZAC API footprint: capability gzac_api plus the
          * endpoint allowlist for the serviceToken, as the single source for
-         * the manifest below.
+         * the manifest below. Capability frontend_data declares the `/data`
+         * route ([PluginDataController]); the user tokens GZAC forwards there
+         * are bounded by the same allowlist intersected with the user's PBAC.
          * Note: granted endpoints also work under /api/management (the token
          * carries ADMIN authority for that; only GZAC's hard denylist stays
          * closed) — this app deliberately sticks to /api/v1 endpoints.
          */
-        val CAPABILITIES = listOf("gzac_api")
+        val CAPABILITIES = listOf("gzac_api", "frontend_data")
         val GRANTED_ENDPOINTS: List<Map<String, String>> = listOf(
             // Create a dossier for a plan (plan = dossier 1:1, standalone and intake route).
             mapOf(
@@ -229,6 +231,11 @@ class PluginHostController(
                 "type" to "task-form",
                 "key" to "evaluate",
                 "path" to "/bundles/evaluate.html"
+            ),
+            mapOf(
+                "type" to "side-panel",
+                "key" to "evaluation",
+                "path" to "/bundles/evaluation-panel.html"
             )
         ),
         // BPMN-bindable action handlers, executed by PluginActionController.

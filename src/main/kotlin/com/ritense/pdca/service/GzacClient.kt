@@ -474,6 +474,56 @@ class GzacClient(
             )
     }
 
+    /**
+     * Verifies a downscoped user token (forwarded by the GZAC frontend on a
+     * `/data` call) against GZAC's introspection endpoint and returns the
+     * user's login. The token must belong to [configurationId]. Fails closed:
+     * an unreachable GZAC is a 503, never a pass.
+     */
+    fun introspectUserToken(configurationId: String, userToken: String): String {
+        val response = try {
+            restClientBuilder.clone().build()
+                .get()
+                .uri("${baseUrlFor(configurationId)}/api/v1/external-plugin/user-token/introspect")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer $userToken")
+                .retrieve()
+                .body(Map::class.java)
+        } catch (e: HttpClientErrorException) {
+            throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Gebruikerstoken is niet geldig")
+        } catch (e: Exception) {
+            log.warn("User token introspection failed: ${e.message}")
+            throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "GZAC is niet bereikbaar om de gebruiker te controleren")
+        }
+        if (response?.get("configurationId")?.toString() != configurationId) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Gebruikerstoken hoort niet bij deze configuratie")
+        }
+        return response["subject"] as? String
+            ?: throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "GZAC gaf geen gebruiker terug")
+    }
+
+    /** Can the user behind [userToken] read the dossier? GZAC applies PBAC to user tokens. */
+    fun userCanReadDocument(configurationId: String, userToken: String, documentId: String): Boolean =
+        try {
+            restClientBuilder.clone().build()
+                .get()
+                .uri("${baseUrlFor(configurationId)}/api/v1/document/$documentId")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer $userToken")
+                .retrieve()
+                .toBodilessEntity()
+            true
+        } catch (e: HttpClientErrorException) {
+            false
+        } catch (e: Exception) {
+            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossier $documentId controleren mislukt: ${e.message}")
+        }
+
+    private fun baseUrlFor(configurationId: String): String {
+        val configured = properties.gzac?.baseUrl?.trimEnd('/')?.takeIf { it.isNotBlank() }
+        val pushed = configurationStore.get(configurationId)?.gzacBaseUrl?.trimEnd('/')?.takeIf { it.isNotBlank() }
+        return configured ?: pushed
+            ?: throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Geen GZAC-adres bekend voor configuratie $configurationId")
+    }
+
     private fun resolveAccess(): Pair<String, String> {
         val gzac = properties.gzac
         // The pushed gzacBaseUrl is the host's server-to-server callback URL

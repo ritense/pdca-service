@@ -100,14 +100,15 @@ flowchart LR
 | `ActieBouwblokResource` | `/api/v1/admin/actie-bouwblokken` (admin) and `/api/v1/pdca/actie-bouwblokken` (+ `/{id}/start`) | Action building blocks (§9) |
 | `RegisterProxyController` | `/openplan/**`, `/openproduct/**` | Native register proxy with token injection |
 | `PluginHostController` et al. | `/api/host/*`, `/bundles/*`, `/health`, `/plugins/{id}/{version}/...` | Plugin host contract (§6) |
+| `PluginDataController` | `POST /plugins/pdca/{version}/data` | The contract's `/data` route: user-verified calls proxied by GZAC; evaluation sessions (§6.1) |
 
 ## 5. Overlay data model
 
 All tables via Liquibase (`src/main/resources/config/liquibase/`:
 `001-schema.xml` as the consolidated baseline, `002-seed-data.xml` for the
 demo case configs, `003-subdoel-mapping.xml` for the subdoelmapping,
-`004-drop-doelpositie.xml` and `005-plan-details-intake-dossier.xml`; new
-changes continue the numbering). Core:
+`004-drop-doelpositie.xml`, `005-plan-details-intake-dossier.xml` and
+`006-evaluation-session.xml`; new changes continue the numbering). Core:
 
 | Entity | Key | Holds |
 |---|---|---|
@@ -120,6 +121,7 @@ changes continue the numbering). Core:
 | `ActieBouwblokKoppeling` | own id | admin link case type→process (§9): `soort` (ACTIE or PRODUCT), `uitvoeringsvorm` (BOUWBLOK or DOSSIER), name, `caseDefinitionKey`, building block key/version + `processDefinitionKey` (BOUWBLOK) or `productCaseDefinitionKey` (DOSSIER), `pluginConfigId`, doeltype uuids (JSON) |
 | `PhaseConfig` | `caseDefinitionKey` | case configuration (§10) |
 | `StoredPluginConfiguration` | `configId` | plugin configurations pushed by GZAC: serviceToken, gzacBaseUrl, title, properties |
+| `EvaluationSession` | own id | an evaluation a user runs on a plan (§6.1): `dossierId`, `planUuid`, `caseDefinitionKey`, owner `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED/CANCELLED), start/end time; at most one RUNNING per user (partial unique index) |
 
 ## 6. GZAC integration: the external-plugin host contract
 
@@ -130,12 +132,22 @@ The app implements the Valtimo **"URL app" contract** (`plugin/`):
   actions. GZAC discovers the app by URL registration.
 - **Views** — 3 case tabs (`plan-overview`, `plan-goals`, `plan-evaluations`),
   1 admin page (`pdca-admin`), 3 task forms (`create-plan`, `update-goals`,
-  `evaluate`). Each view is an html bundle under `/bundles/*` that GZAC loads
-  as a sandboxed iframe.
+  `evaluate`) and 1 side panel (`evaluation`, §6.1). Each view is an html
+  bundle under `/bundles/*` that GZAC loads as a sandboxed iframe.
 - **Configuration push** — when a plugin configuration is created/saved, GZAC
   pushes `configId` + `serviceToken` + `gzacBaseUrl` to
   `POST /api/host/configurations/{configId}`; the app persists this
   (`StoredPluginConfiguration`) so restarts need no re-linking.
+- **Capability `frontend_data` + the `/data` route** — `POST
+  /plugins/pdca/{version}/data` (`PluginDataController`) serves the iframe
+  calls GZAC proxies with the user's downscoped token (bridge
+  `pluginData`). The app verifies that token against GZAC's introspection
+  endpoint (`GzacClient.introspectUserToken`) and gets the user's login back;
+  this is the only place the app knows **who** the user is, so everything
+  user-bound goes through it. It fails closed (GZAC unreachable = 503). The
+  `context` in the request comes from the GZAC frontend but is not trusted:
+  dossier access is checked as the user (`GET /api/v1/document/{id}` with the
+  user token, so GZAC applies PBAC).
 - **Capability `gzac_api` + endpoint grants** — the manifest declares exactly
   which GZAC endpoints the app calls with the serviceToken (allowlist; PBAC is
   bypassed for granted endpoints). Currently: create dossier
@@ -174,8 +186,41 @@ The app implements the Valtimo **"URL app" contract** (`plugin/`):
   instead of an unexplained empty form.
 
 The iframe↔host communication (passing the documentId, completing a task,
-navigation) uses the `valtimo-plugin`/`valtimo-host` postMessage protocol in
+navigation, `/data` calls, side-panel offers) uses the
+`valtimo-plugin`/`valtimo-host` postMessage protocol in
 `frontend/src/shared/bridge.ts`.
+
+### 6.1 Evaluation sessions in GZAC's side panel
+
+GZAC has an app-wide side panel next to the page content that survives
+navigation. It knows nothing about evaluations: a plugin surface *offers*
+content (`offerPanel`), the latest offer takes the panel over, re-offering the
+same key only shows it again, and closing the panel only hides it. The app
+offers its `side-panel` bundle `evaluation` (`evaluation-panel.html`), keyed
+by the session id. Everything about the evaluation itself lives here:
+
+- **Session = user + plan.** `EvaluationSession` records the owner (verified
+  login, §6), the dossier and the plan. A running session is only returned to
+  its owner (`GET /evaluation-sessions/current` on the `/data` route).
+- **One running session per user.** Starting a second one returns 409 with
+  the running session; the Evaluaties tab then says to finish that one first.
+- **Start** — the "Start evaluatie" button on the Evaluaties tab starts a
+  session (`POST /evaluation-sessions`, dossier from the tab's GZAC context)
+  and offers the panel.
+- **Back on the plan** — every plan tab calls `syncEvaluationPanel` on load:
+  when the user's running session belongs to this dossier, the panel is
+  offered again, so it reappears after it was closed or after a page reload.
+  Elsewhere in GZAC the panel only stays while it is open in that browser tab.
+- **End** — only explicitly, in the panel: "Evaluatie afronden"
+  (`/evaluation-sessions/current/complete`) or "Annuleren" with an inline
+  confirmation (`/cancel`); then the panel withdraws itself
+  (`withdrawPanel`). A panel whose session is no longer running says so
+  and offers to close.
+- The panel fills the full panel height and follows GZAC's light/dark theme
+  (the `theme` in `init` plus `themeChanged`, bridge `onHostThemeChanged`),
+  on the same `--cds-background` surface as GZAC's panel and menu.
+- The panel currently shows session information only (plan, start, owner);
+  the evaluation content itself is not in the panel yet.
 
 ## 7. Plan ↔ dossier
 
@@ -630,13 +675,22 @@ field once the register owns the catalog.
 ## 11. Frontend
 
 - **React bundles** in `frontend/src/` (`plan-overview`, `plan-goals`,
-  `plan-evaluations`, `pdca-admin`), shared API clients and bridge in
+  `plan-evaluations`, `pdca-admin`, `evaluation-panel`), shared API clients,
+  bridge and the evaluation-session client (`evaluationSession.ts`) in
   `frontend/src/shared/`. Vite builds into
   `src/main/resources/static/bundles/react/` (gitignored; build after a fresh
   clone).
 - **Task forms** (`create-plan.html`, `update-goals.html`, `evaluate.html`)
   are hand-written static html files in `static/bundles/`, committed and
   served as-is.
+- **Responsive to the iframe width.** The case tabs get narrow when GZAC's
+  side panel is open, so layout lives in the shared classes of
+  `shared/styles.css` (`pdca-row`, `pdca-row-main`, `pdca-row-actions`,
+  `pdca-page-toolbar`, `pdca-menu`, …) instead of inline styles: rows wrap
+  their trailing tags/buttons, grids collapse to one column below 960px, and
+  below 640px the indents and paddings shrink. Media queries match the
+  iframe's own viewport. Keep layout out of inline `style` props — an inline
+  style cannot be overridden by those media queries.
 - Carbon Design System components; UI language is Dutch.
 
 ## 12. GZAC configuration as code (`gzac/`)

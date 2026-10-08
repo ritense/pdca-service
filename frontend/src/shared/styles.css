@@ -24,11 +24,114 @@ html, body {
   min-height: 100%;
 }
 
+/* Responsive building blocks. Media queries match the iframe's own width,
+   which shrinks with the GZAC side panel and the case's tab layout. */
+
+.pdca-page-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--pdca-spacing-05);
+  margin-bottom: var(--pdca-spacing-06);
+}
+
+.pdca-page-toolbar h1 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  margin-bottom: var(--pdca-spacing-03);
+}
+
+.pdca-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-03);
+}
+
+.pdca-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-03);
+}
+
+/* A row with a growing text part and a trailing block of tags/buttons;
+   the trailing block drops below the text when space runs out. */
+.pdca-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pdca-spacing-03);
+}
+
+.pdca-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pdca-spacing-03);
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.pdca-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.pdca-text-wrap {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pdca-text-ellipsis {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdca-table-scroll {
+  overflow-x: auto;
+}
+
+/* Dropdown menu under a toolbar button (building block pickers). */
+.pdca-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 10;
+  width: max-content;
+  min-width: min(260px, 90vw);
+  max-width: 90vw;
+  background: var(--cds-layer, #fff);
+  border: 1px solid var(--cds-border-subtle, #e0e0e0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.pdca-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--cds-border-subtle, #e0e0e0);
+  cursor: pointer;
+  font: inherit;
+  white-space: normal;
+}
+
 .pdca-page-header {
   margin-bottom: var(--pdca-spacing-06);
 }
 
 .pdca-page-header h1 {
+  overflow-wrap: anywhere;
   font-size: 1.75rem;
   font-weight: 600;
   margin-bottom: var(--pdca-spacing-03);
@@ -82,13 +185,9 @@ html, body {
 /* KPI grid */
 .pdca-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
   gap: var(--pdca-spacing-05);
   margin-bottom: var(--pdca-spacing-06);
-}
-
-@media (max-width: 900px) {
-  .pdca-kpi-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 .pdca-kpi-card {
@@ -123,13 +222,17 @@ html, body {
 /* Content grid */
 .pdca-content-grid {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
   gap: var(--pdca-spacing-06);
   margin-bottom: var(--pdca-spacing-06);
 }
 
-@media (max-width: 768px) {
-  .pdca-content-grid { grid-template-columns: 1fr; }
+@media (max-width: 960px) {
+  .pdca-content-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+.pdca-content-grid > * {
+  min-width: 0;
 }
 
 /* Card (Tile replacement) */
@@ -146,6 +249,8 @@ html, body {
   font-weight: 600;
   color: var(--cds-text-primary, #161616);
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-03);
   align-items: center;
   justify-content: space-between;
 }
@@ -202,6 +307,8 @@ html, body {
 
 .pdca-eval-info {
   flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .pdca-eval-date {
@@ -265,6 +372,8 @@ html, body {
 
 .pdca-goal-header {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-03);
   justify-content: space-between;
   align-items: center;
   padding: 0.875rem 1.25rem;
@@ -276,13 +385,15 @@ html, body {
 }
 
 .pdca-goal-body {
-  padding: 0 1.25rem 1rem 3.25rem;
+  padding: 1rem 1.25rem 1.25rem 3.25rem;
   border-top: 1px solid var(--cds-border-subtle, #e0e0e0);
 }
 
 /* Action rows */
 .pdca-action-row {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-03);
   align-items: center;
   justify-content: space-between;
   padding: 0.5rem 0.75rem;
@@ -329,6 +440,20 @@ html, body {
 .pdca-eval-card.type-INSPECTION { border-left-color: #ff832b; }
 .pdca-eval-card.type-CRISIS { border-left-color: var(--cds-support-error, #da1e28); }
 
+.pdca-eval-card {
+  margin-bottom: var(--pdca-spacing-03);
+}
+
+.pdca-eval-header {
+  padding: 14px 20px;
+  cursor: pointer;
+}
+
+.pdca-eval-body {
+  padding: 0 20px 20px 46px;
+  border-top: 1px solid var(--cds-border-subtle, #e0e0e0);
+}
+
 /* Toolbar above tab content (filters / add buttons) */
 .pdca-phase-bar {
   display: flex;
@@ -349,6 +474,8 @@ html, body {
 }
 
 .pdca-section-title {
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-03);
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--cds-text-secondary, #525252);
@@ -397,4 +524,91 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: var(--pdca-spacing-05);
+}
+
+/* Side panel (evaluation): fills the whole panel height on the host theme's
+   background, which is the same surface GZAC's panel uses. */
+
+.pdca-panel-theme {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--cds-background);
+  color: var(--cds-text-primary);
+}
+
+.pdca-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--pdca-spacing-05);
+  padding: var(--pdca-spacing-05);
+}
+
+.pdca-panel .pdca-info-block {
+  margin-bottom: 0;
+}
+
+.pdca-panel-hint {
+  font-size: 0.875rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.pdca-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-03);
+}
+
+/* Narrow tabs (side panel open, small screens). */
+@media (max-width: 640px) {
+  .pdca-goal-header,
+  .pdca-card-header {
+    padding-left: var(--pdca-spacing-05);
+    padding-right: var(--pdca-spacing-05);
+  }
+
+  .pdca-goal-body,
+  .pdca-eval-body {
+    padding-left: var(--pdca-spacing-05);
+    padding-right: var(--pdca-spacing-05);
+  }
+
+  .pdca-eval-header {
+    padding-left: var(--pdca-spacing-05);
+    padding-right: var(--pdca-spacing-05);
+  }
+
+  .pdca-card-body {
+    padding: var(--pdca-spacing-05);
+  }
+
+  .pdca-page-header h1,
+  .pdca-page-toolbar h1 {
+    font-size: 1.375rem;
+  }
+
+  .pdca-kpi-value {
+    font-size: 1.75rem;
+  }
+
+  .pdca-subject-card {
+    gap: var(--pdca-spacing-05);
+  }
+
+  .pdca-timeline-item {
+    flex-direction: column;
+  }
+
+  .pdca-timeline-date {
+    width: auto;
+    min-width: 0;
+    align-items: flex-start;
+    padding: var(--pdca-spacing-03) 0 0;
+  }
+
+  .pdca-timeline-card {
+    padding-left: 0;
+  }
 }
