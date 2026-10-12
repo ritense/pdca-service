@@ -24,6 +24,8 @@ class StartupInfoPrinter(private val env: Environment) {
             │                       (direct: http://localhost:7501, admin/admin)
             │    Open Product API:  $base/openproduct/producttypen/api/v1/producttypen
             │                       (direct: http://localhost:7502, admin/admin)
+            │    Open Klant API:    $base/openklant/klantinteracties/api/v1/klantcontacten
+            │                       (direct: http://localhost:7504, admin/admin)
             │    Demo plan Erika:   $base/openplan/plannen/api/v0/plan/11111111-1111-1111-1111-111111111111
             │    Demo plan Binnenhof: .../plan/33333333-3333-3333-3333-333333333333
             │

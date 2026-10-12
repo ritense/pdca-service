@@ -30,7 +30,7 @@ import java.util.UUID
  * voortgang, the list ordering ([sortering] orders the flat doelen list), the
  * fine-grained uitvoeringsstatus (the register only knows
  * actief/afgerond/geannuleerd) and the internal and external note. Applies to
- * subdoelen and the hoofddoel alike; [voortgangStatus] is used for subdoelen.
+ * subdoelen and the hoofddoel alike.
  */
 @Entity
 @Table(name = "doel_details")
@@ -50,10 +50,11 @@ data class DoelDetails(
     @Column(name = "voortgang_score")
     var voortgangScore: Int? = null,
 
+    /** Explanation of the voortgang: of [voortgangStatus] in the plan tabs, of [voortgangScore] in the intake. */
     @Column(name = "voortgang_toelichting", columnDefinition = "TEXT")
     var voortgangToelichting: String? = null,
 
-    /** How an active subdoel is going; replaces [voortgangScore] in the plan tabs. */
+    /** How an active subdoel or hoofddoel is going; replaces [voortgangScore] in the plan tabs. */
     @Enumerated(EnumType.STRING)
     @Column(name = "voortgang_status")
     var voortgangStatus: VoortgangStatus? = null,

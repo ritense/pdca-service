@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Tag, TextInput } from '@carbon/react';
 import type { EvaluationChange } from './evaluationSession';
-import { subjectTypeLabel, wijzigingOmschrijving, wijzigingenPerOnderdeel } from './labels';
+import { subjectTypeLabel, wijzigingHeeftReden, wijzigingOmschrijving, wijzigingenPerOnderdeel } from './labels';
 
 /**
  * The plan changes of an evaluation, grouped per onderdeel. With
- * `onToelichting` (the running evaluation in the side panel) every change gets
- * a field for the reason; without it (a completed evaluation) the reasons are
- * shown read-only.
+ * `onToelichting` (the running evaluation in the side panel) every change
+ * except a text change (a note is its own explanation) gets a field for the
+ * reason, prefilled with the explanation entered in the tab; without it (a
+ * completed evaluation) the reasons are shown read-only.
  */
 export function WijzigingenLijst({ wijzigingen, onToelichting }: {
   wijzigingen: EvaluationChange[];
@@ -24,7 +25,7 @@ export function WijzigingenLijst({ wijzigingen, onToelichting }: {
           {groep.wijzigingen.map(w => (
             <div key={w.id} className="pdca-wijziging">
               <div className="pdca-text-wrap">{wijzigingOmschrijving(w)}</div>
-              {onToelichting
+              {onToelichting && wijzigingHeeftReden(w.soort)
                 ? <ToelichtingVeld wijziging={w} onSave={onToelichting} />
                 : w.toelichting && <div className="pdca-wijziging-toelichting">Reden: {w.toelichting}</div>}
             </div>

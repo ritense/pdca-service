@@ -1,11 +1,15 @@
 /**
  * Direct API access to the Maykin registers plus the small PDCA overlay.
  *
- * - Open Plan  (plannen/doelen/instrumenten/contactmomenten/personen/typen)
+ * - Open Plan  (plannen/doelen/instrumenten/personen/typen)
  *   is consumed 1:1 via the backend's token-injecting proxy at /openplan/...
  *   camelCase fields, statuses actief/afgerond/geannuleerd, resultaten
  *   behaald/gefaald, ISO datetimes, paginated {count, results}.
  * - Open Product (producttypen) likewise via /openproduct/... (snake_case).
+ * - Open Klant (klantcontacten = the plan's contactmomenten) is read via
+ *   /openklant/...; creating and deleting a contactmoment goes through the
+ *   overlay API, which writes the klantcontact with its betrokkene and
+ *   onderwerpobject.
  * - The PDCA overlay (/api/v1/pdca) stores only what the registers don't
  *   model: fase/voortgang/notities per doel and instrument,
  *   evaluatietype/actiepunten per contactmoment, completed evaluations with
@@ -20,6 +24,7 @@ import type { EvaluationChange, EvaluationSession } from './evaluationSession';
 const API_BASE = window.location.origin.startsWith('http') ? window.location.origin : 'http://localhost:7500';
 const OPENPLAN = `${API_BASE}/openplan/plannen/api/v0`;
 const OPENPRODUCT = `${API_BASE}/openproduct/producttypen/api/v1`;
+const OPENKLANT = `${API_BASE}/openklant/klantinteracties/api/v1`;
 const PDCA = `${API_BASE}/api/v1/pdca`;
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -86,13 +91,6 @@ export const openplan = {
       request<Instrument>(`${OPENPLAN}/instrument/${uuid}`, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (uuid: string) => request<void>(`${OPENPLAN}/instrument/${uuid}`, { method: 'DELETE' }),
   },
-  contactmomenten: {
-    listByPlan: (planUuid: string) => listAll<Contactmoment>(`${OPENPLAN}/contactmoment`, { plan__uuid: planUuid }),
-    create: (data: object) => request<Contactmoment>(`${OPENPLAN}/contactmoment`, { method: 'POST', body: JSON.stringify(data) }),
-    update: (uuid: string, data: object) =>
-      request<Contactmoment>(`${OPENPLAN}/contactmoment/${uuid}`, { method: 'PATCH', body: JSON.stringify(data) }),
-    delete: (uuid: string) => request<void>(`${OPENPLAN}/contactmoment/${uuid}`, { method: 'DELETE' }),
-  },
   personen: {
     list: () => listAll<Persoon>(`${OPENPLAN}/persoon`),
     create: (data: object) => request<Persoon>(`${OPENPLAN}/persoon`, { method: 'POST', body: JSON.stringify(data) }),
@@ -123,6 +121,19 @@ export const openproduct = {
   },
 };
 
+// ------------------------------------------------------------ Open Klant API
+
+export const openklant = {
+  /** The plan's contactmomenten: klantcontacten with an onderwerpobject pointing at the plan. */
+  klantcontacten: {
+    listByPlan: (planUuid: string) => listAll<Klantcontact>(`${OPENKLANT}/klantcontacten`, {
+      onderwerpobject__onderwerpobjectidentificatorObjectId: planUuid,
+      onderwerpobject__onderwerpobjectidentificatorCodeObjecttype: 'plan',
+      onderwerpobject__onderwerpobjectidentificatorCodeRegister: 'open-plan',
+    }),
+  },
+};
+
 // ------------------------------------------------------------- PDCA overlay
 
 export const pdca = {
@@ -144,8 +155,10 @@ export const pdca = {
     listByPlan: (planUuid: string) => request<ContactmomentDetails[]>(`${PDCA}/contactmomentdetails?planUuid=${planUuid}`),
     upsert: (contactmomentUuid: string, data: Partial<ContactmomentDetails>) =>
       request<ContactmomentDetails>(`${PDCA}/contactmomentdetails/${contactmomentUuid}`, { method: 'PUT', body: JSON.stringify(data) }),
-    delete: (contactmomentUuid: string) =>
-      request<void>(`${PDCA}/contactmomentdetails/${contactmomentUuid}`, { method: 'DELETE' }),
+  },
+  /** Creating/deleting a contactmoment: the klantcontact in Open Klant plus its overlay row. */
+  contactmomenten: {
+    delete: (contactmomentUuid: string) => request<void>(`${PDCA}/contactmomenten/${contactmomentUuid}`, { method: 'DELETE' }),
   },
   instrumentdetails: {
     listByPlan: (planUuid: string) => request<InstrumentDetails[]>(`${PDCA}/instrumentdetails?planUuid=${planUuid}`),
@@ -323,12 +336,6 @@ export async function afbreekInstrument(instrumentUuid: string, planUuid: string
   await pdca.instrumentdetails.upsert(instrumentUuid, { planUuid, afbreekReden: reden });
 }
 
-/** Contactmoment in Open Plan plus its overlay row. */
-export async function deleteContactmomentCascade(contactmomentUuid: string): Promise<void> {
-  await openplan.contactmomenten.delete(contactmomentUuid);
-  await pdca.contactmomentdetails.delete(contactmomentUuid).catch(() => undefined);
-}
-
 // ------------------------------------------------------- Open Plan types
 
 export interface Paginated<T> {
@@ -413,15 +420,6 @@ export interface Instrument {
   instrumenttype?: { uuid: string; instrumentType: string };
 }
 
-export interface Contactmoment {
-  uuid: string;
-  status: OpenPlanStatus;
-  datum: string;
-  toelichtingStatus?: string;
-  notitie?: string;
-  plan?: NestedPlan;
-}
-
 export interface Persoon {
   uuid: string;
   persoonsprofiel?: string;
@@ -432,6 +430,23 @@ export interface Persoon {
 export interface RelatieType {
   uuid: string;
   naam: string;
+}
+
+// ------------------------------------------------------- Open Klant types
+
+/**
+ * A klantcontact as returned by the Klantinteracties API (fields used by the
+ * app). A contactmoment that took place has indicatieContactGelukt true; a
+ * planned one has null.
+ */
+export interface Klantcontact {
+  uuid: string;
+  kanaal: string;
+  onderwerp: string;
+  /** Gespreksverslag / notitie. */
+  inhoud: string;
+  indicatieContactGelukt: boolean | null;
+  plaatsgevondenOp: string;
 }
 
 // ----------------------------------------------------- Open Product types
@@ -486,7 +501,9 @@ export interface DoelDetails {
   uitvoeringsStatus: UitvoeringsStatus;
   /** Numeric score from the intake and the evaluate task form; the plan tabs show voortgangStatus. */
   voortgangScore?: number;
+  /** Explanation of the voortgang (status in the plan tabs, score in the intake). */
   voortgangToelichting?: string;
+  /** How an active subdoel or hoofddoel is going. */
   voortgangStatus?: VoortgangStatus;
   /** Note for colleagues only. */
   interneNotitie?: string;

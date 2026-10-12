@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Theme, Button, Tag, Loading, InlineNotification, Select, SelectItem, TextInput, TextArea } from '@carbon/react';
+import { Theme, Layer, Button, Tag, Loading, InlineNotification, Select, SelectItem, TextInput, TextArea } from '@carbon/react';
 import { Checkmark } from '@carbon/react/icons';
 import { onInit, getInitContext, withdrawPanel, getHostTheme, onHostThemeChanged, HostTheme } from '../shared/bridge';
 import { pdca } from '../shared/api';
@@ -7,7 +7,7 @@ import { evalTypeLabel, formatDate } from '../shared/labels';
 import {
   EVALUATION_PANEL_BUNDLE_KEY, EvaluationSession, EvaluationChange,
   currentEvaluationSession, completeEvaluationSession, updateEvaluationDraft, listEvaluationChanges,
-  updateChangeToelichting, onEvaluationEvent, planTitle,
+  updateChangeToelichting, planTitle, EVALUATION_POLL_MS,
 } from '../shared/evaluationSession';
 import { WijzigingenLijst } from '../shared/WijzigingenLijst';
 
@@ -15,11 +15,13 @@ type Draft = { evaluatieType: string; deelnemers: string; verslag: string };
 
 const formatTime = (iso: string) => iso.split('T')[1]?.slice(0, 5) ?? '';
 const SAVE_DELAY_MS = 700;
+/** The verslag becomes the klantcontact's inhoud in Open Klant, which holds at most 1000 characters. */
+const VERSLAG_MAX_LENGTH = 1000;
 
 /**
  * Side-panel content of a running evaluation. Stays open while the user moves
- * through GZAC. The plan itself is changed in the plan tabs; the panel shows
- * those changes live and holds the contactmoment fields (type, deelnemers,
+ * through GZAC. The plan itself is changed in the plan tabs; the panel polls
+ * those changes and holds the contactmoment fields (type, deelnemers,
  * gespreksverslag). Only completing ends the evaluation — there is no cancel.
  */
 export function EvaluationPanel() {
@@ -35,22 +37,27 @@ export function EvaluationPanel() {
   const [completed, setCompleted] = useState(false);
   const [confirmComplete, setConfirmComplete] = useState(false);
   const [busy, setBusy] = useState(false);
+  /** Why completing failed, shown next to the buttons (the general error sits at the top of the panel). */
+  const [completeError, setCompleteError] = useState<string | null>(null);
   const [theme, setTheme] = useState<HostTheme>(getHostTheme());
   const pendingDraft = useRef<Partial<Draft> | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { onInit(() => { setTheme(getHostTheme()); load(); }); }, []);
   useEffect(() => onHostThemeChanged(setTheme), []);
-  useEffect(() => onEvaluationEvent(event => {
-    if (event.type === 'changed') loadWijzigingen();
-  }), []);
-
   const offeredKey = () => getInitContext().evaluationSessionId as string | undefined;
 
   const loadWijzigingen = useCallback(async () => {
     try { setWijzigingen(await listEvaluationChanges()); }
     catch (e: any) { setError(e.message); }
   }, []);
+
+  // The tabs record changes in the backend and cannot message the panel, so the panel polls.
+  useEffect(() => {
+    if (!session || completed) return;
+    const timer = setInterval(loadWijzigingen, EVALUATION_POLL_MS);
+    return () => clearInterval(timer);
+  }, [session, completed, loadWijzigingen]);
 
   const load = async () => {
     try {
@@ -114,12 +121,13 @@ export function EvaluationPanel() {
 
   const handleComplete = async () => {
     setBusy(true);
+    setCompleteError(null);
     try {
       await flushDraft();
       await completeEvaluationSession();
       setCompleted(true);
     } catch (e: any) {
-      setError(e.message);
+      setCompleteError(e.message);
     } finally {
       setBusy(false);
       setConfirmComplete(false);
@@ -131,8 +139,9 @@ export function EvaluationPanel() {
     if (key) withdrawPanel(key, EVALUATION_PANEL_BUNDLE_KEY);
   };
 
+  // The panel surface is GZAC's layer; its content sits one layer up so the fields stand out.
   const shell = (content: React.ReactNode) => (
-    <Theme theme={theme} className="pdca-panel-theme"><div className="pdca-panel">{content}</div></Theme>
+    <Theme theme={theme} className="pdca-panel-theme"><Layer className="pdca-panel">{content}</Layer></Theme>
   );
 
   if (loading) return shell(<Loading withOverlay={false} small />);
@@ -182,7 +191,7 @@ export function EvaluationPanel() {
       )}
       <TextInput id="eval-deelnemers" size="sm" labelText="Deelnemers" placeholder="Komma-gescheiden"
         value={draft.deelnemers} onChange={(e: any) => updateField('deelnemers', e.target.value)} />
-      <TextArea id="eval-verslag" labelText="Gespreksverslag" rows={6}
+      <TextArea id="eval-verslag" labelText="Gespreksverslag" rows={6} enableCounter maxCount={VERSLAG_MAX_LENGTH}
         helperText="Hoe gaat het met de inwoner, wat is besproken en waarom wordt het plan aangepast."
         value={draft.verslag} onChange={(e: any) => updateField('verslag', e.target.value)} />
 
@@ -200,20 +209,27 @@ export function EvaluationPanel() {
         Je kunt vrij door GZAC navigeren; sluiten verbergt het paneel alleen. De evaluatie loopt tot je hem afrondt.
       </p>
 
-      {confirmComplete ? (
+      {/* A Carbon InlineNotification throws when it contains interactive
+          content, so the confirm buttons sit below it. */}
+      {confirmComplete ? <>
         <InlineNotification kind="warning" title="Evaluatie afronden?" lowContrast hideCloseButton
-          subtitle={`Het verslag en ${wijzigingen.length} wijziging${wijzigingen.length === 1 ? '' : 'en'} worden vastgelegd als contactmoment. Daarna is de evaluatie zichtbaar voor collega's en kun je hem niet meer aanpassen.`}>
-          <div className="pdca-panel-actions">
-            <Button size="sm" renderIcon={Checkmark} disabled={busy} onClick={handleComplete}>Afronden</Button>
-            <Button size="sm" kind="ghost" disabled={busy} onClick={() => setConfirmComplete(false)}>Terug</Button>
-          </div>
-        </InlineNotification>
-      ) : (
+          subtitle={`Het verslag en ${wijzigingen.length} wijziging${wijzigingen.length === 1 ? '' : 'en'} worden vastgelegd als contactmoment. Daarna is de evaluatie zichtbaar voor collega's en kun je hem niet meer aanpassen.`} />
+        <div className="pdca-panel-actions">
+          <Button size="sm" renderIcon={Checkmark} disabled={busy} onClick={handleComplete}>
+            {busy ? 'Afronden…' : 'Afronden'}
+          </Button>
+          <Button size="sm" kind="ghost" disabled={busy} onClick={() => setConfirmComplete(false)}>Terug</Button>
+        </div>
+      </> : <>
+        {completeError && (
+          <InlineNotification kind="error" title="Afronden mislukt" subtitle={completeError} lowContrast
+            onCloseButtonClick={() => setCompleteError(null)} />
+        )}
         <div className="pdca-panel-actions">
           <Button size="sm" disabled={busy || verslagLeeg} onClick={() => setConfirmComplete(true)}>Evaluatie afronden</Button>
           {verslagLeeg && <span className="pdca-panel-hint">Vul het gespreksverslag in om af te ronden.</span>}
         </div>
-      )}
+      </>}
     </>}
   </>);
 }

@@ -19,6 +19,9 @@ data:
   {{- if .Values.externalServices.openproduct.url }}
   OPENPRODUCT_URL: {{ .Values.externalServices.openproduct.url | quote }}
   {{- end }}
+  {{- if .Values.externalServices.openklant.url }}
+  OPENKLANT_URL: {{ .Values.externalServices.openklant.url | quote }}
+  {{- end }}
   {{- if .Values.externalServices.gzac.enabled }}
   GZAC_URL: {{ .Values.externalServices.gzac.url | quote }}
   GZAC_TOKEN_URL: {{ .Values.externalServices.gzac.tokenUrl | quote }}

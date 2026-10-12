@@ -22,6 +22,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 data class PdcaProperties(
     val openplan: RegisterApi,
     val openproduct: RegisterApi,
+    val openklant: RegisterApi,
     val gzac: GzacApi? = null
 ) {
     data class RegisterApi(

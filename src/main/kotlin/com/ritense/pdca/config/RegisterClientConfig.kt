@@ -23,7 +23,7 @@ import org.springframework.http.HttpHeaders
 import org.springframework.web.client.RestClient
 
 /**
- * RestClient beans for the Maykin registers. Both APIs use DRF token
+ * RestClient beans for the Maykin registers. All three APIs use token
  * authentication: `Authorization: Token <key>`.
  */
 @Configuration
@@ -37,6 +37,10 @@ class RegisterClientConfig {
     @Bean
     fun openProductRestClient(builder: RestClient.Builder, properties: PdcaProperties): RestClient =
         registerRestClient(builder, properties.openproduct)
+
+    @Bean
+    fun openKlantRestClient(builder: RestClient.Builder, properties: PdcaProperties): RestClient =
+        registerRestClient(builder, properties.openklant)
 
     private fun registerRestClient(builder: RestClient.Builder, api: PdcaProperties.RegisterApi): RestClient =
         builder.clone()

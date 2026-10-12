@@ -109,16 +109,23 @@ export function navigateHost(route: string): void {
   }, '*');
 }
 
+const PLUGIN_DATA_TIMEOUT_MS = 30000;
+
 /**
  * Calls this app's own `/data` route through the GZAC host (plugin-SDK
  * `proxyRequest`, target `plugin`). GZAC attaches the user's downscoped
  * token, which the backend verifies; use this for anything that depends on
- * who the user is.
+ * who the user is. Without an answer from the host within 30 seconds it
+ * resolves with status 0 and a message, so a caller never waits forever.
  */
 export function pluginData<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<PluginDataResult<T>> {
   const correlationId = `pdca-${++correlationCounter}`;
   return new Promise(resolve => {
     pendingRequests.set(correlationId, resolve as (result: PluginDataResult<unknown>) => void);
+    setTimeout(() => {
+      if (!pendingRequests.delete(correlationId)) return;
+      resolve({ status: 0, body: { message: 'Geen antwoord van GZAC' } as T });
+    }, PLUGIN_DATA_TIMEOUT_MS);
     window.parent.postMessage({
       source: 'valtimo-plugin',
       event: 'proxyRequest',

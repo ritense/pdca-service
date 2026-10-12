@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  Theme, Button, Tag, Modal, TextInput, TextArea, Select, SelectItem, Checkbox,
+  Theme, Layer, Button, Tag, Modal, TextInput, TextArea, Select, SelectItem, Checkbox,
   Loading, InlineNotification,
 } from '@carbon/react';
 import { Add, Edit, TrashCan, ChevronRight, ChevronDown, Checkmark, Close, StopOutline, Launch } from '@carbon/react/icons';
@@ -57,7 +57,7 @@ export function PlanGoals() {
   const [instrumentModal, setInstrumentModal] = useState<string | null>(null);
   const [afbreekTarget, setAfbreekTarget] = useState<AfbreekTarget>(null);
   const [editDoel, setEditDoel] = useState<Doel | null>(null);
-  const [hoofddoelNotitiesOpen, setHoofddoelNotitiesOpen] = useState(false);
+  const [hoofddoelOpen, setHoofddoelOpen] = useState(false);
   /** The user's running evaluation; while it is on this plan, every change here is recorded in it. */
   const [session, setSession] = useState<EvaluationSession | null>(null);
   const docRef = useRef<string | null>(null);
@@ -75,7 +75,7 @@ export function PlanGoals() {
     if (event.type === 'completed') setSession(null);
   }), []);
 
-  useEffect(() => { resizeIframe(); }, [loading, doelen, expanded, voortgangOpen, hoofddoelNotitiesOpen, session]);
+  useEffect(() => { resizeIframe(); }, [loading, doelen, expanded, voortgangOpen, hoofddoelOpen, session]);
 
   const loadData = useCallback(async () => {
     try {
@@ -371,6 +371,8 @@ export function PlanGoals() {
     await reload();
   };
 
+  // The explanation entered with a voortgang becomes the reason of the
+  // change recorded in the evaluation (only when it was changed itself).
   const handleVoortgangSave = async (instrumentUuid: string, uren: number | null, score: number | null, toelichting: string) => {
     if (!plan) return;
     try {
@@ -379,25 +381,30 @@ export function PlanGoals() {
         planUuid: plan.uuid,
         urenBesteed: uren ?? undefined,
         effectiviteitScore: score ?? undefined,
-        effectiviteitToelichting: toelichting || undefined,
+        effectiviteitToelichting: toelichting,
       });
       rec({
         subjectType: 'INSTRUMENT', subjectUuid: instrumentUuid, subjectTitel: instrumentTitel(instrumentUuid),
         soort: 'INSTRUMENT_REGISTRATIE', samenvoegen: true,
         vanWaarde: registratieSamenvatting(voor), naarWaarde: registratieSamenvatting(na),
+        toelichting: toelichting !== (voor?.effectiviteitToelichting ?? '') ? toelichting : undefined,
       });
       await reload();
     } catch (e: any) { setError('Voortgang opslaan mislukt: ' + e.message); }
   };
 
-  const handleVoortgangStatus = async (doel: Doel, status: VoortgangStatus | '') => {
-    if (!plan || !status) return;
+  const handleVoortgangStatus = async (
+    kind: 'SUBDOEL' | 'HOOFDDOEL', doel: Doel, status: VoortgangStatus, toelichting: string,
+  ) => {
+    if (!plan) return;
     try {
-      const voor = detailsByDoel.get(doel.uuid)?.voortgangStatus;
-      await pdca.doeldetails.upsert(doel.uuid, { planUuid: plan.uuid, voortgangStatus: status });
+      const voor = detailsByDoel.get(doel.uuid);
+      await pdca.doeldetails.upsert(doel.uuid, { planUuid: plan.uuid, voortgangStatus: status, voortgangToelichting: toelichting });
       rec({
-        subjectType: 'SUBDOEL', subjectUuid: doel.uuid, subjectTitel: doel.titel, soort: 'VOORTGANG', samenvoegen: true,
-        vanWaarde: voor ? voortgangStatusLabel(voor) : null, naarWaarde: voortgangStatusLabel(status),
+        subjectType: kind, subjectUuid: doel.uuid, subjectTitel: doel.titel, soort: 'VOORTGANG', samenvoegen: true,
+        vanWaarde: voor?.voortgangStatus ? voortgangStatusLabel(voor.voortgangStatus) : null,
+        naarWaarde: voortgangStatusLabel(status),
+        toelichting: toelichting !== (voor?.voortgangToelichting ?? '') ? toelichting : undefined,
       });
       await reload();
     } catch (e: any) { setError('Voortgang opslaan mislukt: ' + e.message); }
@@ -434,11 +441,11 @@ export function PlanGoals() {
   return (
     <Theme theme="g10">
       <div className="pdca-container">
-        {error && <InlineNotification kind="error" title="Fout" subtitle={error} lowContrast onCloseButtonClick={() => setError(null)} />}
+        {error && <InlineNotification className="pdca-notification" kind="error" title="Fout" subtitle={error} lowContrast onCloseButtonClick={() => setError(null)} />}
         {evaluatieLoopt && <EvaluatieBanner />}
         {productStarted && (
-          <div className="pdca-row">
-            <InlineNotification kind="success" title="Product aangevraagd" subtitle={productStarted.message}
+          <div className="pdca-row pdca-notification-row">
+            <InlineNotification className="pdca-notification" kind="success" title="Product aangevraagd" subtitle={productStarted.message}
               lowContrast onCloseButtonClick={() => setProductStarted(null)} style={{flex: '1 1 16rem'}} />
             {productStarted.dossier && (
               <Button size="sm" kind="tertiary" renderIcon={Launch}
@@ -449,34 +456,50 @@ export function PlanGoals() {
           </div>
         )}
         {/* The plan's hoofddoel (strategy) as a fixed card; switching it on the
-            overview tab completes the old doel, which stays here as history. */}
-        {actiefHoofddoel && (
-          <div className="pdca-goal-card" style={{marginBottom: '1rem'}}>
-            <div className="pdca-goal-header" onClick={() => setHoofddoelNotitiesOpen(open => !open)}>
-              <div className="pdca-row-main">
-                <ChevronRight size={16} style={{transform: hoofddoelNotitiesOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0}} />
-                <Tag size="sm" type="high-contrast">Hoofddoel</Tag>
-                <span className="pdca-text-wrap" style={{fontWeight: 600}}>{actiefHoofddoel.titel}</span>
-                {actiefHoofddoel.beschrijving && (
-                  <span className="pdca-text-ellipsis" style={{fontSize: 12, color: 'var(--cds-text-secondary)'}}>
-                    — {actiefHoofddoel.beschrijving}
-                  </span>
-                )}
+            overview tab completes the old doel, which stays here as history.
+            Cards are a layer of their own, so their fields stand out (Carbon Layer). */}
+        {actiefHoofddoel && (() => {
+          const hd = detailsByDoel.get(actiefHoofddoel.uuid);
+          return (
+            <Layer className="pdca-goal-card" style={{marginBottom: '1rem'}}>
+              <div className="pdca-goal-header" onClick={() => setHoofddoelOpen(open => !open)}>
+                <div className="pdca-row-main">
+                  <ChevronRight size={16} style={{transform: hoofddoelOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0}} />
+                  <Tag size="sm" type="high-contrast">Hoofddoel</Tag>
+                  <span className="pdca-text-wrap" style={{fontWeight: 600}}>{actiefHoofddoel.titel}</span>
+                  {actiefHoofddoel.beschrijving && (
+                    <span className="pdca-text-ellipsis" style={{fontSize: 12, color: 'var(--cds-text-secondary)'}}>
+                      — {actiefHoofddoel.beschrijving}
+                    </span>
+                  )}
+                </div>
+                <div className="pdca-row-actions">
+                  {hd?.voortgangStatus && (
+                    <Tag size="sm" type={voortgangStatusTag(hd.voortgangStatus) as any}>{voortgangStatusLabel(hd.voortgangStatus)}</Tag>
+                  )}
+                  <Tag size="sm" type={doelStatusTag(actiefHoofddoel.status, actiefHoofddoel.resultaat) as any}>
+                    {doelStatusLabel(actiefHoofddoel.status, actiefHoofddoel.resultaat)}
+                  </Tag>
+                </div>
               </div>
-              <Tag size="sm" type={doelStatusTag(actiefHoofddoel.status, actiefHoofddoel.resultaat) as any}>
-                {doelStatusLabel(actiefHoofddoel.status, actiefHoofddoel.resultaat)}
-              </Tag>
-            </div>
-            {hoofddoelNotitiesOpen && (
-              <div className="pdca-goal-body">
-                <NotitiesBlok id={actiefHoofddoel.uuid} details={detailsByDoel.get(actiefHoofddoel.uuid)}
-                  onSave={(intern, extern) => handleNotities(
-                    { kind: 'HOOFDDOEL', uuid: actiefHoofddoel.uuid, titel: actiefHoofddoel.titel },
-                    detailsByDoel.get(actiefHoofddoel.uuid), intern, extern)} />
-              </div>
-            )}
-          </div>
-        )}
+              {hoofddoelOpen && (
+                <div className="pdca-goal-body">
+                  <div className="pdca-section-block">
+                    <div className="pdca-section-title"><span>Voortgang</span></div>
+                    <VoortgangStatusBlok id={actiefHoofddoel.uuid} details={hd}
+                      onSave={(status, toelichting) => handleVoortgangStatus('HOOFDDOEL', actiefHoofddoel, status, toelichting)} />
+                  </div>
+                  <div className="pdca-section-block">
+                    <div className="pdca-section-title"><span>Notities</span></div>
+                    <NotitiesBlok id={actiefHoofddoel.uuid} details={hd}
+                      onSave={(intern, extern) => handleNotities(
+                        { kind: 'HOOFDDOEL', uuid: actiefHoofddoel.uuid, titel: actiefHoofddoel.titel }, hd, intern, extern)} />
+                  </div>
+                </div>
+              )}
+            </Layer>
+          );
+        })()}
         {eerdereHoofddoelen.map(d => (
           <div key={d.uuid} className="pdca-tags" style={{alignItems: 'center', margin: '0 0 8px 4px', fontSize: 12, color: 'var(--cds-text-secondary)'}}>
             <span className="pdca-text-wrap">Eerder hoofddoel: {d.titel}</span>
@@ -498,7 +521,7 @@ export function PlanGoals() {
           const isOpen = expanded.has(doel.uuid);
           const uitvoeringsStatus = dd?.uitvoeringsStatus;
           return (
-            <div key={doel.uuid} className={`pdca-goal-card status-${doel.status}`}>
+            <Layer key={doel.uuid} className={`pdca-goal-card status-${doel.status}`}>
               <div className="pdca-goal-header" onClick={() => toggle(doel.uuid, setExpanded)}>
                 <div className="pdca-row-main" style={{flexWrap: 'nowrap'}}>
                   <ChevronRight size={16} style={{transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0}} />
@@ -536,15 +559,13 @@ export function PlanGoals() {
                   </div>
 
                   <div className="pdca-section-block">
-                    {doel.status === 'actief' && (
-                      <Select id={`voortgang-${doel.uuid}`} size="sm" labelText="Voortgang" style={{maxWidth: '16rem'}}
-                        value={dd?.voortgangStatus ?? ''}
-                        onChange={(e: any) => handleVoortgangStatus(doel, e.target.value)}>
-                        <SelectItem value="" text="Geen status" disabled hidden={!!dd?.voortgangStatus} />
-                        {VOORTGANG_STATUSSEN.map(st => <SelectItem key={st} value={st} text={voortgangStatusLabel(st)} />)}
-                      </Select>
-                    )}
-                    {dd?.voortgangToelichting && <p style={{fontSize: 12, color: 'var(--cds-text-secondary)', marginTop: 8}}>{dd.voortgangToelichting}</p>}
+                    <div className="pdca-section-title"><span>Voortgang</span></div>
+                    {doel.status === 'actief'
+                      ? <VoortgangStatusBlok id={doel.uuid} details={dd}
+                          onSave={(status, toelichting) => handleVoortgangStatus('SUBDOEL', doel, status, toelichting)} />
+                      : <p className={`pdca-info-value${dd?.voortgangToelichting ? '' : ' empty'}`}>
+                          {dd?.voortgangToelichting || 'Geen toelichting'}
+                        </p>}
                   </div>
 
                   <div className="pdca-section-block">
@@ -697,14 +718,20 @@ export function PlanGoals() {
                               ))}
                             </div>
                           )}
-                          {vOpen && <>
-                            <VoortgangForm instrument={inst} details={idet}
-                              onSave={(uren, score, toelichting) => handleVoortgangSave(inst.uuid, uren, score, toelichting)} />
-                            <div style={{padding: '0 0 12px 0'}}>
-                              <NotitiesBlok id={inst.uuid} details={idet}
-                                onSave={(intern, extern) => handleNotities({ kind: 'INSTRUMENT', uuid: inst.uuid, titel: inst.titel }, idet, intern, extern)} />
-                            </div>
-                          </>}
+                          {vOpen && (
+                            <Layer className="pdca-instrument-panel">
+                              <div>
+                                <div className="pdca-section-title"><span>Voortgang</span></div>
+                                <VoortgangForm instrument={inst} details={idet}
+                                  onSave={(uren, score, toelichting) => handleVoortgangSave(inst.uuid, uren, score, toelichting)} />
+                              </div>
+                              <div>
+                                <div className="pdca-section-title"><span>Notities</span></div>
+                                <NotitiesBlok id={inst.uuid} details={idet}
+                                  onSave={(intern, extern) => handleNotities({ kind: 'INSTRUMENT', uuid: inst.uuid, titel: inst.titel }, idet, intern, extern)} />
+                              </div>
+                            </Layer>
+                          )}
                         </div>
                       );
                     })}
@@ -712,7 +739,7 @@ export function PlanGoals() {
                   </div>
                 </div>
               )}
-            </div>
+            </Layer>
           );
         })}
 
@@ -798,7 +825,7 @@ function NotitiesBlok({ id, details, onSave }: {
   const gewijzigd = intern !== (details?.interneNotitie ?? '') || extern !== (details?.externeNotitie ?? '');
   return (
     <div>
-      <div className="pdca-notities">
+      <div className="pdca-form-grid">
         <TextArea id={`intern-${id}`} rows={3} labelText="Interne notitie" helperText="Alleen zichtbaar voor collega's"
           value={intern} onChange={(e: any) => setIntern(e.target.value)} />
         <TextArea id={`extern-${id}`} rows={3} labelText="Externe notitie" helperText="Kan gedeeld worden met de inwoner"
@@ -814,7 +841,45 @@ function NotitiesBlok({ id, details, onSave }: {
   );
 }
 
-/** Hours + effectiviteit per instrument (PDCA overlay). */
+/**
+ * Voortgangsstatus with its explanation, for an active subdoel or the
+ * hoofddoel; saved together. During an evaluation a changed explanation
+ * becomes the reason of the recorded change.
+ */
+function VoortgangStatusBlok({ id, details, onSave }: {
+  id: string;
+  details?: DoelDetails;
+  onSave: (status: VoortgangStatus, toelichting: string) => void;
+}) {
+  const [status, setStatus] = useState<VoortgangStatus | ''>(details?.voortgangStatus ?? '');
+  const [toelichting, setToelichting] = useState(details?.voortgangToelichting ?? '');
+  const herstel = () => { setStatus(details?.voortgangStatus ?? ''); setToelichting(details?.voortgangToelichting ?? ''); };
+  useEffect(herstel, [details?.voortgangStatus, details?.voortgangToelichting]);
+  const gewijzigd = status !== (details?.voortgangStatus ?? '') || toelichting !== (details?.voortgangToelichting ?? '');
+  return (
+    <div>
+      <div className="pdca-form-grid">
+        <Select id={`voortgang-${id}`} labelText="Status" value={status}
+          onChange={(e: any) => setStatus(e.target.value)}>
+          <SelectItem value="" text="Geen status" disabled hidden={!!details?.voortgangStatus} />
+          {VOORTGANG_STATUSSEN.map(st => <SelectItem key={st} value={st} text={voortgangStatusLabel(st)} />)}
+        </Select>
+        <TextArea id={`voortgang-toelichting-${id}`} rows={2} labelText="Toelichting" helperText="Waarom gaat het zo?"
+          value={toelichting} onChange={(e: any) => setToelichting(e.target.value)} />
+      </div>
+      {gewijzigd && (
+        <div className="pdca-edit-actions">
+          <Button size="sm" kind="ghost" onClick={herstel}>Herstellen</Button>
+          <Button size="sm" disabled={!status} onClick={() => status && onSave(status, toelichting)}>Voortgang opslaan</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const EFFECTIVITEIT_LABELS = ['geen effect', 'weinig effect', 'neutraal', 'effectief', 'zeer effectief'];
+
+/** Hours + effectiviteit with its explanation per instrument (PDCA overlay). */
 function VoortgangForm({ instrument, details, onSave }: {
   instrument: Instrument; details?: InstrumentDetails;
   onSave: (uren: number | null, score: number | null, toelichting: string) => void;
@@ -822,17 +887,36 @@ function VoortgangForm({ instrument, details, onSave }: {
   const [uren, setUren] = useState<string>(details?.urenBesteed?.toString() ?? '');
   const [score, setScore] = useState<string>(details?.effectiviteitScore?.toString() ?? '');
   const [toelichting, setToelichting] = useState(details?.effectiviteitToelichting ?? '');
+  const herstel = () => {
+    setUren(details?.urenBesteed?.toString() ?? '');
+    setScore(details?.effectiviteitScore?.toString() ?? '');
+    setToelichting(details?.effectiviteitToelichting ?? '');
+  };
+  useEffect(herstel, [details?.urenBesteed, details?.effectiviteitScore, details?.effectiviteitToelichting]);
+  const gewijzigd = uren !== (details?.urenBesteed?.toString() ?? '')
+    || score !== (details?.effectiviteitScore?.toString() ?? '')
+    || toelichting !== (details?.effectiviteitToelichting ?? '');
   return (
-    <div style={{background: 'var(--cds-layer-02)', padding: 12, margin: '0 0 8px 0', display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap'}}>
-      <TextInput id={`uren-${instrument.uuid}`} labelText="Bestede uren" type="number" style={{maxWidth: 120}}
-        value={uren} onChange={(e: any) => setUren(e.target.value)} />
-      <Select id={`score-${instrument.uuid}`} labelText="Effectiviteit" value={score} onChange={(e: any) => setScore(e.target.value)}>
-        <SelectItem value="" text="-" />
-        {[1, 2, 3, 4, 5].map(n => <SelectItem key={n} value={String(n)} text={`${n} - ${['geen effect', 'weinig effect', 'neutraal', 'effectief', 'zeer effectief'][n - 1]}`} />)}
-      </Select>
-      <TextInput id={`toel-${instrument.uuid}`} labelText="Toelichting" style={{minWidth: 'min(240px, 100%)'}}
+    <div>
+      <div className="pdca-form-grid">
+        <TextInput id={`uren-${instrument.uuid}`} labelText="Bestede uren" type="number"
+          value={uren} onChange={(e: any) => setUren(e.target.value)} />
+        <Select id={`score-${instrument.uuid}`} labelText="Effectiviteit" value={score} onChange={(e: any) => setScore(e.target.value)}>
+          <SelectItem value="" text="-" />
+          {EFFECTIVITEIT_LABELS.map((label, i) => <SelectItem key={i} value={String(i + 1)} text={`${i + 1} - ${label}`} />)}
+        </Select>
+      </div>
+      <TextArea id={`toel-${instrument.uuid}`} className="pdca-form-field" rows={2} labelText="Toelichting"
+        helperText="Hoe werkt dit instrument voor de inwoner?"
         value={toelichting} onChange={(e: any) => setToelichting(e.target.value)} />
-      <Button size="sm" onClick={() => onSave(uren ? parseInt(uren, 10) : null, score ? parseInt(score, 10) : null, toelichting)}>Opslaan</Button>
+      {gewijzigd && (
+        <div className="pdca-edit-actions">
+          <Button size="sm" kind="ghost" onClick={herstel}>Herstellen</Button>
+          <Button size="sm" onClick={() => onSave(uren ? parseInt(uren, 10) : null, score ? parseInt(score, 10) : null, toelichting)}>
+            Voortgang opslaan
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

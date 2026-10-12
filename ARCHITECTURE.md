@@ -12,9 +12,11 @@ A standalone prototype for PDCA plan management (Plan-Do-Check-Act) that
 connects two worlds:
 
 - **Maykin's Common Ground registers** — [Open Plan](https://github.com/maykinmedia/open-plan)
-  (plannen, doelen, instrumenten, contactmomenten, personen) and
-  [Open Product](https://github.com/maykinmedia/open-product) (producttypen) are
-  the system of record for all plan data.
+  (plannen, doelen, instrumenten, personen),
+  [Open Product](https://github.com/maykinmedia/open-product) (producttypen) and
+  [Open Klant](https://github.com/maykinmedia/open-klant) (contactmomenten, as
+  klantcontacten of the inwoner; §5.1) are the system of record for all plan
+  data.
 - **Valtimo/GZAC** — the case management system in which the app runs as an
   *external plugin*: case tabs, task forms and an admin page as sandboxed
   iframes, and process execution (dossiers, tasks, building blocks) through the
@@ -38,12 +40,14 @@ flowchart LR
     end
     OP["Open Plan (7501)"]
     OPR["Open Product (7502)"]
+    OK["Open Klant (7504)"]
 
     UI -- "iframe + postMessage" --> FE
     FE -- "same-origin fetch" --> API
     API --> DB
     API -- "token proxy /openplan/*" --> OP
     API -- "token proxy /openproduct/*" --> OPR
+    API -- "token proxy /openklant/*" --> OK
     API -- "serviceToken (endpoint grants)" --> GZAC
     ENGINE -- "plugin action update-actie<br/>+ configuration push" --> API
 ```
@@ -59,7 +63,10 @@ flowchart LR
 1. **The registers are the source of truth.** The frontend consumes the
    register APIs in their *native* shape (Dutch camelCase, statuses
    `actief`/`afgerond`/`geannuleerd`, `{count, results}` pagination) through a
-   thin token-injecting proxy (`/openplan/...`, `/openproduct/...`).
+   thin token-injecting proxy (`/openplan/...`, `/openproduct/...`,
+   `/openklant/...`). Contactmomenten are the one exception on the write
+   side: the backend creates them, because one contactmoment spans several
+   Open Klant resources (§5.1).
 2. **The overlay is minimal** and keyed by register uuid. No copies of register
    data; only supplementary fields and links (see §5).
 3. **Cross-register references are URNs**, e.g.
@@ -83,23 +90,24 @@ flowchart LR
 | `config/` | Spring configuration: properties, CORS, security, register clients, startup info |
 | `domain/` | JPA entities of the overlay (§5) |
 | `repository/` | Spring Data repositories |
-| `service/` | Domain logic: `ActionService`, `IntakeService`, `DossierLinkService`, `PhaseConfigService`, `ActieBouwblokService`, `GzacClient` |
+| `service/` | Domain logic: `ActionService`, `IntakeService`, `DossierLinkService`, `PhaseConfigService`, `ActieBouwblokService`, `KlantcontactService` (§5.1), `GzacClient` |
 | `web/rest/` | REST resources under `/api/v1/pdca/*` and `/api/v1/admin/*` |
 | `plugin/` | The external-plugin host contract towards GZAC (§6): manifest, bundles, configuration push, plugin actions |
-| `registers/` | Token proxy to Open Plan/Open Product and display-only stubs (`/api/v1/registers/*`) for registers out of scope (BRP, objects) |
+| `registers/` | Token proxy to Open Plan/Open Product/Open Klant and display-only stubs (`/api/v1/registers/*`) for registers out of scope (BRP, objects) |
 
 ### API surface (outline)
 
 | Resource | Path | Purpose |
 |---|---|---|
 | `PdcaResource` | `/api/v1/pdca/{plandetails,doeldetails,instrumentdetails,contactmomentdetails}` | Overlay CRUD per register object |
+| `PdcaResource` | `POST /api/v1/pdca/contactmomenten`, `DELETE /api/v1/pdca/contactmomenten/{uuid}` | Create/delete a contactmoment: the klantcontact in Open Klant plus its overlay row (§5.1) |
 | `ActieResource` | `/api/v1/pdca/acties` | Actions per doel (local and building block) |
 | `BetrokkeneResource` | `/api/v1/pdca/betrokkenen` | Responsibilities/involved parties per plan |
-| `EvaluatieResource` | `/api/v1/pdca/evaluaties?planUuid=` | Completed evaluations with their plan changes (§6.1); running ones are never listed |
+| `EvaluatieResource` | `/api/v1/pdca/evaluaties?planUuid=` | Completed evaluations with their plan changes (§6.1); running ones are never listed here (the owner reads theirs through `/data`) |
 | `DossierResource` | `/api/v1/pdca/dossiers/...`, `/plan-intake`, `/plans/{uuid}/dossier`, `/case-definitions` | Plan↔dossier link, prefill and creation routes (§7, §8) |
 | `PhaseConfigResource` | `/api/v1/admin/phase-configs` | Case configuration per case definition (§10) |
 | `ActieBouwblokResource` | `/api/v1/admin/actie-bouwblokken` (admin) and `/api/v1/pdca/actie-bouwblokken` (+ `/{id}/start`) | Action building blocks (§9) |
-| `RegisterProxyController` | `/openplan/**`, `/openproduct/**` | Native register proxy with token injection |
+| `RegisterProxyController` | `/openplan/**`, `/openproduct/**`, `/openklant/**` | Native register proxy with token injection |
 | `PluginHostController` et al. | `/api/host/*`, `/bundles/*`, `/health`, `/plugins/{id}/{version}/...` | Plugin host contract (§6) |
 | `PluginDataController` | `POST /plugins/pdca/{version}/data` | The contract's `/data` route: user-verified calls proxied by GZAC; evaluation sessions (§6.1) |
 
@@ -115,9 +123,9 @@ continue the numbering). Core:
 | Entity | Key | Holds |
 |---|---|---|
 | `PlanDetails` | `planUuid` | `dossierId` (1:1, unique), `intakeDossierId` (the intake this plan came from, §7), `caseDefinitionKey`, execution status (gepland/gestart), plan display status, positie, subdoelgroep (W&P segmentation, advised by the intake DMN), hoofddoel type |
-| `DoelDetails` | `doelUuid` | subdoelen and the hoofddoel: `VoortgangStatus` (OP_KOERS, AANDACHT_NODIG, LOOPT_ACHTER; how an active subdoel is going, shown in the plan tabs), internal and external note, sort order; plus the numeric `voortgangScore`/`voortgangToelichting` that the intake and the `evaluate` task form still write |
-| `InstrumentDetails` | `instrumentUuid` | hours, effectiveness, internal and external note, abort reason |
-| `ContactmomentDetails` | `contactmomentUuid` | evaluation type, deelnemers, doel progress and action points (intake contactmomenten), `evaluationSessionId` when the contactmoment is a completed evaluation |
+| `DoelDetails` | `doelUuid` | subdoelen and the hoofddoel: `VoortgangStatus` (OP_KOERS, AANDACHT_NODIG, LOOPT_ACHTER; how an active subdoel or the hoofddoel is going, shown in the plan tabs) with its explanation `voortgangToelichting`, internal and external note, sort order; plus the numeric `voortgangScore` that the intake and the `evaluate` task form still write (both also fill `voortgangToelichting`) |
+| `InstrumentDetails` | `instrumentUuid` | hours, effectiveness with its explanation (`effectiviteitToelichting`), internal and external note, abort reason |
+| `ContactmomentDetails` | `contactmomentUuid` (= klantcontact uuid in Open Klant) | evaluation type, deelnemers, doel progress and action points (intake contactmomenten), `evaluationSessionId` when the contactmoment is a completed evaluation |
 | `InvolvedParty` | own id | involved parties per plan, incl. the main responsible |
 | `Action` | own id | actions per doel, optionally attached to an instrument (`instrumentUuid`; W&P: instrument → 0..n taken, shown in the instrument block): title/description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED), `Uitvoering` (LOKAAL or BOUWBLOK), and for building block actions `bouwblokKoppelingId` + `gzacProcessInstanceId` + result |
 | `ActieBouwblokKoppeling` | own id | admin link case type→process (§9): `soort` (ACTIE or PRODUCT), `uitvoeringsvorm` (BOUWBLOK or DOSSIER), name, `caseDefinitionKey`, building block key/version + `processDefinitionKey` (BOUWBLOK) or `productCaseDefinitionKey` (DOSSIER), `pluginConfigId`, doeltype uuids (JSON) |
@@ -125,6 +133,45 @@ continue the numbering). Core:
 | `StoredPluginConfiguration` | `configId` | plugin configurations pushed by GZAC: serviceToken, gzacBaseUrl, title, properties |
 | `EvaluationSession` | own id | an evaluation a user runs on a plan (§6.1): `dossierId`, `planUuid`, `caseDefinitionKey`, owner `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED), start/end time, the contactmoment fields (`evaluatieType`, `deelnemers`, `verslag`) and, once completed, `contactmomentUuid`; at most one RUNNING per user (partial unique index) |
 | `EvaluationChange` | own id | one plan change recorded in a session (§6.1): `subjectType` (PLAN, HOOFDDOEL, SUBDOEL, INSTRUMENT, ACTIE) + `subjectUuid` + `subjectTitel`, `soort`, `vanWaarde`/`naarWaarde` (display values), `toelichting` (the reason given in the evaluation) |
+
+### 5.1 Contactmomenten in Open Klant
+
+A contactmoment of a plan is a **klantcontact** in Open Klant
+(Klantinteracties API), so it is part of the inwoner's klantbeeld alongside
+the contacts other systems record. The overlay row `ContactmomentDetails`
+(keyed by the klantcontact uuid) keeps the PDCA side: type, deelnemers,
+doelvoortgang, actiepunten and the evaluation it came from.
+
+- **Writing** goes through the backend (`KlantcontactService`): one
+  `POST /maak-klantcontact` creates
+  - the klantcontact — kanaal `gesprek`, onderwerp `<type>: <plan titel>`,
+    the verslag as `inhoud` (Open Klant allows at most 1000 characters; the
+    side panel counts down, the backend rejects longer text with 400),
+    `vertrouwelijk` true, `taal` `nld`, `plaatsgevondenOp` the moment of the
+    conversation (an evaluation's start);
+  - an onderwerpobject pointing at the plan: `codeRegister` `open-plan`,
+    `codeObjecttype` `plan`, `codeSoortObjectId` `uuid`, `objectId` the plan
+    uuid;
+  - for a plan about a person (`plan.domeinregister` =
+    `urn:pdca:brp:persoon:<bsn>`), the inwoner as betrokkene (rol `klant`):
+    the partij with that BSN, created with only its identificator
+    (`natuurlijk_persoon` / `bsn` / `brp`) when Open Klant does not know it
+    yet — the name stays in the BRP. Object plans get no betrokkene.
+
+  Routes that create a contactmoment: completing an evaluation (§6.1), the
+  intake (`POST /plan-intake`, §8) and the `evaluate` task form
+  (`POST /api/v1/pdca/contactmomenten`). `DELETE
+  /api/v1/pdca/contactmomenten/{uuid}` removes the klantcontact (Open Klant
+  removes its betrokkenen and onderwerpobjecten with it) and the overlay row.
+- **Status** — a klantcontact has no status; one that took place has
+  `indicatieContactGelukt` true (*Afgerond*), a planned one (an intake
+  afspraak with status `actief`) has null (*Gepland*); false shows as *Niet
+  gelukt*.
+- **Reading** is native, through the proxy:
+  `/openklant/klantinteracties/api/v1/klantcontacten` filtered on the
+  plan's onderwerpobject (`onderwerpobject__onderwerpobjectidentificator…`).
+  The Planoverzicht (KPI and recent evaluaties) and the Evaluaties tab read
+  it this way.
 
 ## 6. GZAC integration: the external-plugin host contract
 
@@ -209,7 +256,7 @@ gespreksverslag (how the inwoner is doing, what was discussed, why the plan
 changes). Changes are made where they are always made — in the Planoverzicht
 and Doelen & Acties tabs — and take effect immediately, like any other plan
 edit: an evaluation is not a transaction and cannot be rolled back. The side
-panel shows a live summary of those changes and holds the contactmoment
+panel shows a summary of those changes, refreshed every few seconds, and holds the contactmoment
 fields.
 
 - **Session = user + plan.** `EvaluationSession` records the owner (verified
@@ -236,46 +283,73 @@ fields.
   `HOOFDDOEL_GEWISSELD`, `POSITIE`; labels in `labels.ts`) and display values
   `vanWaarde`/`naarWaarde`. Value changes are sent with `samenvoegen`: a later
   change of the same kind on the same onderdeel updates the earlier one's
-  `naarWaarde`, and a value changed back to where it started drops out. The
-  backend rejects a change for another plan than the session's (409).
-- **Panel and tabs stay in sync** over a `BroadcastChannel`
-  (`pdca-evaluation`): the panel and the tabs are separate iframes, but all
-  are served from this app's origin. Events: `started`, `changed` (the panel
-  reloads its changes) and `completed` (tabs drop the banner, the Evaluaties
-  tab reloads).
+  `naarWaarde`, and a value changed back to where it started drops out. A
+  change can carry the reason entered with it in the tab (`toelichting`): the
+  explanation of a voortgang or of an instrument's hours/effectiveness, sent
+  only when that explanation itself changed. It becomes (or replaces) the
+  change's reason, and keeps a change whose value did not move — "still
+  *Loopt achter*, because …" — in the evaluation. The backend rejects a
+  change for another plan than the session's (409).
+- **Panel and tabs stay in sync through the backend.** GZAC sandboxes every
+  bundle iframe at its own opaque origin (no `allow-same-origin`), so the
+  panel and the tabs cannot message each other. The panel polls its changes
+  every 3 seconds while the session runs; a tab that knows a running session
+  polls `/evaluation-sessions/current` at the same interval and, once the
+  session is gone (completed in the panel), drops the banner and — on the
+  Evaluaties tab — reloads the list. A change rejected with 404/409 ends the
+  session in that tab as well.
 - **The panel** shows plan and start time, the contactmoment fields (saved
   automatically, `POST /evaluation-sessions/current/draft`) and the changes
   grouped per onderdeel, each with an optional reason
-  (`/evaluation-sessions/current/change-toelichting`) — e.g. why an
-  instrument stops, which may matter for subsidies.
+  (`/evaluation-sessions/current/change-toelichting`, prefilled with the
+  explanation entered in the tab) — e.g. why an instrument stops, which may
+  matter for subsidies. Note changes get no reason field: a note is its own
+  explanation.
 - **End** — only explicitly and only by completing; there is no cancel.
   "Evaluatie afronden" needs a gespreksverslag and asks for confirmation;
-  `POST /evaluation-sessions/current/complete` creates an afgerond
-  contactmoment in Open Plan with the verslag as notitie, a
-  `ContactmomentDetails` row (type, deelnemers, `evaluationSessionId`) and
-  marks the session COMPLETED. Closing the panel only hides it.
-- **Evaluaties tab** — lists the plan's contactmomenten; a completed
-  evaluation shows who ran it, the deelnemers, the gespreksverslag and its
-  plan changes with their reasons (`GET /api/v1/pdca/evaluaties`). Planned
-  and intake contactmomenten keep their notitie, doelvoortgang and
-  actiepunten.
+  `POST /evaluation-sessions/current/complete` creates a klantcontact in
+  Open Klant that took place at the session's start, with the verslag as
+  inhoud (§5.1), a `ContactmomentDetails` row (type, deelnemers,
+  `evaluationSessionId`) and marks the session COMPLETED. The gespreksverslag
+  is limited to 1000 characters for that reason. A failure is shown next to
+  the buttons and leaves the evaluation running. Closing the panel only hides
+  it.
+- **Calls through the host** (`pluginData`) resolve with status 0 when GZAC
+  does not answer within 30 seconds, so the panel never waits forever.
+- **Evaluaties tab** — the user's own running evaluation of this plan is
+  shown on top (tag *Loopt*, start time, deelnemers, the concept verslag and
+  the changes so far, refreshed on opening; only its owner sees it), then the
+  plan's contactmomenten; a completed evaluation shows who ran it, the
+  deelnemers, the gespreksverslag and its plan changes with their reasons
+  (`GET /api/v1/pdca/evaluaties`). Planned and intake contactmomenten keep
+  their notitie, doelvoortgang and actiepunten.
 - The panel fills the full panel height and follows GZAC's light/dark theme
   (the `theme` in `init` plus `themeChanged`, bridge `onHostThemeChanged`),
-  on the same `--cds-layer` surface as GZAC's panel and menu.
+  on the same `--cds-layer` surface as GZAC's panel and menu; its content is
+  a Carbon `Layer` on that surface (§11).
+- The "Evaluatie loopt" banner spans the full tab width, like the other
+  page-level notifications (`pdca-notification`).
 
 ### 6.2 Voortgang and notes in the plan tabs
 
-- **Voortgangsstatus per subdoel** — an active subdoel gets one of *Op
-  koers*, *Aandacht nodig* or *Loopt achter* (`DoelDetails.voortgangStatus`),
-  chosen in the subdoel card and shown as a tag in its header. The
-  Planoverzicht KPI "Voortgang" counts the active subdoelen on koers and
-  those that need attention. The numeric `voortgangScore` is no longer shown
-  in the plan tabs; the intake (doelen grid) and the `evaluate` task form
-  still write it.
+- **Voortgang per subdoel and of the hoofddoel** — an active subdoel and the
+  active hoofddoel (expand its card) get one of *Op koers*, *Aandacht nodig*
+  or *Loopt achter* (`DoelDetails.voortgangStatus`) with an explanation
+  (`voortgangToelichting`), saved together and shown as a tag in the card
+  header. The Planoverzicht KPI "Voortgang" counts the active subdoelen on
+  koers and those that need attention. The numeric `voortgangScore` is no
+  longer shown in the plan tabs; the intake (doelen grid) and the `evaluate`
+  task form still write it.
+- **Voortgang per instrument** — under "Voortgang & notities" on the
+  instrument row: hours spent, effectiveness (1–5) and an explanation
+  (`InstrumentDetails.effectiviteitToelichting`), saved together, followed by
+  the instrument's notes in the same nested panel.
 - **Internal and external note** on every subdoel, on the active hoofddoel
-  (expand its card) and on every instrument (under "Voortgang & notities"):
-  internal is for colleagues only, external may be shared with the inwoner.
-  Both are saved together on `DoelDetails` resp. `InstrumentDetails`.
+  and on every instrument: internal is for colleagues only, external may be
+  shared with the inwoner. Both are saved together on `DoelDetails` resp.
+  `InstrumentDetails`.
+- During an evaluation, the explanation of a voortgang becomes the reason of
+  the recorded change (§6.1).
 
 ## 7. Plan ↔ dossier
 
@@ -732,7 +806,7 @@ field once the register owns the catalog.
 - **React bundles** in `frontend/src/` (`plan-overview`, `plan-goals`,
   `plan-evaluations`, `pdca-admin`, `evaluation-panel`), shared API clients,
   bridge, the evaluation-session client (`evaluationSession.ts`: session
-  calls, change recording and the `BroadcastChannel` between panel and tabs)
+  calls, change recording and the polling that keeps panel and tabs in sync)
   and shared components (`WijzigingenLijst`, `EvaluatieBanner`) in
   `frontend/src/shared/`. Vite builds into
   `src/main/resources/static/bundles/react/` (gitignored; build after a fresh
@@ -748,6 +822,12 @@ field once the register owns the catalog.
   below 640px the indents and paddings shrink. Media queries match the
   iframe's own viewport. Keep layout out of inline `style` props — an inline
   style cannot be overridden by those media queries.
+- **Carbon layers.** Fields take their colour from the layer they sit on, so
+  every surface that holds fields is a Carbon `Layer`: the cards on the tab
+  background (subdoel and hoofddoel cards, the Planoverzicht tiles, the
+  evaluation cards), the nested panels inside them (an instrument's
+  "Voortgang & notities", actiepunt rows) and the side panel content. Without
+  it a field gets the colour of its surface and disappears against it.
 - Carbon Design System components; UI language is Dutch.
 
 ## 12. GZAC configuration as code (`gzac/`)
@@ -761,8 +841,9 @@ field once the register owns the catalog.
   execution) and `jobcoaching-aanvragen.zip` (product request demo, §9).
 - **The PDCA couplings ship in the zips**: the plan case types carry the
   three PDCA case tabs (type external plugin; on `inwonerplan` these are
-  the only tabs — no standard Valtimo tabs, task panel kept via
-  `showTasks`) and every plan/intake case type carries the `create-plan`
+  the only tabs — no standard Valtimo tabs). In every zip only the first
+  tab sets `showTasks`, so GZAC's task panel shows next to that tab only.
+  Every plan/intake case type carries the `create-plan`
   task-form process link (`external_plugin_task_form`). Configuration UUIDs are
   environment-specific (§3.5), so these references use the fixed
   placeholder id `00000000-0000-4000-8000-00000000dca0`; GZAC's import
@@ -784,7 +865,8 @@ field once the register owns the catalog.
 ## 13. Runtime & deployment
 
 - **Ports**: app 7500, Open Plan 7501, Open Product 7502, overlay database
-  7503 — deliberately outside every range used by the Valtimo stack.
+  7503, Open Klant 7504 — deliberately outside every range used by the
+  Valtimo stack.
 - **Dev**: `./gradlew bootRunWithDocker` (compose for registers + database,
   then bootRun). Entire stack in Docker: `docker compose --profile app up`.
 - **Dockerfile** is self-contained (builds frontend + jar inside the image).

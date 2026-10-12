@@ -3,6 +3,7 @@
 #   pdca-database    PostgreSQL for the PDCA app's own overlay data (localhost:7503)
 #   openplan-*       Maykin Open Plan   (plannen register, http://localhost:7501)
 #   openproduct-*    Maykin Open Product (producttypen register, http://localhost:7502)
+#   openklant-*      Maykin Open Klant  (klantinteracties register, http://localhost:7504)
 #   pdca-app         The app itself (http://localhost:7500) — only with --profile app
 #
 # Two ways to run:
@@ -10,20 +11,21 @@
 #   docker compose up -d                           # deps only, app via ./gradlew bootRun
 #   docker compose --profile app up -d --build     # entire stack in Docker
 #
-# The 7500-7503 block (app itself on 7500) deliberately avoids every port used
+# The 7500-7504 block (app itself on 7500) deliberately avoids every port used
 # by the Valtimo project and its dependencies: GZAC stack (8001-8012, 8080,
 # 8081), plugin host samples (8090-8108), module databases (33xx, 543xx),
 # opensearch (3920x) and rabbitmq (4567x, 5567x).
 #
 # Open Plan has no published Docker image yet, so it is built from GitHub source
 # (pinned commit) on first `docker compose up`; subsequent runs use the cached
-# image. Open Product is pulled from Docker Hub.
+# image. Open Product and Open Klant are pulled from Docker Hub.
 #
 # The *-init one-shot services run migrations, create an `admin`/`admin`
 # superuser and provision fixed dev API tokens (see docker/*/init.py) that match
 # the defaults in src/main/resources/application.yml — no manual setup needed.
 #
-# Admin UIs: http://localhost:7501/admin/ and http://localhost:7502/admin/ (admin/admin)
+# Admin UIs: http://localhost:7501/admin/, http://localhost:7502/admin/ and
+# http://localhost:7504/admin/ (admin/admin)
 
 services:
   # The app itself, opt-in via `--profile app` so the default `up -d` (used by
@@ -42,6 +44,7 @@ services:
       PDCA_DB_PORT: "5432"
       OPENPLAN_URL: http://openplan:8000
       OPENPRODUCT_URL: http://openproduct:8000
+      OPENKLANT_URL: http://openklant:8000
       # GZAC runs outside this compose project (its own stack on the host).
       GZAC_URL: http://host.docker.internal:8080
       GZAC_TOKEN_URL: http://host.docker.internal:8081/auth/realms/valtimo/protocol/openid-connect/token
@@ -54,6 +57,8 @@ services:
       openplan:
         condition: service_healthy
       openproduct:
+        condition: service_healthy
+      openklant:
         condition: service_healthy
 
   pdca-database:
@@ -202,7 +207,74 @@ services:
       openproduct-init:
         condition: service_completed_successfully
 
+  # ----------------------------- Open Klant -----------------------------
+  # The image is published for linux/amd64 only (emulated on Apple silicon).
+
+  openklant-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - ./docker/openklant/init-db.sql:/docker-entrypoint-initdb.d/init_db.sql:ro
+      - openklant-db-data:/var/lib/postgresql/data
+
+  openklant-redis:
+    image: redis:7-alpine
+
+  openklant-init:
+    image: maykinmedia/open-klant:2.19.1
+    platform: linux/amd64
+    environment: &openklant-env
+      DJANGO_SETTINGS_MODULE: openklant.conf.docker
+      SECRET_KEY: pdca-dev-only-openklant-secret
+      DB_NAME: openklant
+      DB_USER: openklant
+      DB_HOST: openklant-db
+      ALLOWED_HOSTS: "*"
+      CACHE_DEFAULT: openklant-redis:6379/0
+      CACHE_AXES: openklant-redis:6379/1
+      CELERY_BROKER_URL: redis://openklant-redis:6379/2
+      CELERY_RESULT_BACKEND: redis://openklant-redis:6379/2
+      NOTIFICATIONS_DISABLED: "true"
+      DISABLE_2FA: "true"
+      OTEL_SDK_DISABLED: "true"
+      PGHOST: openklant-db
+      PGPORT: "5432"
+    volumes:
+      - ./docker/openklant/init.py:/init/init.py:ro
+    command:
+      - sh
+      - -c
+      - >-
+        until pg_isready; do echo 'waiting for openklant-db...'; sleep 1; done
+        && python src/manage.py migrate
+        && python src/manage.py shell -c "exec(open('/init/init.py').read())"
+    restart: "no"
+    depends_on:
+      - openklant-db
+
+  openklant:
+    image: maykinmedia/open-klant:2.19.1
+    platform: linux/amd64
+    environment: *openklant-env
+    ports:
+      - "7504:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/admin/login/')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      openklant-db:
+        condition: service_started
+      openklant-redis:
+        condition: service_started
+      openklant-init:
+        condition: service_completed_successfully
+
 volumes:
   pdca-database-data:
   openplan-db-data:
   openproduct-db-data:
+  openklant-db-data:

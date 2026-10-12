@@ -14,8 +14,7 @@
         "type": "external_plugin",
         "contentKey": "00000000-0000-4000-8000-00000000dca0:plan-goals",
         "pluginDefinitionKey": "pdca",
-        "pluginVersion": "0.2.0",
-        "showTasks": true
+        "pluginVersion": "0.2.0"
     },
     {
         "name": "Evaluaties",
@@ -23,7 +22,6 @@
         "type": "external_plugin",
         "contentKey": "00000000-0000-4000-8000-00000000dca0:plan-evaluations",
         "pluginDefinitionKey": "pdca",
-        "pluginVersion": "0.2.0",
-        "showTasks": true
+        "pluginVersion": "0.2.0"
     }
 ]

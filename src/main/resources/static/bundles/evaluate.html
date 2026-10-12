@@ -68,7 +68,7 @@
 
 <div class="form-group">
   <label>Samenvatting</label>
-  <textarea id="summary" placeholder="Beschrijf de uitkomsten van het gesprek"></textarea>
+  <textarea id="summary" maxlength="1000" placeholder="Beschrijf de uitkomsten van het gesprek (max. 1000 tekens)"></textarea>
 </div>
 
 <div class="section-divider"></div>
@@ -87,9 +87,9 @@
 </div>
 
 <script>
-// Direct integration: doelen come from Open Plan, the evaluation is
-// registered as a contactmoment in Open Plan; type/doelvoortgang/action
-// points go to the PDCA overlay.
+// Direct integration: doelen come from Open Plan; the evaluation becomes a
+// contactmoment through the overlay API, which records it as a klantcontact
+// in Open Klant and keeps type/doelvoortgang/action points in the overlay.
 var API=location.origin.indexOf('http')===0?location.origin:'http://localhost:7500';
 var OPENPLAN=API+'/openplan/plannen/api/v0';
 var planId=null;
@@ -186,24 +186,22 @@ function submitEval(){
   var actionPointsList=ap?ap.split('\n').filter(function(l){return l.trim()}).map(function(l){return l.replace(/^[-*]\s*/,'')}):[];
   var date=document.getElementById('evalDate').value||new Date().toISOString().split('T')[0];
 
-  fetch(OPENPLAN+'/contactmoment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+  fetch(API+'/api/v1/pdca/contactmomenten',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
     planUuid:planId,
-    datum:date+'T12:00:00Z',
-    status:'afgerond',
-    notitie:document.getElementById('summary').value.trim()||''
+    datum:date,
+    evaluatieType:document.getElementById('evalType').value,
+    afgerond:true,
+    verslag:document.getElementById('summary').value.trim()||null,
+    deelnemers:document.getElementById('participants').value.trim()||null,
+    doelVoortgang:JSON.stringify(goalProgress),
+    actiepunten:JSON.stringify(actionPointsList)
   })})
-  .then(function(r){if(!r.ok)throw new Error('Server error');return r.json()})
-  .then(function(cm){
-    return fetch(API+'/api/v1/pdca/contactmomentdetails/'+cm.uuid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-      planUuid:planId,
-      evaluatieType:document.getElementById('evalType').value,
-      geplandeDatum:date,
-      deelnemers:document.getElementById('participants').value.trim()||null,
-      doelVoortgang:JSON.stringify(goalProgress),
-      actiepunten:JSON.stringify(actionPointsList)
-    })}).then(function(){return cm});
+  .then(function(r){
+    if(!r.ok)return r.json().catch(function(){return {}}).then(function(b){throw new Error(b.message||('HTTP '+r.status))});
+    return r.json();
   })
-  .then(function(cm){
+  .then(function(details){
+    var cm={uuid:details.contactmomentUuid};
     goalProgress.forEach(function(gp){
       if(gp.score){
         fetch(API+'/api/v1/pdca/doeldetails/'+gp.doelUuid,{

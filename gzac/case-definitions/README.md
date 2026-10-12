@@ -19,8 +19,9 @@ columns, search fields and case tabs. `binnenhof-renovatie` and the intake
 case types carry the default tabs (Samenvatting/Voortgang/Audit); in
 `intake-werk-participatie` the Samenvatting tab is a **widget tab** driven by
 per-phase internal case statuses (see below); `inwonerplan` carries **only
-the three PDCA tabs** — no standard Valtimo tabs, with the task panel kept
-on every tab via `showTasks`.
+the three PDCA tabs** — no standard Valtimo tabs. In every zip only the
+first tab sets `showTasks`, so GZAC's task panel shows next to the first tab
+and the other tabs use the full width.
 The plan-dossier zips additionally contain `building-block-link`s to the
 bundled building blocks (`pdca-actie`; for `inwonerplan` also
 `jobcoaching-aanvragen`) with `startableByUser: false` — normal building

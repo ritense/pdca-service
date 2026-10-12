@@ -8,17 +8,22 @@ Standalone prototype for PDCA (Plan-Do-Check-Act) plan management, **directly in
 Maykin's Common Ground registers**:
 
 - **[Open Plan](https://github.com/maykinmedia/open-plan)** is the system of record for plannen,
-  doelen, instrumenten, contactmomenten and personen (Plannen API `v0`).
+  doelen, instrumenten and personen (Plannen API `v0`).
 - **[Open Product](https://github.com/maykinmedia/open-product)** provides the producttypen
   catalog behind the instrument picker (Producttypen API `v1`).
+- **[Open Klant](https://github.com/maykinmedia/open-klant)** holds the contactmomenten as
+  klantcontacten of the inwoner (Klantinteracties API `v1`), linked to the plan through an
+  onderwerpobject; the backend creates them, the tabs read them through the proxy
+  (ARCHITECTURE §5.1).
 
-The frontend consumes both register APIs **in their native shape** (camelCase Dutch fields,
+The frontend consumes the register APIs **in their native shape** (camelCase Dutch fields,
 statuses `actief`/`afgerond`/`geannuleerd`, resultaat `behaald`/`gefaald`, paginated
 `{count, results}`) through a thin token-injecting proxy in the backend:
 
 ```
 /openplan/plannen/api/v0/...          -> Open Plan     (localhost:7501)
 /openproduct/producttypen/api/v1/...  -> Open Product  (localhost:7502)
+/openklant/klantinteracties/api/v1/... -> Open Klant    (localhost:7504)
 ```
 
 The Spring Boot backend itself only keeps what the registers don't model, keyed by register uuid
@@ -68,7 +73,8 @@ Key modelling choices:
   (PDCA Beheer, per case type; empty = default paths such as `/bsn`, `/planTitel`,
   `/doelen`). Works with minimal prefill (just a bsn) up to maximal prefill (a complete plan
   with doelen, instrumenten, contactmomenten and betrokkenen); creation happens in one call
-  (`POST /api/v1/pdca/plan-intake`) that writes the whole structure into Open Plan + overlay.
+  (`POST /api/v1/pdca/plan-intake`) that writes the whole structure into Open Plan, Open Klant
+  (contactmomenten) and the overlay.
   When the task runs in an **intake case type** (config with `planCaseDefinitionKey`), the
   plan is not linked to the intake dossier: the app creates a **new plan dossier** of that
   type (standalone route) and links to that instead.
@@ -94,17 +100,19 @@ instance by URL.
 Or in two steps: `docker compose up -d` then `./gradlew bootRun`. To run the app itself as a
 container too, see [Docker](#docker): `docker compose --profile app up -d --build`.
 
-The compose file runs three stacks:
+The compose file runs four stacks:
 
 | Service | URL | Notes |
 |---|---|---|
 | Open Plan | <http://localhost:7501> | **Built from GitHub source** on first `up` (no published image yet; pinned commit). Admin: `admin`/`admin`. |
 | Open Product | <http://localhost:7502> | `maykinmedia/open-product:1.8.0` from Docker Hub. Admin: `admin`/`admin`. |
 | pdca-database | localhost:7503 | PostgreSQL for the PDCA overlay (db/user/pass: `pdca`). |
+| Open Klant | <http://localhost:7504> | `maykinmedia/open-klant:2.19.1` from Docker Hub (linux/amd64 only, emulated on Apple silicon). Admin: `admin`/`admin`. |
 
-The `openplan-init` / `openproduct-init` one-shot containers migrate, create the admin users,
-provision **fixed dev API tokens** (matching `application.yml`, in `docker/*/init.py`) and seed
-the **reference data** (`docker/*/reference_data.py`):
+The `openplan-init` / `openproduct-init` / `openklant-init` one-shot containers migrate, create
+the admin users, provision **fixed dev API tokens** (matching `application.yml`, in
+`docker/*/init.py`; Open Klant keeps its tokens in its own *token authorizations* admin, not as
+DRF tokens) and seed the **reference data** (`docker/*/reference_data.py`; Open Klant has none):
 producttypen in Open Product (`docker/openproduct/reference_data.py`; the W&P producten carry the
 five portfolio themes Perspectief / Randvoorwaarden / Persoonlijke vermogens / Kansen /
 Werkgeversdienstverlening) and plantypen, doeltypen (fixed
@@ -118,10 +126,11 @@ Quick checks once running:
 
 - Open Plan through the proxy: <http://localhost:7500/openplan/plannen/api/v0/plan>
 - Producttypen: <http://localhost:7500/openproduct/producttypen/api/v1/producttypen>
+- Klantcontacten: <http://localhost:7500/openklant/klantinteracties/api/v1/klantcontacten>
 - PDCA overlay: <http://localhost:7500/api/v1/pdca/plandetails>
 - Health: <http://localhost:7500/health> · Manifest: <http://localhost:7500/api/host/plugins>
 
-> Port note: the whole 7500-7503 block is deliberately outside every range used by the Valtimo
+> Port note: the whole 7500-7504 block is deliberately outside every range used by the Valtimo
 > project and its dependencies — GZAC stack (8001-8012, 8080, 8081), plugin host and samples
 > (8090-8108), module databases (33xx, 543xx), opensearch (3920x) and rabbitmq (4567x, 5567x).
 > Override with `server.port` / the compose port mappings if needed.
@@ -344,6 +353,7 @@ them with in-network hostnames):
 | `PDCA_DB_NAME` / `PDCA_DB_USER` / `PDCA_DB_PASS` | `pdca` (all three) | Overlay database name/credentials |
 | `OPENPLAN_URL` / `OPENPLAN_TOKEN` | `http://localhost:7501` / dev token | Open Plan register |
 | `OPENPRODUCT_URL` / `OPENPRODUCT_TOKEN` | `http://localhost:7502` / dev token | Open Product register |
+| `OPENKLANT_URL` / `OPENKLANT_TOKEN` | `http://localhost:7504` / dev token | Open Klant register |
 | `GZAC_URL` | _(empty: the pushed callback URL is used)_ | Override of the GZAC API URL pushed by GZAC; required for the static-token/Keycloak fallbacks |
 | `GZAC_TOKEN_URL` / `GZAC_CLIENT_ID` / `GZAC_CLIENT_SECRET` | standard gzac-docker-compose m2m client | Keycloak client-credentials fallback |
 | `PDCA_SEED_DEMO_DATA` | `true` | Seed demo plans into an empty Open Plan on boot |
@@ -372,7 +382,7 @@ other direction, when GZAC itself runs in Docker, register the plugin URL as
 ./gradlew buildGzacZips  # rebuild the importable GZAC zips (case definitions + building blocks)
 ```
 
-Resetting data: `docker compose down -v` wipes all three databases; the init containers and
+Resetting data: `docker compose down -v` wipes all four databases; the init containers and
 Liquibase re-provision everything (same fixed uuids) on the next `docker compose up -d` +
 app start. Registers not part of this integration (BRP persoonsgegevens, objectenregister) are
 served as display-only stubs from `/api/v1/registers/*`.

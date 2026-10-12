@@ -51,8 +51,9 @@ import java.util.UUID
  *    configured). Minimal content (just a bsn) yields a minimal prefill; a
  *    full intake prefills the whole plan.
  *  - [createPlanFromIntake] creates the (edited) plan structure: plan +
- *    doelen + instrumenten + contactmomenten in Open Plan, the matching
- *    overlay rows and betrokkenen, and links the plan to the dossier.
+ *    doelen + instrumenten in Open Plan, the contactmomenten as
+ *    klantcontacten in Open Klant, the matching overlay rows and
+ *    betrokkenen, and links the plan to the dossier.
  */
 @Service
 class IntakeService(
@@ -64,6 +65,7 @@ class IntakeService(
     private val instrumentDetailsRepository: InstrumentDetailsRepository,
     private val contactmomentDetailsRepository: ContactmomentDetailsRepository,
     private val involvedPartyRepository: InvolvedPartyRepository,
+    private val klantcontactService: KlantcontactService,
     private val openPlanRestClient: RestClient,
     private val objectMapper: ObjectMapper
 ) {
@@ -383,22 +385,24 @@ class IntakeService(
             instrumentCount++
         }
 
-        // 6. Contactmomenten + evaluation overlay.
+        // 6. Contactmomenten (klantcontacten in Open Klant) + evaluation overlay.
         request.contactmomenten.forEach { cm ->
             val datum = cm.datum?.takeIf { it.isNotBlank() } ?: java.time.LocalDate.now().toString()
-            val aangemaakt = postRegister(
-                "/plannen/api/v0/contactmoment", buildMap {
-                    put("planUuid", planUuid.toString())
-                    put("datum", "${datum}T10:00:00Z")
-                    put("status", cm.status?.takeIf { it.isNotBlank() } ?: "actief")
-                    put("notitie", cm.notitie ?: "")
-                }
+            val evaluatieType = cm.evaluatieType?.takeIf { it.isNotBlank() } ?: "EVALUATION"
+            val klantcontactUuid = klantcontactService.create(
+                NewContactmoment(
+                    planUuid = planUuid,
+                    evaluatieType = evaluatieType,
+                    plaatsgevondenOp = java.time.OffsetDateTime.parse("${datum}T10:00:00Z"),
+                    afgerond = cm.status == "afgerond",
+                    verslag = cm.notitie
+                )
             )
             contactmomentDetailsRepository.save(
                 ContactmomentDetails(
-                    contactmomentUuid = UUID.fromString(aangemaakt["uuid"] as String),
+                    contactmomentUuid = klantcontactUuid,
                     planUuid = planUuid,
-                    evaluatieType = cm.evaluatieType?.takeIf { it.isNotBlank() } ?: "EVALUATION",
+                    evaluatieType = evaluatieType,
                     geplandeDatum = java.time.LocalDate.parse(datum),
                     deelnemers = cm.deelnemers,
                     actiepunten = cm.actiepunten?.takeIf { it.isNotEmpty() }

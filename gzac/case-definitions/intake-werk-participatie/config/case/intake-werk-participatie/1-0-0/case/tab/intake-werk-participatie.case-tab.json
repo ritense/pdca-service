@@ -10,8 +10,7 @@
         "name": "Voortgang",
         "key": "progress",
         "type": "standard",
-        "contentKey": "progress",
-        "showTasks": true
+        "contentKey": "progress"
     },
     {
         "name": "Audit",

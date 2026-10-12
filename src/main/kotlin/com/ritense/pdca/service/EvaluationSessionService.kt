@@ -16,7 +16,6 @@
 
 package com.ritense.pdca.service
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.ritense.pdca.domain.ContactmomentDetails
 import com.ritense.pdca.domain.EvaluationChange
 import com.ritense.pdca.domain.EvaluationSession
@@ -28,17 +27,12 @@ import com.ritense.pdca.repository.EvaluationSessionRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
-import org.springframework.http.MediaType
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import org.springframework.web.client.RestClient
 import org.springframework.web.server.ResponseStatusException
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.OffsetDateTime
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
+import java.time.ZoneId
 import java.util.UUID
 
 class EvaluationSessionConflictException(val running: EvaluationSession?) :
@@ -55,7 +49,10 @@ data class EvaluationDraft(
  * A plan change made in a plan tab while the session runs. With [samenvoegen]
  * a later change of the same kind on the same subject replaces the earlier
  * one's [naarWaarde] (keeping its [vanWaarde]); a value changed back to where
- * it started drops out of the evaluation.
+ * it started drops out of the evaluation, unless a new [toelichting] comes
+ * with it. [toelichting] is the reason entered with the change in the tab
+ * (e.g. the explanation of a voortgang); null leaves the change's reason as
+ * it is, blank clears it.
  */
 data class EvaluationChangeRequest(
     val planUuid: UUID,
@@ -65,6 +62,7 @@ data class EvaluationChangeRequest(
     val soort: String,
     val vanWaarde: String? = null,
     val naarWaarde: String? = null,
+    val toelichting: String? = null,
     val samenvoegen: Boolean = false
 )
 
@@ -72,8 +70,8 @@ data class EvaluationChangeRequest(
  * Evaluation sessions per user. One running session per user (also enforced
  * by a partial unique index); a running session, its contactmoment fields and
  * its changes are only ever returned to the owner. Completing turns the
- * session into an afgerond contactmoment in Open Plan, which is when
- * colleagues get to see the evaluation.
+ * session into a contactmoment that took place — a klantcontact in Open
+ * Klant — which is when colleagues get to see the evaluation.
  */
 @Service
 @Transactional
@@ -83,8 +81,7 @@ class EvaluationSessionService(
     private val planDetailsRepository: PlanDetailsRepository,
     private val contactmomentDetailsRepository: ContactmomentDetailsRepository,
     private val phaseConfigService: PhaseConfigService,
-    private val openPlanRestClient: RestClient,
-    private val objectMapper: ObjectMapper
+    private val klantcontactService: KlantcontactService
 ) {
 
     @Transactional(readOnly = true)
@@ -120,7 +117,15 @@ class EvaluationSessionService(
             session.evaluatieType = type
         }
         draft.deelnemers?.let { session.deelnemers = it }
-        draft.verslag?.let { session.verslag = it }
+        draft.verslag?.let { verslag ->
+            if (verslag.length > KlantcontactService.INHOUD_MAX_LENGTH) {
+                throw ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Het gespreksverslag mag maximaal ${KlantcontactService.INHOUD_MAX_LENGTH} tekens bevatten"
+                )
+            }
+            session.verslag = verslag
+        }
         return repository.save(session)
     }
 
@@ -136,6 +141,7 @@ class EvaluationSessionService(
         }
         val van = request.vanWaarde?.takeIf { it.isNotBlank() }
         val naar = request.naarWaarde?.takeIf { it.isNotBlank() }
+        val toelichting = request.toelichting?.takeIf { it.isNotBlank() }
         val earlier = if (request.samenvoegen) {
             changeRepository.findFirstBySessionIdAndSubjectTypeAndSubjectUuidAndSoort(
                 session.id, request.subjectType, request.subjectUuid, request.soort
@@ -143,16 +149,17 @@ class EvaluationSessionService(
         } else null
 
         if (earlier != null) {
-            if (earlier.vanWaarde == naar) {
+            if (earlier.vanWaarde == naar && toelichting == null) {
                 changeRepository.delete(earlier)
                 return null
             }
             earlier.naarWaarde = naar
+            if (request.toelichting != null) earlier.toelichting = toelichting
             earlier.subjectTitel = request.subjectTitel ?: earlier.subjectTitel
             earlier.updatedAt = LocalDateTime.now()
             return changeRepository.save(earlier)
         }
-        if (request.samenvoegen && van == naar) return null
+        if (request.samenvoegen && van == naar && toelichting == null) return null
         return changeRepository.save(
             EvaluationChange(
                 sessionId = session.id,
@@ -161,7 +168,8 @@ class EvaluationSessionService(
                 subjectTitel = request.subjectTitel,
                 soort = request.soort,
                 vanWaarde = van,
-                naarWaarde = naar
+                naarWaarde = naar,
+                toelichting = toelichting
             )
         )
     }
@@ -178,9 +186,10 @@ class EvaluationSessionService(
     }
 
     /**
-     * Completes the running evaluation: an afgerond contactmoment in Open Plan
-     * with the gespreksverslag as notitie, its overlay row pointing back to
-     * this session, and the session marked completed.
+     * Completes the running evaluation: a klantcontact in Open Klant that took
+     * place at the session's start, with the gespreksverslag as inhoud, its
+     * overlay row pointing back to this session, and the session marked
+     * completed.
      */
     fun complete(userLogin: String): EvaluationSession {
         val session = running(userLogin)
@@ -188,16 +197,15 @@ class EvaluationSessionService(
             ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Vul eerst het gespreksverslag in")
         val evaluatieType = session.evaluatieType ?: defaultEvaluationType(session.caseDefinitionKey)
         val now = LocalDateTime.now()
-        val contactmoment = postContactmoment(
-            mapOf(
-                "planUuid" to session.planUuid.toString(),
-                "datum" to OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS)
-                    .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
-                "status" to "afgerond",
-                "notitie" to verslag
+        val contactmomentUuid = klantcontactService.create(
+            NewContactmoment(
+                planUuid = session.planUuid,
+                evaluatieType = evaluatieType,
+                plaatsgevondenOp = session.startedAt.atZone(ZoneId.systemDefault()).toOffsetDateTime(),
+                afgerond = true,
+                verslag = verslag
             )
         )
-        val contactmomentUuid = UUID.fromString(contactmoment["uuid"] as String)
         contactmomentDetailsRepository.save(
             ContactmomentDetails(
                 contactmomentUuid = contactmomentUuid,
@@ -240,19 +248,5 @@ class EvaluationSessionService(
 
     private companion object {
         const val DEFAULT_EVALUATION_TYPE = "EVALUATION"
-    }
-
-    private fun postContactmoment(body: Map<String, Any?>): Map<*, *> = try {
-        openPlanRestClient.post()
-            .uri("/plannen/api/v0/contactmoment")
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(objectMapper.writeValueAsBytes(body))
-            .retrieve()
-            .body(Map::class.java)
-            ?: throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Open Plan gaf geen antwoord bij het vastleggen van de evaluatie")
-    } catch (e: ResponseStatusException) {
-        throw e
-    } catch (e: Exception) {
-        throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Evaluatie vastleggen in Open Plan mislukt: ${e.message}")
     }
 }

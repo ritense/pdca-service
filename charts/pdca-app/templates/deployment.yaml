@@ -65,6 +65,13 @@ spec:
                   name: {{ .Values.externalServices.openproduct.existingSecret }}
                   key: {{ .Values.externalServices.openproduct.existingSecretKey }}
             {{- end }}
+            {{- if and .Values.externalServices.openklant.url .Values.externalServices.openklant.existingSecret }}
+            - name: OPENKLANT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.externalServices.openklant.existingSecret }}
+                  key: {{ .Values.externalServices.openklant.existingSecretKey }}
+            {{- end }}
             {{- if and .Values.externalServices.gzac.enabled .Values.externalServices.gzac.existingSecret }}
             - name: GZAC_CLIENT_SECRET
               valueFrom:

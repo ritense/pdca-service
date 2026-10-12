@@ -64,7 +64,19 @@ export function doelStatusTag(status: string, resultaat?: string | null, uitvoer
   return 'gray';
 }
 
-/** Formats Open Plan ISO datetimes and plain dates as dd-mm-yyyy. */
+/**
+ * Status of a contactmoment, read from its klantcontact in Open Klant: one
+ * that took place has indicatieContactGelukt true, a planned one null.
+ */
+export function contactmomentStatusLabel(c: { indicatieContactGelukt: boolean | null }): string {
+  return c.indicatieContactGelukt === true ? 'Afgerond' : c.indicatieContactGelukt === false ? 'Niet gelukt' : 'Gepland';
+}
+
+export function contactmomentStatusTag(c: { indicatieContactGelukt: boolean | null }): string {
+  return c.indicatieContactGelukt === true ? 'green' : c.indicatieContactGelukt === false ? 'red' : 'warm-gray';
+}
+
+/** Formats register ISO datetimes and plain dates as dd-mm-yyyy. */
 export function formatDate(dateStr: string | undefined | null): string {
   if (!dateStr) return '';
   const datePart = dateStr.split('T')[0];
@@ -169,7 +181,7 @@ export function doelgroepVoorSubject(domeinregister: string | null | undefined):
   return undefined;
 }
 
-/** Voortgangsstatus of an active subdoel (overlay DoelDetails.voortgangStatus). */
+/** Voortgangsstatus of an active subdoel or hoofddoel (overlay DoelDetails.voortgangStatus). */
 export const VOORTGANG_STATUSSEN = ['OP_KOERS', 'AANDACHT_NODIG', 'LOOPT_ACHTER'] as const;
 
 const VOORTGANG_STATUS_LABELS: Record<string, string> = {
@@ -224,6 +236,9 @@ const WIJZIGING_LABELS: Record<string, string> = {
 /** Text changes: only the new text is shown, not old → new. */
 const TEKST_WIJZIGINGEN = new Set(['INTERNE_NOTITIE', 'EXTERNE_NOTITIE', 'HOOFDDOEL_TOELICHTING']);
 
+/** A text change is its own explanation; every other change can be given a reason. */
+export function wijzigingHeeftReden(soort: string): boolean { return !TEKST_WIJZIGINGEN.has(soort); }
+
 const SUBJECT_TYPE_LABELS: Record<string, string> = {
   PLAN: 'Plan', HOOFDDOEL: 'Hoofddoel', SUBDOEL: 'Subdoel', INSTRUMENT: 'Instrument', ACTIE: 'Actie',
 };
@@ -233,7 +248,7 @@ export function subjectTypeLabel(s: string): string { return SUBJECT_TYPE_LABELS
 export function wijzigingOmschrijving(w: { soort: string; vanWaarde?: string | null; naarWaarde?: string | null }): string {
   const label = WIJZIGING_LABELS[w.soort] || w.soort;
   if (TEKST_WIJZIGINGEN.has(w.soort)) return w.naarWaarde ? `${label}: ${w.naarWaarde}` : `${label} verwijderd`;
-  if (w.vanWaarde && w.naarWaarde) return `${label}: ${w.vanWaarde} → ${w.naarWaarde}`;
+  if (w.vanWaarde && w.naarWaarde && w.vanWaarde !== w.naarWaarde) return `${label}: ${w.vanWaarde} → ${w.naarWaarde}`;
   if (w.naarWaarde) return `${label}: ${w.naarWaarde}`;
   if (w.vanWaarde) return `${label}: ${w.vanWaarde} → leeg`;
   return label;

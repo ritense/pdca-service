@@ -31,7 +31,8 @@ import java.util.UUID
  * recorded; this row is the evaluation's account of it. [soort] is the kind
  * of change (e.g. `SUBDOEL_TOEGEVOEGD`, `VOORTGANG`); [vanWaarde] and
  * [naarWaarde] are display values for value changes. [toelichting] is the
- * reason the user gives in the evaluation.
+ * reason for the change: entered with it in the tab (the explanation of a
+ * voortgang or instrument registration) or given afterwards in the side panel.
  */
 @Entity
 @Table(name = "evaluation_change")

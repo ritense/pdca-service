@@ -70,11 +70,11 @@ data class EvaluationSession(
     @Column(name = "deelnemers", columnDefinition = "TEXT")
     var deelnemers: String? = null,
 
-    /** Gespreksverslag; becomes the notitie of the contactmoment on completion. */
+    /** Gespreksverslag; becomes the inhoud of the klantcontact on completion (max 1000 characters). */
     @Column(name = "verslag", columnDefinition = "TEXT")
     var verslag: String? = null,
 
-    /** The contactmoment in Open Plan this evaluation became on completion. */
+    /** The contactmoment (klantcontact in Open Klant) this evaluation became on completion. */
     @Column(name = "contactmoment_uuid")
     var contactmomentUuid: UUID? = null
 )

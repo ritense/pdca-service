@@ -27,8 +27,11 @@ import com.ritense.pdca.repository.DoelDetailsRepository
 import com.ritense.pdca.repository.InstrumentDetailsRepository
 import com.ritense.pdca.repository.InvolvedPartyRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
+import com.ritense.pdca.service.KlantcontactService
+import com.ritense.pdca.service.NewContactmoment
 import com.ritense.pdca.service.PhaseConfigService
 import com.ritense.pdca.web.rest.dto.ContactmomentDetailsRequest
+import com.ritense.pdca.web.rest.dto.ContactmomentRequest
 import com.ritense.pdca.web.rest.dto.DoelDetailsRequest
 import com.ritense.pdca.web.rest.dto.InstrumentDetailsRequest
 import com.ritense.pdca.web.rest.dto.PlanDetailsRequest
@@ -40,6 +43,7 @@ import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -47,19 +51,24 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.util.UUID
 
 /**
- * PDCA process overlay keyed by Open Plan uuids. Plans, doelen, instrumenten,
- * contactmomenten, personen, doeltypen, relatietypen and producttypen are
- * consumed directly from Open Plan / Open Product through the
- * [com.ritense.pdca.registers.RegisterProxyController]; this resource only
- * stores what those registers do not model (uitvoeringsstatus, voortgang,
- * internal/external notes, weergavestatus, uren/effectiviteit,
- * evaluatietype, doelvoortgang, actiepunten) plus the GZAC case link.
+ * PDCA process overlay keyed by register uuids. Plans, doelen, instrumenten,
+ * personen, doeltypen, relatietypen and producttypen are consumed directly
+ * from Open Plan / Open Product, contactmomenten (klantcontacten) from Open
+ * Klant, through the [com.ritense.pdca.registers.RegisterProxyController];
+ * this resource only stores what those registers do not model
+ * (uitvoeringsstatus, voortgang, internal/external notes, weergavestatus,
+ * uren/effectiviteit, evaluatietype, doelvoortgang, actiepunten) plus the
+ * GZAC case link.
  *
  * The DELETE endpoints clean up local overlay rows after the caller removed
- * the register resource through the proxy.
+ * the register resource through the proxy. Contactmomenten are the
+ * exception: creating and deleting one goes through this resource
+ * ([KlantcontactService] writes the klantcontact with its betrokkene and
+ * onderwerpobject), reading them goes through the proxy.
  */
 @RestController
 @Transactional
@@ -71,7 +80,8 @@ class PdcaResource(
     private val instrumentDetailsRepository: InstrumentDetailsRepository,
     private val actionRepository: ActionRepository,
     private val involvedPartyRepository: InvolvedPartyRepository,
-    private val phaseConfigService: PhaseConfigService
+    private val phaseConfigService: PhaseConfigService,
+    private val klantcontactService: KlantcontactService
 ) {
 
     // --------------------------------------------------------- plandetails
@@ -280,8 +290,39 @@ class PdcaResource(
         return contactmomentDetailsRepository.save(details)
     }
 
-    @DeleteMapping("/contactmomentdetails/{contactmomentUuid}")
-    fun deleteContactmomentDetails(@PathVariable(name = "contactmomentUuid") contactmomentUuid: UUID): ResponseEntity<Unit> {
+    // ------------------------------------------------------ contactmomenten
+
+    /** A contactmoment of a plan: the klantcontact in Open Klant plus its overlay row. */
+    @PostMapping("/contactmomenten")
+    fun createContactmoment(@Valid @RequestBody request: ContactmomentRequest): ResponseEntity<ContactmomentDetails> {
+        validateEvaluatieType(request.planUuid, request.evaluatieType)
+        val klantcontactUuid = klantcontactService.create(
+            NewContactmoment(
+                planUuid = request.planUuid,
+                evaluatieType = request.evaluatieType,
+                plaatsgevondenOp = request.datum.atTime(12, 0).atZone(ZoneId.systemDefault()).toOffsetDateTime(),
+                afgerond = request.afgerond,
+                verslag = request.verslag
+            )
+        )
+        val details = contactmomentDetailsRepository.save(
+            ContactmomentDetails(
+                contactmomentUuid = klantcontactUuid,
+                planUuid = request.planUuid,
+                evaluatieType = request.evaluatieType,
+                geplandeDatum = request.datum,
+                deelnemers = request.deelnemers?.takeIf { it.isNotBlank() },
+                doelVoortgang = request.doelVoortgang,
+                actiepunten = request.actiepunten
+            )
+        )
+        return ResponseEntity.status(HttpStatus.CREATED).body(details)
+    }
+
+    /** Deletes the klantcontact in Open Klant and its overlay row. */
+    @DeleteMapping("/contactmomenten/{contactmomentUuid}")
+    fun deleteContactmoment(@PathVariable(name = "contactmomentUuid") contactmomentUuid: UUID): ResponseEntity<Unit> {
+        klantcontactService.delete(contactmomentUuid)
         contactmomentDetailsRepository.deleteById(contactmomentUuid)
         return ResponseEntity.noContent().build()
     }

@@ -3,14 +3,14 @@
         "name": "Samenvatting",
         "key": "summary",
         "type": "standard",
-        "contentKey": "summary"
+        "contentKey": "summary",
+        "showTasks": true
     },
     {
         "name": "Voortgang",
         "key": "progress",
         "type": "standard",
-        "contentKey": "progress",
-        "showTasks": true
+        "contentKey": "progress"
     },
     {
         "name": "Audit",

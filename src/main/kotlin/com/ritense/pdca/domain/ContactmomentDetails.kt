@@ -25,9 +25,10 @@ import java.time.LocalDateTime
 import java.util.UUID
 
 /**
- * PDCA evaluation overlay for a contactmoment in Open Plan (pk = Open Plan
- * contactmoment uuid). The contactmoment carries datum/status/notitie; the
- * structured check-fase data (type, doelvoortgang, actiepunten) lives here.
+ * PDCA evaluation overlay for a contactmoment (pk = uuid of the klantcontact
+ * in Open Klant). The klantcontact carries the moment, whether it took place
+ * and the verslag; the structured check-fase data (type, doelvoortgang,
+ * actiepunten) lives here.
  * A contactmoment that is the result of a completed evaluation session
  * points to it through [evaluationSessionId] (its plan changes).
  */

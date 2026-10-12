@@ -508,9 +508,21 @@ html, body {
 .pdca-progress-mini-fill.high { background: var(--cds-support-success, #24a148); }
 .pdca-progress-mini-fill.mid { background: var(--cds-support-warning, #f1c21b); }
 
-/* Notification spacing */
+/* Page-level notification (errors, the evaluation banner): full width with
+   space below, instead of Carbon's capped inline width. */
 .pdca-notification {
+  max-inline-size: none;
+  min-inline-size: 0;
   margin-bottom: var(--pdca-spacing-05);
+}
+
+/* A notification with a button next to it; the row carries the spacing. */
+.pdca-notification-row {
+  margin-bottom: var(--pdca-spacing-05);
+}
+
+.pdca-notification-row .pdca-notification {
+  margin-bottom: 0;
 }
 
 /* Edit action buttons row */
@@ -529,7 +541,8 @@ html, body {
 }
 
 /* Side panel (evaluation): fills the whole panel height on the host theme's
-   layer, the same surface as GZAC's panel and menu. */
+   layer, the same surface as GZAC's panel and menu; the content is a Carbon
+   Layer on top of it, so its fields use the next field colour. */
 
 .pdca-panel-theme {
   display: flex;
@@ -607,24 +620,31 @@ html, body {
   color: var(--cds-text-secondary, #525252);
 }
 
-/* Notes (internal/external) on doelen and instrumenten. */
+/* Form fields side by side that stack on narrow tabs (voortgang, notes). */
 
-.pdca-notities {
+.pdca-form-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
   gap: var(--pdca-spacing-04);
 }
 
-.pdca-notitie-label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--cds-text-secondary, #525252);
-  margin-bottom: var(--pdca-spacing-02);
+.pdca-form-field {
+  margin-top: var(--pdca-spacing-04);
 }
 
-.pdca-notitie-tekst {
-  font-size: 0.875rem;
-  white-space: pre-wrap;
+/* "Voortgang & notities" under an instrument row: one nested layer (Carbon
+   Layer) so its fields stand out against the surface. */
+.pdca-instrument-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-06);
+  background: var(--cds-layer-02, #f4f4f4);
+  padding: var(--pdca-spacing-05);
+  margin-bottom: var(--pdca-spacing-03);
+}
+
+.pdca-instrument-panel .pdca-section-title {
+  margin-bottom: var(--pdca-spacing-04);
 }
 
 /* Narrow tabs (side panel open, small screens). */

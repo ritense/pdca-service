@@ -42,6 +42,8 @@ export interface EvaluationChangeInput {
   soort: string;
   vanWaarde?: string | null;
   naarWaarde?: string | null;
+  /** Reason entered with the change in the tab; becomes the change's reason in the side panel. */
+  toelichting?: string;
   /** Value changes: a later change of the same kind on the same subject replaces this one. */
   samenvoegen?: boolean;
 }
@@ -53,35 +55,45 @@ export type StartResult =
 const errorMessage = (body: unknown, status: number) =>
   (body as { message?: string } | null)?.message ?? `HTTP ${status}`;
 
-// ------------------------------------------------- panel <-> tab messages
-// The side panel and the plan tabs are separate iframes, all served from this
-// app's origin, so they talk directly over a BroadcastChannel.
+// ------------------------------------------------------ session events
+// GZAC sandboxes every bundle at its own opaque origin, so the side panel and
+// the plan tabs cannot message each other. Each iframe follows the session
+// through the backend instead: the panel polls its changes, a tab with a
+// running session polls whether it is still running.
+
+export const EVALUATION_POLL_MS = 3000;
 
 export type EvaluationEvent =
   | { type: 'started'; session: EvaluationSession }
-  | { type: 'changed' }
   | { type: 'completed'; session: EvaluationSession };
 
-const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('pdca-evaluation') : null;
 const listeners = new Set<(event: EvaluationEvent) => void>();
 
 /** The user's running session as this iframe knows it; changes are only recorded for its plan. */
 let activeSession: EvaluationSession | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
-function handle(event: EvaluationEvent) {
-  if (event.type === 'started') activeSession = event.session;
-  if (event.type === 'completed' && activeSession?.id === event.session.id) activeSession = null;
+function setActiveSession(session: EvaluationSession | null) {
+  activeSession = session;
+  if (session && !pollTimer) pollTimer = setInterval(checkStillRunning, EVALUATION_POLL_MS);
+  if (!session && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+/** Ends the session in this iframe once it was completed elsewhere (in the side panel). */
+async function checkStillRunning() {
+  const known = activeSession;
+  if (!known) return;
+  const current = await currentEvaluationSession().catch(() => known);
+  if (current?.id !== known.id && activeSession?.id === known.id) emit({ type: 'completed', session: known });
+}
+
+function emit(event: EvaluationEvent) {
+  if (event.type === 'started') setActiveSession(event.session);
+  if (event.type === 'completed' && activeSession?.id === event.session.id) setActiveSession(null);
   listeners.forEach(listener => listener(event));
 }
 
-channel?.addEventListener('message', (e: MessageEvent<EvaluationEvent>) => handle(e.data));
-
-function broadcast(event: EvaluationEvent) {
-  handle(event);
-  channel?.postMessage(event);
-}
-
-/** Subscribes to evaluation events from this and the other PDCA iframes; returns the unsubscribe function. */
+/** Subscribes to the session starting or ending in this iframe; returns the unsubscribe function. */
 export function onEvaluationEvent(listener: (event: EvaluationEvent) => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
@@ -101,7 +113,7 @@ export async function currentEvaluationSession(): Promise<EvaluationSession | nu
 export async function startEvaluationSession(): Promise<StartResult> {
   const { status, body } = await pluginData<any>('POST', '/evaluation-sessions');
   if (status === 201) {
-    broadcast({ type: 'started', session: body });
+    emit({ type: 'started', session: body });
     return { session: body, conflict: null };
   }
   if (status === 409) return { session: null, conflict: body?.session ?? null, message: errorMessage(body, status) };
@@ -121,7 +133,7 @@ export async function updateEvaluationDraft(
 export async function completeEvaluationSession(): Promise<EvaluationSession> {
   const { status, body } = await pluginData<any>('POST', '/evaluation-sessions/current/complete');
   if (status !== 200) throw new Error(errorMessage(body, status));
-  broadcast({ type: 'completed', session: body });
+  emit({ type: 'completed', session: body });
   return body;
 }
 
@@ -147,11 +159,10 @@ export async function recordEvaluationChange(planUuid: string, change: Evaluatio
   try {
     const { status, body } = await pluginData('POST', '/evaluation-sessions/current/changes', { planUuid, ...change });
     if (status === 404 || status === 409) {
-      activeSession = null;
+      if (activeSession) emit({ type: 'completed', session: activeSession });
       return;
     }
     if (status !== 200 && status !== 204) throw new Error(errorMessage(body, status));
-    broadcast({ type: 'changed' });
   } catch (e) {
     console.warn('Wijziging niet vastgelegd in de evaluatie', e);
   }
@@ -179,7 +190,7 @@ export async function offerEvaluationPanel(session: EvaluationSession): Promise<
 export async function syncEvaluationPanel(documentId: string | null | undefined): Promise<EvaluationSession | null> {
   if (!documentId) return null;
   const session = await currentEvaluationSession().catch(() => null);
-  activeSession = session;
+  setActiveSession(session);
   if (session && session.dossierId === documentId) await offerEvaluationPanel(session);
   return session;
 }

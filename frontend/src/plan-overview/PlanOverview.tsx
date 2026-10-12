@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
+  Layer,
   Tile,
   ClickableTile,
   Tag,
@@ -29,6 +30,7 @@ import {
 import { EvaluatieBanner } from '../shared/EvaluatieBanner';
 import {
   openplan,
+  openklant,
   pdca,
   planVoorDossier,
   registers,
@@ -40,7 +42,7 @@ import {
   DoelDetails,
   DoelType,
   Actie,
-  Contactmoment,
+  Klantcontact,
   ContactmomentDetails,
   Betrokkene,
   RelatieType,
@@ -48,7 +50,7 @@ import {
   ObjectRecord,
 } from '../shared/api';
 import {
-  statusLabel, evalTypeLabel, formatDate,
+  statusLabel, evalTypeLabel, formatDate, contactmomentStatusLabel,
   dienstverleningLabel, doelTypeNaam, hoofddoelTypen, isHoofddoelType,
 } from '../shared/labels';
 import '../shared/styles.css';
@@ -99,7 +101,7 @@ export function PlanOverview() {
   const [doelen, setDoelen] = useState<Doel[]>([]);
   const [doelDetails, setDoelDetails] = useState<DoelDetails[]>([]);
   const [acties, setActies] = useState<Actie[]>([]);
-  const [contactmomenten, setContactmomenten] = useState<Contactmoment[]>([]);
+  const [contactmomenten, setContactmomenten] = useState<Klantcontact[]>([]);
   const [cmDetails, setCmDetails] = useState<ContactmomentDetails[]>([]);
   const [betrokkenen, setBetrokkenen] = useState<Betrokkene[]>([]);
   const [subject, setSubject] = useState<SubjectData>(null);
@@ -157,7 +159,7 @@ export function PlanOverview() {
           openplan.doelen.listByPlan(selected.uuid),
           pdca.doeldetails.listByPlan(selected.uuid).catch(() => [] as DoelDetails[]),
           pdca.acties.listByPlan(selected.uuid).catch(() => [] as Actie[]),
-          openplan.contactmomenten.listByPlan(selected.uuid).catch(() => [] as Contactmoment[]),
+          openklant.klantcontacten.listByPlan(selected.uuid).catch(() => [] as Klantcontact[]),
           pdca.contactmomentdetails.listByPlan(selected.uuid).catch(() => [] as ContactmomentDetails[]),
           pdca.betrokkenen.listByPlan(selected.uuid).catch(() => [] as Betrokkene[]),
           openplan.relatietypen.list().catch(() => [] as RelatieType[]),
@@ -220,12 +222,12 @@ export function PlanOverview() {
     const openActies = acties.filter(a =>
       a.status === 'PLANNED' || a.status === 'IN_PROGRESS' || a.status === 'PENDING_REVIEW'
     ).length;
-    const afgerondeEvaluaties = contactmomenten.filter(c => c.status === 'afgerond').length;
+    const afgerondeEvaluaties = contactmomenten.filter(c => c.indicatieContactGelukt === true).length;
     return { voortgang, actieveDoelen, totalDoelen: doelen.length, openActies, afgerondeEvaluaties };
   }, [doelen, doeltypen, detailsByDoel, acties, contactmomenten]);
 
   const recentEvals = useMemo(() =>
-    [...contactmomenten].sort((a, b) => (b.datum || '').localeCompare(a.datum || '')).slice(0, 3),
+    [...contactmomenten].sort((a, b) => (b.plaatsgevondenOp || '').localeCompare(a.plaatsgevondenOp || '')).slice(0, 3),
   [contactmomenten]);
 
   const showSuccess = useCallback((msg: string) => {
@@ -573,138 +575,144 @@ export function PlanOverview() {
           <div>
             {/* Plan details */}
             <Tile className="pdca-card">
-              <div className="pdca-card-header">
-                <h4>Plangegevens</h4>
-              </div>
-              <div className="pdca-card-body">
-                {editableFields.map(({ key, label, emptyText, value, display, options }) => (
-                  <div key={key} className="pdca-info-block">
-                    <div className="pdca-info-label">
-                      <span>{label}</span>
-                      {editingField !== key && (
-                        <Button size="sm" kind="ghost" onClick={() => startEditing(key, value)}>Bewerken</Button>
+              <Layer>
+                <div className="pdca-card-header">
+                  <h4>Plangegevens</h4>
+                </div>
+                <div className="pdca-card-body">
+                  {editableFields.map(({ key, label, emptyText, value, display, options }) => (
+                    <div key={key} className="pdca-info-block">
+                      <div className="pdca-info-label">
+                        <span>{label}</span>
+                        {editingField !== key && (
+                          <Button size="sm" kind="ghost" onClick={() => startEditing(key, value)}>Bewerken</Button>
+                        )}
+                      </div>
+                      {editingField === key ? (
+                        <div>
+                          {options ? (
+                            <Select
+                              id={`edit-${key}`}
+                              labelText=""
+                              hideLabel
+                              value={editValue}
+                              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setEditValue(e.target.value)}
+                            >
+                              <SelectItem value="" text="-- Kies uit het register --" />
+                              {options.map(o => <SelectItem key={o.value} value={o.value} text={o.text} />)}
+                            </Select>
+                          ) : (
+                            <TextArea
+                              id={`edit-${key}`}
+                              labelText=""
+                              hideLabel
+                              value={editValue}
+                              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditValue(e.target.value)}
+                              rows={3}
+                            />
+                          )}
+                          <div className="pdca-edit-actions">
+                            <Button size="sm" kind="secondary" onClick={() => setEditingField(null)}>Annuleren</Button>
+                            <Button size="sm" kind="primary" onClick={saveField} disabled={!!options && !editValue}>Opslaan</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className={`pdca-info-value${value ? '' : ' empty'}`}>{(display ?? value) || emptyText}</p>
                       )}
                     </div>
-                    {editingField === key ? (
-                      <div>
-                        {options ? (
-                          <Select
-                            id={`edit-${key}`}
-                            labelText=""
-                            hideLabel
-                            value={editValue}
-                            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setEditValue(e.target.value)}
-                          >
-                            <SelectItem value="" text="-- Kies uit het register --" />
-                            {options.map(o => <SelectItem key={o.value} value={o.value} text={o.text} />)}
-                          </Select>
-                        ) : (
-                          <TextArea
-                            id={`edit-${key}`}
-                            labelText=""
-                            hideLabel
-                            value={editValue}
-                            onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setEditValue(e.target.value)}
-                            rows={3}
-                          />
-                        )}
-                        <div className="pdca-edit-actions">
-                          <Button size="sm" kind="secondary" onClick={() => setEditingField(null)}>Annuleren</Button>
-                          <Button size="sm" kind="primary" onClick={saveField} disabled={!!options && !editValue}>Opslaan</Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className={`pdca-info-value${value ? '' : ' empty'}`}>{(display ?? value) || emptyText}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </Layer>
             </Tile>
 
             {/* Recent contactmomenten */}
             <Tile className="pdca-card">
-              <div className="pdca-card-header">
-                <h4>Recente evaluaties</h4>
-              </div>
-              <div className="pdca-card-body">
-                {recentEvals.length === 0 ? (
-                  <p className="pdca-empty">Nog geen evaluaties</p>
-                ) : (
-                  recentEvals.map(cm => {
-                    const cmd = cmDetailsByUuid.get(cm.uuid);
-                    return (
-                      <div key={cm.uuid} className="pdca-eval-item">
-                        <Tag type={(cmd && EVAL_TAG_TYPE[cmd.evaluatieType]) as any || 'gray'} size="sm">
-                          {cmd ? evalTypeLabel(cmd.evaluatieType) : statusLabel(cm.status)}
-                        </Tag>
-                        <div className="pdca-eval-info">
-                          <div className="pdca-eval-date">{cm.datum ? formatDate(cm.datum) : 'Geen datum'}</div>
-                          <div className={`pdca-eval-summary${cm.notitie ? '' : ' empty'}`}>
-                            {cm.notitie || 'Geen notitie'}
+              <Layer>
+                <div className="pdca-card-header">
+                  <h4>Recente evaluaties</h4>
+                </div>
+                <div className="pdca-card-body">
+                  {recentEvals.length === 0 ? (
+                    <p className="pdca-empty">Nog geen evaluaties</p>
+                  ) : (
+                    recentEvals.map(cm => {
+                      const cmd = cmDetailsByUuid.get(cm.uuid);
+                      return (
+                        <div key={cm.uuid} className="pdca-eval-item">
+                          <Tag type={(cmd && EVAL_TAG_TYPE[cmd.evaluatieType]) as any || 'gray'} size="sm">
+                            {cmd ? evalTypeLabel(cmd.evaluatieType) : contactmomentStatusLabel(cm)}
+                          </Tag>
+                          <div className="pdca-eval-info">
+                            <div className="pdca-eval-date">{cm.plaatsgevondenOp ? formatDate(cm.plaatsgevondenOp) : 'Geen datum'}</div>
+                            <div className={`pdca-eval-summary${cm.inhoud ? '' : ' empty'}`}>
+                              {cm.inhoud || 'Geen notitie'}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+                      );
+                    })
+                  )}
+                </div>
+              </Layer>
             </Tile>
           </div>
 
           {/* Right column: Verantwoordelijkheden */}
           <div>
             <Tile className="pdca-card">
-              <div className="pdca-card-header">
-                <h4>Verantwoordelijkheden</h4>
-                <Button size="sm" kind="ghost" onClick={openPartyModal}>Toevoegen</Button>
-              </div>
-              <div className="pdca-card-body">
-                {betrokkenen.length === 0 ? (
-                  <p className="pdca-empty">Geen verantwoordelijkheden</p>
-                ) : (
-                  <div className="pdca-table-scroll">
-                  <DataTable rows={partyRows} headers={partyHeaders}>
-                    {({ rows, headers, getTableProps, getHeaderProps, getRowProps }: any) => (
-                      <Table {...getTableProps()} size="sm">
-                        <TableHead>
-                          <TableRow>
-                            {headers.map((header: any) => (
-                              <TableHeader {...getHeaderProps({ header })} key={header.key}>
-                                {header.header}
-                              </TableHeader>
-                            ))}
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {rows.map((row: any) => (
-                            <TableRow {...getRowProps({ row })} key={row.id}>
-                              {row.cells.map((cell: any) => (
-                                <TableCell key={cell.id}>
-                                  {cell.info.header === 'actions' ? (
-                                    <Button
-                                      size="sm"
-                                      kind="danger--ghost"
-                                      hasIconOnly
-                                      renderIcon={TrashCan}
-                                      iconDescription="Verwijderen"
-                                      onClick={() => handleDeleteParty(cell.value)}
-                                    />
-                                  ) : cell.info.header === 'name' && primaryIds.has(row.id) ? (
-                                    <>{cell.value} <Tag size="sm" type="green">Hoofdverantwoordelijk</Tag></>
-                                  ) : (
-                                    cell.value
-                                  )}
-                                </TableCell>
+              <Layer>
+                <div className="pdca-card-header">
+                  <h4>Verantwoordelijkheden</h4>
+                  <Button size="sm" kind="ghost" onClick={openPartyModal}>Toevoegen</Button>
+                </div>
+                <div className="pdca-card-body">
+                  {betrokkenen.length === 0 ? (
+                    <p className="pdca-empty">Geen verantwoordelijkheden</p>
+                  ) : (
+                    <div className="pdca-table-scroll">
+                    <DataTable rows={partyRows} headers={partyHeaders}>
+                      {({ rows, headers, getTableProps, getHeaderProps, getRowProps }: any) => (
+                        <Table {...getTableProps()} size="sm">
+                          <TableHead>
+                            <TableRow>
+                              {headers.map((header: any) => (
+                                <TableHeader {...getHeaderProps({ header })} key={header.key}>
+                                  {header.header}
+                                </TableHeader>
                               ))}
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </DataTable>
-                  </div>
-                )}
-              </div>
+                          </TableHead>
+                          <TableBody>
+                            {rows.map((row: any) => (
+                              <TableRow {...getRowProps({ row })} key={row.id}>
+                                {row.cells.map((cell: any) => (
+                                  <TableCell key={cell.id}>
+                                    {cell.info.header === 'actions' ? (
+                                      <Button
+                                        size="sm"
+                                        kind="danger--ghost"
+                                        hasIconOnly
+                                        renderIcon={TrashCan}
+                                        iconDescription="Verwijderen"
+                                        onClick={() => handleDeleteParty(cell.value)}
+                                      />
+                                    ) : cell.info.header === 'name' && primaryIds.has(row.id) ? (
+                                      <>{cell.value} <Tag size="sm" type="green">Hoofdverantwoordelijk</Tag></>
+                                    ) : (
+                                      cell.value
+                                    )}
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </DataTable>
+                    </div>
+                  )}
+                </div>
+              </Layer>
             </Tile>
           </div>
         </div>

@@ -36,11 +36,13 @@ import java.net.URI
  *
  *   /openplan/plannen/api/v0/...        -> Open Plan
  *   /openproduct/producttypen/api/v1/...-> Open Product
+ *   /openklant/klantinteracties/api/v1/...-> Open Klant
  */
 @RestController
 class RegisterProxyController(
     private val openPlanRestClient: RestClient,
     private val openProductRestClient: RestClient,
+    private val openKlantRestClient: RestClient,
     private val properties: PdcaProperties
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -52,6 +54,10 @@ class RegisterProxyController(
     @RequestMapping("/openproduct/**")
     fun openproduct(request: HttpServletRequest, @RequestBody(required = false) body: ByteArray?): ResponseEntity<ByteArray> =
         forward(openProductRestClient, properties.openproduct.baseUrl, "/openproduct", request, body)
+
+    @RequestMapping("/openklant/**")
+    fun openklant(request: HttpServletRequest, @RequestBody(required = false) body: ByteArray?): ResponseEntity<ByteArray> =
+        forward(openKlantRestClient, properties.openklant.baseUrl, "/openklant", request, body)
 
     private fun forward(
         client: RestClient,

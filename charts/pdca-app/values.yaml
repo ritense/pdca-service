@@ -49,6 +49,10 @@ externalServices:
     url: ""
     existingSecret: ""
     existingSecretKey: "openproduct-token"
+  openklant:
+    url: ""
+    existingSecret: ""
+    existingSecretKey: "openklant-token"
   # Normally left disabled: the app then calls GZAC on the callback URL that
   # GZAC pushes with the plugin configuration. Enable only to override that URL
   # or to use the Keycloak client-credentials fallback.

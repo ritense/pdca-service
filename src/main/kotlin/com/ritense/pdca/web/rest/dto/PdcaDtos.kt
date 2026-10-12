@@ -46,6 +46,21 @@ data class DoelDetailsRequest(
     val sortering: Int? = null
 )
 
+/**
+ * A new contactmoment of a plan: the klantcontact in Open Klant (datum,
+ * afgerond, verslag) plus its overlay row (the other fields).
+ */
+data class ContactmomentRequest(
+    val planUuid: UUID,
+    val datum: LocalDate,
+    val evaluatieType: String,
+    val afgerond: Boolean = true,
+    val verslag: String? = null,
+    val deelnemers: String? = null,
+    val doelVoortgang: String? = null,
+    val actiepunten: String? = null
+)
+
 data class ContactmomentDetailsRequest(
     val planUuid: UUID? = null,
     val evaluatieType: String? = null,
