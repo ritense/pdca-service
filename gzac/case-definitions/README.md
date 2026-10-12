@@ -2,7 +2,7 @@
 
 Importable case definitions for the PDCA demo cases. The
 `caseDefinitionKey`s match the phase configs the PDCA app seeds, so the PDCA
-tabs show the right plan immediately after linking.
+tabs show the dossier's plan as soon as the app has created the dossier.
 
 | Zip | Case | Subject | Role |
 |---|---|---|---|
@@ -13,15 +13,17 @@ tabs show the right plan immediately after linking.
 | `werkfit-aanvraag.zip` | Werkfit-aanvraag | — | Product dossier (see below) |
 
 Each zip contains everything the case needs: document definition (JSON
-schema), BPMN process with the PDCA loop, start form + task forms (form.io)
-with process links, process-document link (startable by the user), case list
-columns, search fields and case tabs. `binnenhof-renovatie` and the intake
+schema), BPMN process, process-document link, case list columns, search
+fields and case tabs. The intake zips add their start and task forms
+(form.io) with process links; the plan-dossier zips carry no forms at all
+(see "Plan dossiers"). `binnenhof-renovatie` and the intake
 case types carry the default tabs (Samenvatting/Voortgang/Audit); in
 `intake-werk-participatie` the Samenvatting tab is a **widget tab** driven by
 per-phase internal case statuses (see below); `inwonerplan` carries **only
-the three PDCA tabs** — no standard Valtimo tabs. In every zip only the
-first tab sets `showTasks`, so GZAC's task panel shows next to the first tab
-and the other tabs use the full width.
+the three PDCA tabs** — no standard Valtimo tabs — and all three set
+`showTasks`, so GZAC's task panel stays visible on every plan tab. In the
+other zips only the first tab sets `showTasks`, so GZAC's task panel shows
+next to the first tab and the other tabs use the full width.
 The plan-dossier zips additionally contain `building-block-link`s to the
 bundled building blocks (`pdca-actie`; for `inwonerplan` also
 `jobcoaching-aanvragen`) with `startableByUser: false` — normal building
@@ -59,8 +61,8 @@ The PDCA couplings ship **in the zips**:
   plugin* — Planoverzicht (`plan-overview`), Doelen & Acties (`plan-goals`)
   and Evaluaties (`plan-evaluations`); on `inwonerplan` these are the only
   tabs;
-- all plan and intake case types carry an `external_plugin_task_form`
-  process link on the "(…) aanmaken (PDCA)" task (bundleKey `create-plan`).
+- the intake case types carry an `external_plugin_task_form` process link
+  on their last task, "(…) aanmaken (PDCA)" (bundleKey `create-plan`).
 
 A configuration UUID is environment-specific and never belongs in a zip, so
 these references ship with the fixed placeholder id
@@ -86,38 +88,41 @@ one choice at import time:
 Re-importing a zip resets the references to the placeholder; map them again
 in the wizard (or repeat the repair).
 
-## Process flow
+## Plan dossiers
 
-`start-event` (start form: bsn/object id) → `plan-aanmaken` → `pdca-cyclus`
-(loop; the form sets process variable `vervolg`, on *afronden* the process
-ends). The tasks `plan-aanmaken` and `pdca-cyclus` have working form.io
-fallback forms; optionally replace those process links with the app's
-external task forms (`create-plan`, `update-goals`, `evaluate`). The document
-schema contains `planId`/`planTitel`/`planStatus` as target fields for the
-result mapping of the `create-plan` task form.
+A plan dossier (`inwonerplan`, `binnenhof-renovatie`) only comes into being
+from an intake: the `create-plan` task form at the end of
+`intake-werk-participatie` (→ `inwonerplan`) or `renovatie-intake`
+(→ `binnenhof-renovatie`) creates the plan in Open Plan and then a new plan
+dossier through the GZAC API (`new-document-and-start-process`, process
+definition key = case key), linked 1:1 to the plan. Users cannot create a
+plan dossier by hand: the process-document link keeps
+`canInitializeDocument: true` for the app but sets `startableByUser: false`,
+so the case has no entry in the Start menu.
 
-The zip ships the `plan-aanmaken` link as the PDCA app's external task form
-`create-plan` (type `external_plugin_task_form`, with the placeholder
-configuration id — see "PDCA connected at import"). The task fills in the
-plan basics (dienstverlening, hoofddoel, positions) and links the plan 1:1
-to the dossier; when the dossier already has a plan, the form only offers
-"complete task".
+The plan-dossier process has **no user tasks**: `start-event` →
+`einde` ("Plandossier aangemaakt"). There are no start form, task forms or
+process links. The plan is kept up to date in the PDCA tabs (Planoverzicht,
+Doelen & Acties, Evaluaties); actions and products run as building blocks
+on the dossier (see below), and their tasks appear in the dossier's task
+list.
 
-Demo input: bsn `111222333` (Erika de Goede) or object `binnenhof-001`
-(Binnenhof) — the demo plans are seeded unlinked. Two ways to link them to a
-new dossier:
+The app fills the dossier document on creation:
 
-1. **Start form**: fill the *Plan-ID* field with the demo plan id
-   (`11111111-1111-1111-1111-111111111111` for Erika,
-   `33333333-3333-3333-3333-333333333333` for Binnenhof). The PDCA app reads
-   the planId from the dossier content and links the plan under water as soon
-   as a tab or task opens the dossier — all demo data is then ready.
-2. **"Plan aanmaken" task**: the subject lookup detects the standalone plan
-   and offers **Koppel aan dit dossier**.
+| Field | Content |
+|---|---|
+| `onderwerp` | Subject line: name of the inwoner or the object (as entered in the intake, otherwise from the register, otherwise the plan titel) |
+| `bsn` + `naam` / `objectId` + `objectNaam` | Subject of the plan, from `plan.domeinregister` |
+| `planId`, `planTitel`, `planStatus` | Reference to the plan in Open Plan |
+
+The case list shows **Onderwerp** (`doc:onderwerp`) as its first column,
+followed by BSN (`inwonerplan`) or Object-id (`binnenhof-renovatie`),
+*Aangemaakt op* and *Gewijzigd op*. `bouwblokStart` in the schema is the
+building-block start payload (see "Building blocks").
 
 ## The realistic intake: `intake-werk-participatie` with the DVKM decision table
 
-`intake-werk-participatie.zip` (1.0.0, "Intake werk en participatie")
+`intake-werk-participatie.zip` (1.1.0, "Intake werk en participatie")
 demonstrates a realistic W&P intake: a small start form and a user task per
 conversation instead of one big start form, and a first mock of the DVKM
 'algorithm' as a **DMN decision requirements graph** — inwonergegevens in,
@@ -129,10 +134,12 @@ minimal variant that seeds a complete plan *including* contactmomenten from
 one start form. The flow (all tasks `ROLE_USER`; defaults walk the Erika de
 Goede demo):
 
-1. **Start: Aanmelding** — bsn, naam, dienstverlening, aanleiding.
+1. **Start: Aanmelding** — bsn, naam, dienstverlening (Terug naar werk /
+   Inburgering (PIP) / Inkomensondersteuning, values `werk`/`pip`/`inkomen`),
+   aanleiding.
 2. **Intakegesprek voeren** — the eight DVKM questions (the
    *inwonergegevens*, in the document under `dvkm*`), gespreksnotitie and
-   betrokkenen.
+   betrokkenen, one of them marked as procesbegeleider.
 3. **Inwonerpositie bepalen (DVKM)** — a business rule task evaluates the
    DMN decision requirements graph in `dmn/` (after import both tables are
    visible and editable in Admin → Case definitions →
@@ -158,7 +165,8 @@ Goede demo):
    advice (and writes it to the document); *Subdoelgroep*, *Positie*
    and *Hoofddoel* follow the advice and can be overridden, in which case
    *Advies overgenomen? = nee* asks for one of the eight DVKM
-   afwijkgronden. Plus doelen and beoogde instrumenten.
+   afwijkgronden. Plus doelen and beoogde instrumenten (see "Intake
+   forms").
    The **Doel** column only offers the subdoelen of the chosen hoofddoel.
    A form.io form inside GZAC cannot reach the PDCA API, so this zip
    carries a copy of the subdoelmapping in the select (`dataSrc: custom`,
@@ -192,6 +200,30 @@ werk** / hoofddoel **Duurzaam aan het werk**; *acute situatie = ja* →
 Crisis/positie 1; *ontheffing = ja* → Ontheffing/positie 1;
 *werknemersvaardigheden = goed* + *motivatie = aanwezig* → Snel aan het
 werk/positie 5.
+
+### Intake forms
+
+The intake forms of both intake case types (`intake-werk-participatie`,
+`renovatie-intake`) are plain form.io forms shown in GZAC's task modal
+(about 750px wide), so their data grids stay narrow: help texts sit once on
+the grid instead of on every row and the "add" buttons carry Dutch labels.
+They record what is agreed at intake time; progress (voortgang, uren,
+effectiviteit) is recorded later in the plan. The row shapes are the input
+of the `create-plan` prefill:
+
+| Grid | Row fields |
+|---|---|
+| `doelen` | `doelType`, `beschrijving`, `status` |
+| `instrumenten` | `product` (producttype code; the select shows the product name), `titel` (hidden; the product name, editable in the create-plan step), `doel`, `status` |
+| `betrokkenen` | `naam`, `rol`, `organisatie`, `email`, `procesbegeleider` |
+| `contactmomenten` (renovatie-intake only) | `datum`, `evaluatieType`, `status`, `notitie`, `deelnemers` |
+
+- **Status** of doelen and instrumenten: `gepland`, `gestart` or
+  `afgerond` (Gepland / Gestart / Afgerond); of contactmomenten: `gepland`
+  or `afgerond`.
+- **Procesbegeleider**: a checkbox column in the betrokkenen grid. At most
+  one betrokkene can be marked (custom validation on the grid); that
+  betrokkene becomes the plan's procesbegeleider.
 
 ### Phase statuses and the widget Samenvatting tab
 

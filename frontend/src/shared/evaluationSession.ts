@@ -9,7 +9,7 @@ export interface EvaluationSession {
   caseDefinitionKey: string | null;
   planUuid: string;
   userLogin: string;
-  status: 'RUNNING' | 'COMPLETED';
+  status: 'RUNNING' | 'COMPLETED' | 'CANCELLED';
   startedAt: string;
   endedAt: string | null;
   evaluatieType: string | null;
@@ -17,6 +17,8 @@ export interface EvaluationSession {
   /** Gespreksverslag; becomes the contactmoment's notitie on completion. */
   verslag: string | null;
   contactmomentUuid: string | null;
+  /** The planned contactmoment this evaluation carries out; completing turns it into the afgerond one. */
+  geplandContactmomentUuid: string | null;
 }
 
 export type EvaluationSubjectType = 'PLAN' | 'HOOFDDOEL' | 'SUBDOEL' | 'INSTRUMENT' | 'ACTIE';
@@ -65,7 +67,7 @@ export const EVALUATION_POLL_MS = 3000;
 
 export type EvaluationEvent =
   | { type: 'started'; session: EvaluationSession }
-  | { type: 'completed'; session: EvaluationSession };
+  | { type: 'ended'; session: EvaluationSession };
 
 const listeners = new Set<(event: EvaluationEvent) => void>();
 
@@ -79,17 +81,17 @@ function setActiveSession(session: EvaluationSession | null) {
   if (!session && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
 
-/** Ends the session in this iframe once it was completed elsewhere (in the side panel). */
+/** Ends the session in this iframe once it was completed or cancelled elsewhere (in the side panel). */
 async function checkStillRunning() {
   const known = activeSession;
   if (!known) return;
   const current = await currentEvaluationSession().catch(() => known);
-  if (current?.id !== known.id && activeSession?.id === known.id) emit({ type: 'completed', session: known });
+  if (current?.id !== known.id && activeSession?.id === known.id) emit({ type: 'ended', session: known });
 }
 
 function emit(event: EvaluationEvent) {
   if (event.type === 'started') setActiveSession(event.session);
-  if (event.type === 'completed' && activeSession?.id === event.session.id) setActiveSession(null);
+  if (event.type === 'ended' && activeSession?.id === event.session.id) setActiveSession(null);
   listeners.forEach(listener => listener(event));
 }
 
@@ -109,9 +111,14 @@ export async function currentEvaluationSession(): Promise<EvaluationSession | nu
   return body;
 }
 
-/** Starts a session on the dossier of the current GZAC surface. */
-export async function startEvaluationSession(): Promise<StartResult> {
-  const { status, body } = await pluginData<any>('POST', '/evaluation-sessions');
+/**
+ * Starts a session on the dossier of the current GZAC surface. With a
+ * planned contactmoment the session carries that one out; without it the
+ * backend links the earliest planned contactmoment that is due.
+ */
+export async function startEvaluationSession(geplandContactmomentUuid?: string): Promise<StartResult> {
+  const { status, body } = await pluginData<any>(
+    'POST', '/evaluation-sessions', geplandContactmomentUuid ? { geplandContactmomentUuid } : undefined);
   if (status === 201) {
     emit({ type: 'started', session: body });
     return { session: body, conflict: null };
@@ -133,7 +140,18 @@ export async function updateEvaluationDraft(
 export async function completeEvaluationSession(): Promise<EvaluationSession> {
   const { status, body } = await pluginData<any>('POST', '/evaluation-sessions/current/complete');
   if (status !== 200) throw new Error(errorMessage(body, status));
-  emit({ type: 'completed', session: body });
+  emit({ type: 'ended', session: body });
+  return body;
+}
+
+/**
+ * Cancels the running evaluation: no contactmoment is recorded; the plan
+ * changes made during it stay, like any other plan edit.
+ */
+export async function cancelEvaluationSession(): Promise<EvaluationSession> {
+  const { status, body } = await pluginData<any>('POST', '/evaluation-sessions/current/cancel');
+  if (status !== 200) throw new Error(errorMessage(body, status));
+  emit({ type: 'ended', session: body });
   return body;
 }
 
@@ -159,7 +177,7 @@ export async function recordEvaluationChange(planUuid: string, change: Evaluatio
   try {
     const { status, body } = await pluginData('POST', '/evaluation-sessions/current/changes', { planUuid, ...change });
     if (status === 404 || status === 409) {
-      if (activeSession) emit({ type: 'completed', session: activeSession });
+      if (activeSession) emit({ type: 'ended', session: activeSession });
       return;
     }
     if (status !== 200 && status !== 204) throw new Error(errorMessage(body, status));

@@ -215,6 +215,12 @@ html, body {
   color: var(--cds-text-primary, #161616);
 }
 
+/* A date or short phrase instead of a number: smaller, so it stays on one line. */
+.pdca-kpi-value.compact {
+  font-size: 1.75rem;
+  white-space: nowrap;
+}
+
 .pdca-kpi-sub {
   font-size: 0.75rem;
   color: var(--cds-text-helper, #6f6f6f);
@@ -353,6 +359,21 @@ html, body {
   flex-wrap: wrap;
 }
 
+/* Reason or explanation of a closed plan, under the plan header. */
+.pdca-plan-reden {
+  margin-top: var(--pdca-spacing-03);
+  font-size: 0.875rem;
+  color: var(--cds-text-secondary, #525252);
+  overflow-wrap: anywhere;
+}
+
+/* Hint under a plan field that cannot be edited yet. */
+.pdca-field-hint {
+  margin-top: var(--pdca-spacing-02);
+  font-size: 0.75rem;
+  color: var(--cds-text-helper, #6f6f6f);
+}
+
 /* Add form */
 .pdca-add-form {
   background: var(--cds-layer-01, #fff);
@@ -389,6 +410,60 @@ html, body {
 .pdca-goal-body {
   padding: 1rem 1.25rem 1.25rem 3.25rem;
   border-top: 1px solid var(--cds-border-subtle, #e0e0e0);
+}
+
+/* State button and overflow menu of a subdoel. */
+.pdca-goal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pdca-spacing-03);
+  margin-bottom: var(--pdca-spacing-05);
+}
+
+/* "2 acties · 1 instrument" in a collapsed subdoel header. */
+.pdca-muted-count {
+  font-size: 0.75rem;
+  color: var(--cds-text-helper, #6f6f6f);
+  white-space: nowrap;
+}
+
+.pdca-empty-inline {
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--cds-text-helper, #6f6f6f);
+}
+
+/* Compact "Voortgang & notities" summary of a doel or instrument. */
+.pdca-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-02);
+}
+
+.pdca-summary-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pdca-spacing-03);
+  font-size: 0.8125rem;
+  color: var(--cds-text-primary, #161616);
+}
+
+.pdca-summary-line.pdca-text-ellipsis {
+  display: block;
+}
+
+.pdca-summary-empty {
+  color: var(--cds-text-helper, #6f6f6f);
+  font-style: italic;
+}
+
+/* Inline edit form of voortgang and notes. */
+.pdca-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-05);
 }
 
 /* Action rows */
@@ -463,6 +538,12 @@ html, body {
   flex-wrap: wrap;
   margin-bottom: var(--pdca-spacing-06);
   align-items: center;
+}
+
+/* Evaluation type filter: as wide as its options, never wider than the tab. */
+.pdca-filter-switcher {
+  width: auto;
+  max-width: 100%;
 }
 
 /* Modal content */
@@ -568,6 +649,12 @@ html, body {
 .pdca-panel-hint {
   font-size: 0.875rem;
   color: var(--cds-text-secondary, #525252);
+}
+
+.pdca-panel-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-04);
 }
 
 .pdca-panel-actions {
@@ -679,6 +766,10 @@ html, body {
     font-size: 1.75rem;
   }
 
+  .pdca-kpi-value.compact {
+    font-size: 1.25rem;
+  }
+
   .pdca-subject-card {
     gap: var(--pdca-spacing-05);
   }
@@ -697,4 +788,14 @@ html, body {
   .pdca-timeline-card {
     padding-left: 0;
   }
+}
+
+/* Overflow menus (subdoel, instrument): wide enough for their longest item. */
+.cds--overflow-menu-options {
+  inline-size: auto;
+  min-inline-size: 10rem;
+}
+
+.cds--overflow-menu-options__btn {
+  max-inline-size: none;
 }

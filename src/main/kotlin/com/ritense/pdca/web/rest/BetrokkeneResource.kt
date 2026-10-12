@@ -17,7 +17,7 @@
 package com.ritense.pdca.web.rest
 
 import com.ritense.pdca.domain.InvolvedParty
-import com.ritense.pdca.repository.InvolvedPartyRepository
+import com.ritense.pdca.service.BetrokkeneService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.springframework.http.HttpStatus
@@ -27,6 +27,7 @@ import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -35,21 +36,24 @@ import java.util.UUID
 
 /**
  * Local contact cards per plan. The role values come from the Open Plan
- * relatietype register (see /api/v1/pdca/bootstrap).
+ * relatietype register (see /api/v1/pdca/bootstrap). The primary betrokkene
+ * is the plan's procesbegeleider (at most one), kept in sync with Open Plan's
+ * `plan.medewerker` by [BetrokkeneService].
  */
 @RestController
 @RequestMapping("/api/v1/pdca/betrokkenen", produces = [MediaType.APPLICATION_JSON_VALUE])
 class BetrokkeneResource(
-    private val involvedPartyRepository: InvolvedPartyRepository
+    private val betrokkeneService: BetrokkeneService
 ) {
 
     @GetMapping
     fun list(@RequestParam(name = "planUuid") planUuid: UUID): List<InvolvedParty> =
-        involvedPartyRepository.findByPlanUuid(planUuid)
+        betrokkeneService.list(planUuid)
 
+    /** With isPrimary the new betrokkene becomes the procesbegeleider, replacing the current one. */
     @PostMapping
     fun create(@Valid @RequestBody request: CreateBetrokkeneRequest): ResponseEntity<InvolvedParty> {
-        val party = involvedPartyRepository.save(
+        val party = betrokkeneService.create(
             InvolvedParty(
                 planUuid = request.planUuid,
                 name = request.name,
@@ -63,9 +67,15 @@ class BetrokkeneResource(
         return ResponseEntity.status(HttpStatus.CREATED).body(party)
     }
 
+    /** Makes this betrokkene the procesbegeleider; returns the plan's betrokkenen. */
+    @PutMapping("/{id}/procesbegeleider")
+    fun makeProcesbegeleider(@PathVariable(name = "id") id: UUID): List<InvolvedParty> =
+        betrokkeneService.makeProcesbegeleider(id)
+
+    /** Deleting the procesbegeleider leaves the plan without one. */
     @DeleteMapping("/{id}")
     fun delete(@PathVariable(name = "id") id: UUID): ResponseEntity<Unit> {
-        involvedPartyRepository.deleteById(id)
+        betrokkeneService.delete(id)
         return ResponseEntity.noContent().build()
     }
 }

@@ -18,6 +18,8 @@ package com.ritense.pdca.domain
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.time.LocalDateTime
@@ -25,9 +27,10 @@ import java.util.UUID
 
 /**
  * PDCA voortgangsregistratie for an instrument/voorziening in Open Plan
- * (pk = Open Plan instrument uuid): bestede uren, effectiviteit, the internal
- * and external note and — when the instrument is afgebroken — the mandatory
- * reason. The register itself only carries status/resultaat.
+ * (pk = Open Plan instrument uuid): the fine-grained uitvoeringsstatus,
+ * bestede uren, effectiviteit, the internal and external note and — when the
+ * instrument is afgebroken — the mandatory reason. The register itself only
+ * carries status/resultaat.
  */
 @Entity
 @Table(name = "instrument_details")
@@ -38,6 +41,15 @@ data class InstrumentDetails(
 
     @Column(name = "plan_uuid", nullable = false)
     val planUuid: UUID,
+
+    /**
+     * Refinement of the register status `actief`: gepland or al gestart. Null
+     * on an actief instrument means gestart (instruments from product
+     * building blocks and older data).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "uitvoerings_status")
+    var uitvoeringsStatus: UitvoeringsStatus? = null,
 
     @Column(name = "uren_besteed")
     var urenBesteed: Int? = null,

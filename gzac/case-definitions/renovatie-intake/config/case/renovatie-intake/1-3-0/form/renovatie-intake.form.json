@@ -1,0 +1,634 @@
+{
+  "display": "form",
+  "components": [
+    {
+      "label": "HTML",
+      "key": "html876",
+      "type": "htmlelement",
+      "tag": "div",
+      "content": "<p>Leg de gegevens voor het brandveiligheidsplan vast. De taak <strong>Brandveiligheidsplan aanmaken (PDCA)</strong> maakt hiervan het plan en het plandossier aan.</p>",
+      "input": false,
+      "tableView": false,
+      "refreshOnChange": false
+    },
+    {
+      "label": "Object-id",
+      "key": "objectId",
+      "type": "textfield",
+      "input": true,
+      "tableView": true,
+      "defaultValue": "binnenhof-001",
+      "validate": {
+        "required": true
+      }
+    },
+    {
+      "label": "Objectnaam",
+      "key": "objectNaam",
+      "type": "textfield",
+      "input": true,
+      "tableView": true,
+      "defaultValue": "Binnenhof"
+    },
+    {
+      "label": "Plantitel",
+      "key": "planTitel",
+      "type": "textfield",
+      "input": true,
+      "tableView": true,
+      "defaultValue": "Brandveiligheidsplan Binnenhof-renovatie"
+    },
+    {
+      "label": "Toelichting bij hoofddoel",
+      "key": "planNotitie",
+      "type": "textarea",
+      "input": true,
+      "tableView": false,
+      "rows": 2,
+      "defaultValue": "Brandveiligheid van het Binnenhof-complex structureel op orde tijdens en na de renovatie"
+    },
+    {
+      "label": "Dienstverlening",
+      "key": "dienstverlening",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "Terug naar werk",
+            "value": "werk"
+          },
+          {
+            "label": "Inburgering (PIP)",
+            "value": "pip"
+          },
+          {
+            "label": "Inkomensondersteuning",
+            "value": "inkomen"
+          }
+        ]
+      },
+      "defaultValue": "werk"
+    },
+    {
+      "label": "Hoofddoel (uit het doeltype-register)",
+      "key": "hoofddoel",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "Object structureel veilig in gebruik",
+            "value": "Object structureel veilig in gebruik"
+          }
+        ]
+      },
+      "defaultValue": "Object structureel veilig in gebruik"
+    },
+    {
+      "label": "Planstatus",
+      "key": "weergaveStatus",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "Concept",
+            "value": "Concept"
+          },
+          {
+            "label": "Vastgesteld",
+            "value": "Vastgesteld"
+          },
+          {
+            "label": "In uitvoering",
+            "value": "In uitvoering"
+          }
+        ]
+      },
+      "defaultValue": "Vastgesteld"
+    },
+    {
+      "label": "Positie",
+      "key": "beginPositie",
+      "type": "select",
+      "input": true,
+      "tableView": true,
+      "widget": "html5",
+      "data": {
+        "values": [
+          {
+            "label": "Achterstallig onderhoud",
+            "value": "Achterstallig onderhoud"
+          },
+          {
+            "label": "In renovatie",
+            "value": "In renovatie"
+          },
+          {
+            "label": "Opgeleverd na renovatie",
+            "value": "Opgeleverd na renovatie"
+          },
+          {
+            "label": "Structureel geborgd in beheer",
+            "value": "Structureel geborgd in beheer"
+          }
+        ]
+      },
+      "defaultValue": "In renovatie"
+    },
+    {
+      "label": "Startdatum (jjjj-mm-dd)",
+      "key": "startdatum",
+      "type": "textfield",
+      "input": true,
+      "tableView": true,
+      "defaultValue": "2026-02-01"
+    },
+    {
+      "label": "Streefeinddatum (jjjj-mm-dd)",
+      "key": "streefEinddatum",
+      "type": "textfield",
+      "input": true,
+      "tableView": true,
+      "defaultValue": "2027-06-30"
+    },
+    {
+      "label": "Doelen (uit het doeltype-register)",
+      "key": "doelen",
+      "type": "datagrid",
+      "input": true,
+      "tableView": false,
+      "reorder": false,
+      "addAnotherPosition": "bottom",
+      "defaultValue": [
+        {
+          "doelType": "Brandveiligheidsrisico's inventariseren",
+          "beschrijving": "Volledig brandveiligheidsonderzoek van het complex, inclusief monumentale delen.",
+          "status": "afgerond"
+        },
+        {
+          "doelType": "Geconstateerde gebreken verhelpen",
+          "beschrijving": "Brandcompartimentering en detectie-installaties op orde brengen.",
+          "status": "gestart"
+        },
+        {
+          "doelType": "Herinspectie uitvoeren",
+          "beschrijving": "Onafhankelijke herinspectie van alle herstelde onderdelen.",
+          "status": "gepland"
+        },
+        {
+          "doelType": "Borging in beheerorganisatie",
+          "beschrijving": "BHV-organisatie en periodieke controles structureel beleggen.",
+          "status": "gepland"
+        }
+      ],
+      "components": [
+        {
+          "label": "Doel",
+          "key": "doelType",
+          "type": "select",
+          "input": true,
+          "tableView": true,
+          "widget": "html5",
+          "data": {
+            "values": [
+              {
+                "label": "Brandveiligheidsrisico's inventariseren",
+                "value": "Brandveiligheidsrisico's inventariseren"
+              },
+              {
+                "label": "Geconstateerde gebreken verhelpen",
+                "value": "Geconstateerde gebreken verhelpen"
+              },
+              {
+                "label": "Herinspectie uitvoeren",
+                "value": "Herinspectie uitvoeren"
+              },
+              {
+                "label": "Borging in beheerorganisatie",
+                "value": "Borging in beheerorganisatie"
+              }
+            ]
+          }
+        },
+        {
+          "label": "Beschrijving",
+          "key": "beschrijving",
+          "type": "textfield",
+          "input": true,
+          "tableView": true
+        },
+        {
+          "label": "Status",
+          "key": "status",
+          "type": "select",
+          "input": true,
+          "tableView": true,
+          "widget": "html5",
+          "data": {
+            "values": [
+              {
+                "label": "Gepland",
+                "value": "gepland"
+              },
+              {
+                "label": "Gestart",
+                "value": "gestart"
+              },
+              {
+                "label": "Afgerond",
+                "value": "afgerond"
+              }
+            ]
+          },
+          "defaultValue": "gepland"
+        }
+      ],
+      "addAnother": "Subdoel toevoegen"
+    },
+    {
+      "label": "Instrumenten (uit de Open Product catalogus)",
+      "key": "instrumenten",
+      "type": "datagrid",
+      "input": true,
+      "tableView": false,
+      "reorder": false,
+      "addAnotherPosition": "bottom",
+      "defaultValue": [
+        {
+          "titel": "Brandveiligheidsonderzoek",
+          "product": "BRANDVEILIGHEIDSONDERZOEK",
+          "doel": "Brandveiligheidsrisico's inventariseren",
+          "status": "afgerond"
+        },
+        {
+          "titel": "BHV-training beheerorganisatie",
+          "product": "BHV-TRAINING",
+          "doel": "Borging in beheerorganisatie",
+          "status": "gepland"
+        }
+      ],
+      "components": [
+        {
+          "label": "Product",
+          "key": "product",
+          "type": "select",
+          "input": true,
+          "tableView": true,
+          "widget": "html5",
+          "data": {
+            "values": [
+              {
+                "label": "Werkfit Traject WIO",
+                "value": "WERKFIT-TRAJECT"
+              },
+              {
+                "label": "Jobcoaching",
+                "value": "JOBCOACHING"
+              },
+              {
+                "label": "Leerbaarheidstoets",
+                "value": "LEERBAARHEIDSTOETS"
+              },
+              {
+                "label": "Orienterend Aanbod",
+                "value": "ORIENTEREND-AANBOD"
+              },
+              {
+                "label": "Nazorgtraject",
+                "value": "NAZORGTRAJECT"
+              },
+              {
+                "label": "Brandveiligheidsonderzoek",
+                "value": "BRANDVEILIGHEIDSONDERZOEK"
+              },
+              {
+                "label": "BHV-training",
+                "value": "BHV-TRAINING"
+              },
+              {
+                "label": "Inspectiedienst",
+                "value": "INSPECTIEDIENST"
+              },
+              {
+                "label": "Financiele Intake",
+                "value": "FINANCIELE-INTAKE"
+              }
+            ]
+          }
+        },
+        {
+          "label": "Titel",
+          "key": "titel",
+          "type": "textfield",
+          "input": true,
+          "tableView": true,
+          "calculateValue": "var namen = {\"WERKFIT-TRAJECT\": \"Werkfit Traject WIO\", \"JOBCOACHING\": \"Jobcoaching\", \"LEERBAARHEIDSTOETS\": \"Leerbaarheidstoets\", \"ORIENTEREND-AANBOD\": \"Orienterend Aanbod\", \"NAZORGTRAJECT\": \"Nazorgtraject\", \"BRANDVEILIGHEIDSONDERZOEK\": \"Brandveiligheidsonderzoek\", \"BHV-TRAINING\": \"BHV-training\", \"INSPECTIEDIENST\": \"Inspectiedienst\", \"FINANCIELE-INTAKE\": \"Financiele Intake\"};\nvalue = (row && namen[row.product]) || value || '';",
+          "hidden": true,
+          "clearOnHide": false
+        },
+        {
+          "label": "Bij doel",
+          "key": "doel",
+          "type": "select",
+          "input": true,
+          "tableView": true,
+          "widget": "html5",
+          "data": {
+            "values": [
+              {
+                "label": "Brandveiligheidsrisico's inventariseren",
+                "value": "Brandveiligheidsrisico's inventariseren"
+              },
+              {
+                "label": "Geconstateerde gebreken verhelpen",
+                "value": "Geconstateerde gebreken verhelpen"
+              },
+              {
+                "label": "Herinspectie uitvoeren",
+                "value": "Herinspectie uitvoeren"
+              },
+              {
+                "label": "Borging in beheerorganisatie",
+                "value": "Borging in beheerorganisatie"
+              }
+            ]
+          }
+        },
+        {
+          "label": "Status",
+          "key": "status",
+          "type": "select",
+          "input": true,
+          "tableView": true,
+          "widget": "html5",
+          "data": {
+            "values": [
+              {
+                "label": "Gepland",
+                "value": "gepland"
+              },
+              {
+                "label": "Gestart",
+                "value": "gestart"
+              },
+              {
+                "label": "Afgerond",
+                "value": "afgerond"
+              }
+            ]
+          },
+          "defaultValue": "gepland"
+        }
+      ],
+      "addAnother": "Instrument toevoegen",
+      "description": "Kies per regel een product uit de catalogus; de productnaam wordt de titel van het instrument (aan te passen bij Plan aanmaken)."
+    },
+    {
+      "label": "Contactmomenten / evaluaties",
+      "key": "contactmomenten",
+      "type": "datagrid",
+      "input": true,
+      "tableView": false,
+      "reorder": false,
+      "addAnotherPosition": "bottom",
+      "defaultValue": [
+        {
+          "datum": "2026-02-05",
+          "evaluatieType": "INTAKE",
+          "status": "afgerond",
+          "notitie": "Startoverleg: scope en planning brandveiligheidsonderzoek vastgesteld.",
+          "deelnemers": "P. Bakker, K. Visser"
+        },
+        {
+          "datum": "2026-10-01",
+          "evaluatieType": "INSPECTION",
+          "status": "gepland",
+          "notitie": "Geplande inspectie-evaluatie na herstelwerkzaamheden.",
+          "deelnemers": ""
+        }
+      ],
+      "components": [
+        {
+          "label": "Datum (jjjj-mm-dd)",
+          "key": "datum",
+          "type": "textfield",
+          "input": true,
+          "tableView": true
+        },
+        {
+          "label": "Type",
+          "key": "evaluatieType",
+          "type": "select",
+          "input": true,
+          "tableView": true,
+          "widget": "html5",
+          "data": {
+            "values": [
+              {
+                "label": "Intake",
+                "value": "INTAKE"
+              },
+              {
+                "label": "Voortgang",
+                "value": "PROGRESS"
+              },
+              {
+                "label": "Inspectie",
+                "value": "INSPECTION"
+              },
+              {
+                "label": "Evaluatie",
+                "value": "EVALUATION"
+              }
+            ]
+          }
+        },
+        {
+          "label": "Status",
+          "key": "status",
+          "type": "select",
+          "input": true,
+          "tableView": true,
+          "widget": "html5",
+          "data": {
+            "values": [
+              {
+                "label": "Gepland",
+                "value": "gepland"
+              },
+              {
+                "label": "Afgerond",
+                "value": "afgerond"
+              }
+            ]
+          },
+          "defaultValue": "gepland"
+        },
+        {
+          "label": "Notitie",
+          "key": "notitie",
+          "type": "textfield",
+          "input": true,
+          "tableView": true
+        },
+        {
+          "label": "Deelnemers",
+          "key": "deelnemers",
+          "type": "textfield",
+          "input": true,
+          "tableView": true
+        }
+      ],
+      "addAnother": "Contactmoment toevoegen"
+    },
+    {
+      "label": "Betrokkenen",
+      "key": "betrokkenen",
+      "type": "datagrid",
+      "input": true,
+      "tableView": false,
+      "reorder": false,
+      "addAnotherPosition": "bottom",
+      "defaultValue": [
+        {
+          "naam": "P. Bakker",
+          "rol": "Projectleider",
+          "organisatie": "Rijksvastgoedbedrijf",
+          "email": "p.bakker@rijksvastgoedbedrijf.nl",
+          "procesbegeleider": true
+        },
+        {
+          "naam": "K. Visser",
+          "rol": "Brandveiligheidsadviseur",
+          "organisatie": "Brandweer NL",
+          "email": "k.visser@brandweer.nl",
+          "procesbegeleider": false
+        },
+        {
+          "naam": "Rijksvastgoedbedrijf Beheer",
+          "rol": "Gebouwbeheerder",
+          "organisatie": "Rijksvastgoedbedrijf",
+          "email": "",
+          "procesbegeleider": false
+        }
+      ],
+      "components": [
+        {
+          "label": "Naam",
+          "key": "naam",
+          "type": "textfield",
+          "input": true,
+          "tableView": true
+        },
+        {
+          "label": "Rol",
+          "key": "rol",
+          "type": "select",
+          "input": true,
+          "tableView": true,
+          "widget": "html5",
+          "data": {
+            "values": [
+              {
+                "label": "Procesbegeleider",
+                "value": "Procesbegeleider"
+              },
+              {
+                "label": "Regiebehandelaar",
+                "value": "Regiebehandelaar"
+              },
+              {
+                "label": "Arbeidscoach",
+                "value": "Arbeidscoach"
+              },
+              {
+                "label": "Schuldhulpverlener",
+                "value": "Schuldhulpverlener"
+              },
+              {
+                "label": "Inwoner / Eigenaar",
+                "value": "Inwoner / Eigenaar"
+              },
+              {
+                "label": "Projectleider",
+                "value": "Projectleider"
+              },
+              {
+                "label": "Brandveiligheidsadviseur",
+                "value": "Brandveiligheidsadviseur"
+              },
+              {
+                "label": "Gebouwbeheerder",
+                "value": "Gebouwbeheerder"
+              },
+              {
+                "label": "Inspecteur",
+                "value": "Inspecteur"
+              },
+              {
+                "label": "Aanbieder",
+                "value": "Aanbieder"
+              },
+              {
+                "label": "Coach",
+                "value": "Coach"
+              }
+            ]
+          }
+        },
+        {
+          "label": "Organisatie",
+          "key": "organisatie",
+          "type": "textfield",
+          "input": true,
+          "tableView": true
+        },
+        {
+          "label": "E-mail",
+          "key": "email",
+          "type": "textfield",
+          "input": true,
+          "tableView": true
+        },
+        {
+          "label": "Procesbegeleider",
+          "key": "procesbegeleider",
+          "type": "checkbox",
+          "input": true,
+          "tableView": false,
+          "defaultValue": false,
+          "dataGridLabel": false
+        }
+      ],
+      "description": "Markeer één betrokkene als procesbegeleider.",
+      "addAnother": "Betrokkene toevoegen",
+      "validate": {
+        "custom": "var aantal = (input || []).filter(function (rij) { return rij && rij.procesbegeleider; }).length;\nvalid = aantal <= 1 ? true : 'Markeer maximaal één betrokkene als procesbegeleider.';"
+      }
+    },
+    {
+      "label": "Toelichting bij de intake",
+      "key": "toelichting",
+      "type": "textarea",
+      "input": true,
+      "tableView": false,
+      "rows": 2
+    },
+    {
+      "type": "button",
+      "label": "Start renovatieplan",
+      "key": "submit",
+      "disableOnInvalid": true,
+      "input": true,
+      "tableView": false
+    }
+  ]
+}

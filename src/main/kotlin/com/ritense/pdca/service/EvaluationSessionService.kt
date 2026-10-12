@@ -25,6 +25,7 @@ import com.ritense.pdca.repository.ContactmomentDetailsRepository
 import com.ritense.pdca.repository.EvaluationChangeRepository
 import com.ritense.pdca.repository.EvaluationSessionRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
+import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -71,7 +72,10 @@ data class EvaluationChangeRequest(
  * by a partial unique index); a running session, its contactmoment fields and
  * its changes are only ever returned to the owner. Completing turns the
  * session into a contactmoment that took place — a klantcontact in Open
- * Klant — which is when colleagues get to see the evaluation.
+ * Klant — which is when colleagues get to see the evaluation. A session
+ * started for a planned contactmoment carries that one out instead of
+ * creating a new one. Cancelling ends the session without a contactmoment;
+ * a cancelled evaluation is never shown to colleagues.
  */
 @Service
 @Transactional
@@ -84,14 +88,35 @@ class EvaluationSessionService(
     private val klantcontactService: KlantcontactService
 ) {
 
+    private val log = LoggerFactory.getLogger(javaClass)
+
     @Transactional(readOnly = true)
     fun current(userLogin: String): EvaluationSession? =
         repository.findByUserLoginAndStatus(userLogin, EvaluationSessionStatus.RUNNING)
 
-    fun start(userLogin: String, dossierId: String, caseDefinitionKey: String?): EvaluationSession {
+    /**
+     * Starts an evaluation of the dossier's plan. With
+     * [geplandContactmomentUuid] it carries out that planned contactmoment
+     * of the plan; without it, it carries out the plan's earliest planned
+     * contactmoment that is due (today or earlier), if any. The session takes
+     * over the planned contactmoment's evaluation type.
+     */
+    fun start(
+        userLogin: String,
+        dossierId: String,
+        caseDefinitionKey: String?,
+        geplandContactmomentUuid: UUID? = null
+    ): EvaluationSession {
         current(userLogin)?.let { throw EvaluationSessionConflictException(it) }
         val plan = planDetailsRepository.findByDossierId(dossierId)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Bij dit dossier hoort geen plan")
+        val gepland = geplandContactmomentUuid
+            ?.let { checkedPlannedContactmoment(plan.planUuid, it) }
+            ?: duePlannedContactmoment(plan.planUuid)
+        val evaluatieType = gepland
+            ?.let { contactmomentDetailsRepository.findById(it).orElse(null)?.evaluatieType }
+            ?.takeIf { type -> evaluationTypes(caseDefinitionKey).let { it.isEmpty() || type in it } }
+            ?: defaultEvaluationType(caseDefinitionKey)
         return try {
             repository.saveAndFlush(
                 EvaluationSession(
@@ -99,7 +124,8 @@ class EvaluationSessionService(
                     caseDefinitionKey = caseDefinitionKey,
                     planUuid = plan.planUuid,
                     userLogin = userLogin,
-                    evaluatieType = defaultEvaluationType(caseDefinitionKey)
+                    evaluatieType = evaluatieType,
+                    geplandContactmomentUuid = gepland
                 )
             )
         } catch (e: DataIntegrityViolationException) {
@@ -186,10 +212,12 @@ class EvaluationSessionService(
     }
 
     /**
-     * Completes the running evaluation: a klantcontact in Open Klant that took
-     * place at the session's start, with the gespreksverslag as inhoud, its
-     * overlay row pointing back to this session, and the session marked
-     * completed.
+     * Completes the running evaluation as a contactmoment that took place at
+     * the session's start, with the gespreksverslag as inhoud and its overlay
+     * row pointing back to this session. When the session carries out a
+     * planned contactmoment that is still planned, that klantcontact is
+     * recorded as having taken place; otherwise a new klantcontact is created
+     * in Open Klant. The session is marked completed.
      */
     fun complete(userLogin: String): EvaluationSession {
         val session = running(userLogin)
@@ -197,29 +225,68 @@ class EvaluationSessionService(
             ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Vul eerst het gespreksverslag in")
         val evaluatieType = session.evaluatieType ?: defaultEvaluationType(session.caseDefinitionKey)
         val now = LocalDateTime.now()
-        val contactmomentUuid = klantcontactService.create(
-            NewContactmoment(
+        val plaatsgevondenOp = session.startedAt.atZone(ZoneId.systemDefault()).toOffsetDateTime()
+        val deelnemers = session.deelnemers?.takeIf { it.isNotBlank() }
+        val gepland = session.geplandContactmomentUuid
+            ?.let { klantcontactService.get(it) }
+            ?.takeIf { it.gepland && it.planUuid == session.planUuid }
+
+        val contactmomentUuid = if (gepland != null) {
+            klantcontactService.completePlanned(gepland.uuid, session.planUuid, evaluatieType, plaatsgevondenOp, verslag)
+            val details = contactmomentDetailsRepository.findById(gepland.uuid).orElse(null)?.apply {
+                this.evaluatieType = evaluatieType
+                this.deelnemers = deelnemers ?: this.deelnemers
+                evaluationSessionId = session.id
+                updatedAt = now
+            } ?: ContactmomentDetails(
+                contactmomentUuid = gepland.uuid,
                 planUuid = session.planUuid,
                 evaluatieType = evaluatieType,
-                plaatsgevondenOp = session.startedAt.atZone(ZoneId.systemDefault()).toOffsetDateTime(),
-                afgerond = true,
-                verslag = verslag
-            )
-        )
-        contactmomentDetailsRepository.save(
-            ContactmomentDetails(
-                contactmomentUuid = contactmomentUuid,
-                planUuid = session.planUuid,
-                evaluatieType = evaluatieType,
-                geplandeDatum = LocalDate.now(),
-                deelnemers = session.deelnemers?.takeIf { it.isNotBlank() },
+                geplandeDatum = gepland.plaatsgevondenOp?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDate(),
+                deelnemers = deelnemers,
                 evaluationSessionId = session.id
             )
-        )
+            contactmomentDetailsRepository.save(details)
+            gepland.uuid
+        } else {
+            val created = klantcontactService.create(
+                NewContactmoment(
+                    planUuid = session.planUuid,
+                    evaluatieType = evaluatieType,
+                    plaatsgevondenOp = plaatsgevondenOp,
+                    afgerond = true,
+                    verslag = verslag
+                )
+            )
+            contactmomentDetailsRepository.save(
+                ContactmomentDetails(
+                    contactmomentUuid = created,
+                    planUuid = session.planUuid,
+                    evaluatieType = evaluatieType,
+                    geplandeDatum = LocalDate.now(),
+                    deelnemers = deelnemers,
+                    evaluationSessionId = session.id
+                )
+            )
+            created
+        }
         session.evaluatieType = evaluatieType
         session.contactmomentUuid = contactmomentUuid
         session.status = EvaluationSessionStatus.COMPLETED
         session.endedAt = now
+        return repository.save(session)
+    }
+
+    /**
+     * Cancels the running evaluation. Nothing is written to Open Klant and a
+     * planned contactmoment it carried out stays planned; the recorded
+     * changes stay with the cancelled session. The plan changes themselves
+     * were made in the registers already and are not reverted.
+     */
+    fun cancel(userLogin: String): EvaluationSession {
+        val session = running(userLogin)
+        session.status = EvaluationSessionStatus.CANCELLED
+        session.endedAt = LocalDateTime.now()
         return repository.save(session)
     }
 
@@ -230,6 +297,44 @@ class EvaluationSessionService(
         val changes = changeRepository.findBySessionIdInOrderByCreatedAt(sessions.map { it.id })
             .groupBy { it.sessionId }
         return sessions.sortedByDescending { it.endedAt }.map { it to (changes[it.id] ?: emptyList()) }
+    }
+
+    /** A planned contactmoment of this plan, given explicitly at start: 404 when unknown, 400 when not usable. */
+    private fun checkedPlannedContactmoment(planUuid: UUID, klantcontactUuid: UUID): UUID {
+        val klantcontact = klantcontactService.get(klantcontactUuid)
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Gepland contactmoment niet gevonden")
+        if (klantcontact.planUuid != planUuid) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Het contactmoment hoort niet bij dit plan")
+        }
+        if (!klantcontact.gepland) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Het contactmoment heeft al plaatsgevonden")
+        }
+        return klantcontact.uuid
+    }
+
+    /**
+     * The plan's earliest planned contactmoment that is due (today or
+     * earlier) and not already being carried out by another running session.
+     * Best effort: when Open Klant cannot be reached the session starts
+     * without one.
+     */
+    private fun duePlannedContactmoment(planUuid: UUID): UUID? {
+        val today = LocalDate.now()
+        val inUse = repository.findByPlanUuidAndStatus(planUuid, EvaluationSessionStatus.RUNNING)
+            .mapNotNull { it.geplandContactmomentUuid }
+            .toSet()
+        return try {
+            klantcontactService.planned(planUuid)
+                .filter { it.uuid !in inUse }
+                .firstOrNull { gepland ->
+                    gepland.plaatsgevondenOp?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDate()
+                        ?.let { !it.isAfter(today) } == true
+                }
+                ?.uuid
+        } catch (e: Exception) {
+            log.warn("Could not look up planned contactmomenten of plan $planUuid; starting the evaluation without one: ${e.message}")
+            null
+        }
     }
 
     private fun running(userLogin: String): EvaluationSession =

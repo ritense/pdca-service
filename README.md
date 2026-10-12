@@ -28,15 +28,18 @@ statuses `actief`/`afgerond`/`geannuleerd`, resultaat `behaald`/`gefaald`, pagin
 
 The Spring Boot backend itself only keeps what the registers don't model, keyed by register uuid
 (`/api/v1/pdca/*`): the **direct dossier link** (`plan_details.dossier_id`, plan = dossier
-1:1), execution status (gepland/gestart) + voortgangsstatus + internal/external note per doel,
+1:1), uitvoeringsstatus (gepland/gestart) + voortgangsstatus + internal/external note per doel,
 configurable plan display statuses (Concept, Vastgesteld, ...), positie + subdoelgroep (W&P
 segmentation, advised by the intake DMN) + hoofddoel reference per
-plan, hours/effectiveness/notes/abort reason per instrument, evaluation type + doel progress + action
-points per contactmoment, evaluation sessions with the plan changes made during them (run in
-GZAC's side panel), actions, responsibilities (betrokkenen incl. the main responsible)
+plan, uitvoeringsstatus/hours/effectiveness/notes/abort reason per instrument, evaluation type +
+planned date + doel progress + action points per contactmoment, evaluation sessions with the plan
+changes made during them (run in GZAC's side panel; completed, or cancelled without a
+contactmoment), actions, responsibilities (betrokkenen incl. the procesbegeleider)
 and the case config (evaluation types, plan statuses, **position types**). Doelen are shown
 as one flat list ordered by the overlay `sortering`;
-the plan owner is the procesbegeleider/main responsible (`plan.medewerker` URN). Cross-register
+the plan owner is the procesbegeleider (the betrokkene marked as such, mirrored into Open Plan as
+the `plan.medewerker` URN). Doelen, instrumenten and acties share one status vocabulary: Gepland →
+Gestart → Afgerond / Afgebroken (ARCHITECTURE §5.2). Cross-register
 references are URNs, e.g. `instrument.product = urn:pdca:openproduct:producttype:<code>` and
 `plan.domeinregister = urn:pdca:brp:persoon:<bsn>`.
 
@@ -64,8 +67,10 @@ Key modelling choices:
 - **Plan = dossier (1:1)** — the link is a **direct reference in the PDCA overlay**
   (`plan_details.dossier_id` = GZAC documentId, unique constraint); the register's `plan.zaak`
   field is not used. The case tabs and task forms look the plan up via
-  `GET /api/v1/pdca/dossiers/{documentId}/plan`, no fallback. A dossier without a plan shows
-  "maak eerst een plan aan". Unlinking is possible via
+  `GET /api/v1/pdca/dossiers/{documentId}/plan`, no fallback. Plan dossiers are only created by
+  the app (from an intake); their process has no user tasks and users cannot create them by hand.
+  The dossier document carries the subject line `onderwerp` (name of the inwoner or object),
+  the first column of the case list. Unlinking is possible via
   `DELETE /api/v1/pdca/dossiers/{documentId}/plan` (demo reset).
 - **Intake → plan through a user task** — the create-plan task form is **prefilled from the
   dossier content** (`GET /api/v1/pdca/dossiers/{documentId}/plan-prefill`). Which document
@@ -94,8 +99,16 @@ instance by URL.
 ## Boot
 
 ```bash
-./gradlew bootRunWithDocker    # docker compose up -d + bootRun (app on http://localhost:7500)
+./gradlew bootRunWithDocker    # docker compose up -d --wait + register admins + bootRun (app on http://localhost:7500)
 ```
+
+`bootRunWithDocker` waits until the registers are healthy and then opens the admin pages of Open
+Plan, Open Product and Open Klant in the browser, already logged in: in this compose stack every
+visitor of a register admin is logged in as `admin` (`docker/register-dev/pdca_dev.py`). Handy to
+check during a demo what landed in the registers. Skip the tabs with
+`./gradlew bootRunWithDocker -PopenRegisterAdmins=false`, turn the auto-login off with
+`PDCA_ADMIN_AUTOLOGIN=false docker compose up -d`, or open the tabs on their own with
+`./gradlew openRegisterAdmins`.
 
 Or in two steps: `docker compose up -d` then `./gradlew bootRun`. To run the app itself as a
 container too, see [Docker](#docker): `docker compose --profile app up -d --build`.
@@ -120,7 +133,8 @@ uuids; the category `Hoofddoel` marks hoofddoel types, the other categories are 
 that scope the products offered under a subdoel), instrumenttypen and relatietypen in
 Open Plan (`docker/openplan/reference_data.py`). Demo plans are **not** seeded anymore — they are created through
 the bundled **intake case types** (see below): the intake form carries the full plan structure
-as default values, the "Plan aanmaken" user task turns it into the plan.
+as default values, the intake's "Plan aanmaken" user task turns it into the plan and its plan
+dossier.
 
 Quick checks once running:
 
@@ -157,9 +171,9 @@ npm install
 npx vite build
 ```
 
-The hand-written task pages (`static/bundles/create-plan.html`, `update-goals.html`,
-`evaluate.html`) are committed and served as-is; they call the register APIs directly through
-the proxy.
+The task form `create-plan` is one of the React bundles. The hand-written task pages
+(`static/bundles/update-goals.html`, `evaluate.html`) are committed and served as-is; they call
+the register APIs directly through the proxy.
 
 ## Using it from Valtimo/GZAC
 
@@ -238,7 +252,9 @@ doelen/instrumenten/evaluaties/betrokkenen) **and its plan dossier** of the conf
 plan case type, linked 1:1 (server-side, so plan and dossier always come into existence
 together) — the intake task completes with planId/planTitel/planStatus/planDossierId written
 back into the intake document (the form submits them `doc:`-prefixed, so they stay readable
-after the process has ended).
+after the process has ended). The form also asks GZAC to open the new plan dossier; current GZAC
+frontends ignore that request (the plugin SDK's `navigate` event is still reserved), so use the
+intake's *Aangemaakt plan* widget to go there.
 
 ### Creation routes
 
@@ -247,23 +263,23 @@ All routes yield a dossier (plan = dossier 1:1):
 - **From a dossier, fed by the intake** (task form `create-plan` on the "Plan
   aanmaken" task, linked as a process link of type `external_plugin_task_form`):
   the form receives the `documentId`, prefills itself from the dossier content via the
-  prefill mapping, and creates + links the plan via `POST /api/v1/pdca/plan-intake`. If the
-  dossier already has a plan, the form only offers "complete task" instead of creating a
-  second plan. If an **unlinked** active plan exists for the entered subject in this domein
+  prefill mapping, and creates the plan and its plan dossier via
+  `POST /api/v1/pdca/plan-intake`. If the dossier already has a plan, the form only offers
+  "complete task" instead of creating a second plan. If an **unlinked** active plan exists for the entered subject in this domein
   (created standalone), the form offers to link that plan instead of creating a new one
   (`PUT /api/v1/pdca/dossiers/{documentId}/plan`) — in standalone mode a dossier is created
   for it.
-- **Via the start form** (supplying a plan id when starting a dossier): the form.io start
-  form has an optional `planId` field that lands in the dossier content. The PDCA surfaces
-  (tabs and task forms) call `POST /api/v1/pdca/dossiers/{documentId}/resolve-plan` when a
-  dossier has no linked plan yet; the backend then reads the dossier via GZAC (granted
-  endpoint `GET /api/v1/document/*`), validates the plan and creates the direct link — the
-  plan is linked "under water" the moment the dossier is opened. Conflicts (plan already
-  linked to another dossier, or dossier already has a plan) return 409.
+- **Via the dossier content** (`planId`, which the app writes into every plan dossier it
+  creates): the PDCA surfaces (tabs and task forms) call
+  `POST /api/v1/pdca/dossiers/{documentId}/resolve-plan` when a dossier has no linked plan yet;
+  the backend then reads the dossier via GZAC (granted endpoint `GET /api/v1/document/*`),
+  validates the plan and creates the direct link — the plan is linked "under water" the moment
+  the dossier is opened. Conflicts (plan already linked to another dossier, or dossier already
+  has a plan) return 409.
 - **Standalone** (create-plan opened without dossier context): the plan structure is created
   via `POST /api/v1/pdca/plan-intake` (without documentId), after which the app calls its own
   `POST /api/v1/pdca/plans/{planUuid}/dossier`, which creates the GZAC dossier
-  (`new-document-and-start-process`, content: bsn/naam or objectId/objectNaam +
+  (`new-document-and-start-process`, content: onderwerp + bsn/naam or objectId/objectNaam +
   planId/planTitel/planStatus) and links the plan to it.
   The call is idempotent: an already-linked plan returns its existing dossier.
 
@@ -310,9 +326,6 @@ service tokens on granted endpoints). Credentials are resolved in this order (se
    application.yml defaults match the standard gzac-docker-compose m2m client). Only used
    when no plugin configuration was pushed; the service account then needs the realm roles
    `ROLE_USER` + `ROLE_ADMIN` to pass GZAC's PBAC for document creation.
-
-Note: the created dossier starts the BPMN process, so its "Plan aanmaken" task is open while
-the plan already exists — complete it with the placeholder button.
 
 ## Docker
 

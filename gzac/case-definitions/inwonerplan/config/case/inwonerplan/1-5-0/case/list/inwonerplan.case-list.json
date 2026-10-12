@@ -1,0 +1,51 @@
+[
+    {
+        "title": "Onderwerp",
+        "key": "onderwerp",
+        "path": "doc:onderwerp",
+        "displayType": {
+            "type": "text",
+            "displayTypeParameters": {}
+        },
+        "sortable": true,
+        "order": 0
+    },
+    {
+        "title": "BSN",
+        "key": "bsn",
+        "path": "doc:bsn",
+        "displayType": {
+            "type": "text",
+            "displayTypeParameters": {}
+        },
+        "sortable": true,
+        "order": 1
+    },
+    {
+        "title": "Aangemaakt op",
+        "key": "createdOn",
+        "path": "case:createdOn",
+        "displayType": {
+            "type": "date",
+            "displayTypeParameters": {
+                "dateFormat": null
+            }
+        },
+        "sortable": true,
+        "defaultSort": "DESC",
+        "order": 2
+    },
+    {
+        "title": "Gewijzigd op",
+        "key": "modifiedOn",
+        "path": "case:modifiedOn",
+        "displayType": {
+            "type": "date",
+            "displayTypeParameters": {
+                "dateFormat": null
+            }
+        },
+        "sortable": true,
+        "order": 3
+    }
+]

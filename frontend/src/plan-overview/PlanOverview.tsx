@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Layer,
   Tile,
-  ClickableTile,
   Tag,
   Button,
   Checkbox,
@@ -21,6 +20,9 @@ import {
   Select,
   SelectItem,
   Theme,
+  MenuButton,
+  MenuItem,
+  MenuItemDivider,
 } from '@carbon/react';
 import { TrashCan } from '@carbon/react/icons';
 import { onInit, resizeIframe, GzacContext } from '../shared/bridge';
@@ -28,14 +30,13 @@ import {
   EvaluationSession, EvaluationChangeInput, syncEvaluationPanel, recordEvaluationChange, onEvaluationEvent,
 } from '../shared/evaluationSession';
 import { EvaluatieBanner } from '../shared/EvaluatieBanner';
+import { useSubmit } from '../shared/useSubmit';
 import {
   openplan,
   openklant,
   pdca,
   planVoorDossier,
   registers,
-  urn,
-  urnId,
   Plan,
   PlanDetails,
   Doel,
@@ -50,7 +51,7 @@ import {
   ObjectRecord,
 } from '../shared/api';
 import {
-  statusLabel, evalTypeLabel, formatDate, contactmomentStatusLabel,
+  evalTypeLabel, formatDate, planStatus, isVerlopen, contactmomentDatum,
   dienstverleningLabel, doelTypeNaam, hoofddoelTypen, isHoofddoelType,
 } from '../shared/labels';
 import '../shared/styles.css';
@@ -59,12 +60,6 @@ type SubjectData =
   | { kind: 'persoon'; brp: BrpPersoon | null; bsn: string }
   | { kind: 'object'; object: ObjectRecord | null; id: string }
   | null;
-
-const STATUS_TAG_TYPE: Record<string, string> = {
-  actief: 'blue',
-  afgerond: 'green',
-  geannuleerd: 'gray',
-};
 
 const EVAL_TAG_TYPE: Record<string, string> = {
   INTAKE: 'blue',
@@ -75,6 +70,11 @@ const EVAL_TAG_TYPE: Record<string, string> = {
 };
 
 const KPI_COLORS = ['#24a148', '#0f62fe', '#ff832b', '#8a3ffc'];
+
+/** Closing or reopening the plan, each confirmed in its own modal. */
+type PlanActie = 'afronden' | 'afbreken' | 'heractiveren';
+
+const betrokkeneNaam = (b: Betrokkene) => `${b.name} · ${b.role}`;
 
 function formatAddress(adres: { straat: string; huisnummer?: string; postcode: string; woonplaats: string }): string {
   const street = adres.straat + (adres.huisnummer ? ' ' + adres.huisnummer : '');
@@ -117,14 +117,23 @@ export function PlanOverview() {
   const [editValue, setEditValue] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [partyForm, setPartyForm] = useState({ name: '', role: '', email: '', phone: '', isPrimary: false });
+  /** Betrokkene awaiting confirmation of its removal. */
+  const [partyToDelete, setPartyToDelete] = useState<Betrokkene | null>(null);
+  /** Plan action awaiting confirmation, with the reason or explanation entered for it. */
+  const [planActie, setPlanActie] = useState<PlanActie | null>(null);
+  const [redenEinde, setRedenEinde] = useState('');
   /** The user's running evaluation; while it is on this plan, every change here is recorded in it. */
   const [session, setSession] = useState<EvaluationSession | null>(null);
+  const fieldSubmit = useSubmit();
+  const partySubmit = useSubmit();
+  const deleteSubmit = useSubmit();
+  const planSubmit = useSubmit();
 
   useEffect(() => { resizeIframe(); });
 
   useEffect(() => onEvaluationEvent(event => {
     if (event.type === 'started') setSession(event.session);
-    if (event.type === 'completed') setSession(null);
+    if (event.type === 'ended') setSession(null);
   }), []);
 
   useEffect(() => {
@@ -188,7 +197,7 @@ export function PlanOverview() {
       setRelatietypen(rollenRes);
       setDoeltypen(doeltypenRes);
       setSubject(subjectRes);
-      setPlanStatusOpties(statusOptiesRes.length ? statusOptiesRes : ['Concept', 'Vastgesteld', 'In uitvoering']);
+      setPlanStatusOpties(statusOptiesRes.length ? statusOptiesRes : ['Concept', 'Vastgesteld']);
       setPositieTypen(positieTypenRes);
       setLoading(false);
     } catch (err: any) {
@@ -199,6 +208,7 @@ export function PlanOverview() {
 
   const detailsByDoel = useMemo(() => new Map(doelDetails.map(d => [d.doelUuid, d])), [doelDetails]);
   const cmDetailsByUuid = useMemo(() => new Map(cmDetails.map(d => [d.contactmomentUuid, d])), [cmDetails]);
+  const procesbegeleider = betrokkenen.find(b => b.isPrimary) ?? null;
 
   /** Records a plan change in the running evaluation of this plan (no-op without one). */
   const rec = useCallback((change: Omit<EvaluationChangeInput, 'subjectType' | 'subjectUuid' | 'subjectTitel'>) => {
@@ -206,28 +216,42 @@ export function PlanOverview() {
   }, [plan]);
 
   const kpi = useMemo(() => {
-    // Voortgang = how the active subdoelen are going (overlay voortgangsstatus).
-    const actieveSubdoelen = doelen.filter(d => {
+    // Voortgang = how the active subdoelen are going (overlay voortgangsstatus); the hoofddoel stays out.
+    const subdoelen = doelen.filter(d => {
       const type = doeltypen.find(t => t.uuid === d.doeltype?.uuid);
-      return d.status === 'actief' && !(type && isHoofddoelType(type));
+      return !(type && isHoofddoelType(type));
     });
+    const actieveSubdoelen = subdoelen.filter(d => d.status === 'actief');
     const statusTelling = (status: string) =>
       actieveSubdoelen.filter(d => detailsByDoel.get(d.uuid)?.voortgangStatus === status).length;
-    const voortgang = {
-      opKoers: statusTelling('OP_KOERS'),
-      aandacht: statusTelling('AANDACHT_NODIG') + statusTelling('LOOPT_ACHTER'),
-      actief: actieveSubdoelen.length,
-    };
-    const actieveDoelen = doelen.filter(d => d.status === 'actief').length;
+    const opKoers = statusTelling('OP_KOERS');
+    const aandacht = statusTelling('AANDACHT_NODIG') + statusTelling('LOOPT_ACHTER');
+    const beoordeeld = actieveSubdoelen.filter(d => !!detailsByDoel.get(d.uuid)?.voortgangStatus).length;
     const openActies = acties.filter(a =>
       a.status === 'PLANNED' || a.status === 'IN_PROGRESS' || a.status === 'PENDING_REVIEW'
     ).length;
     const afgerondeEvaluaties = contactmomenten.filter(c => c.indicatieContactGelukt === true).length;
-    return { voortgang, actieveDoelen, totalDoelen: doelen.length, openActies, afgerondeEvaluaties };
-  }, [doelen, doeltypen, detailsByDoel, acties, contactmomenten]);
+    // A planned contactmoment has no outcome yet (indicatieContactGelukt null).
+    const geplandeDatums = contactmomenten
+      .filter(c => c.indicatieContactGelukt == null)
+      .map(c => contactmomentDatum(c, cmDetailsByUuid.get(c.uuid)))
+      .filter(Boolean)
+      .sort();
+    return {
+      voortgang: { opKoers, aandacht, beoordeeld, nietBeoordeeld: actieveSubdoelen.length - beoordeeld },
+      lopendeSubdoelen: actieveSubdoelen.length,
+      totaalSubdoelen: subdoelen.length,
+      openActies,
+      afgerondeEvaluaties,
+      volgendeEvaluatie: geplandeDatums[0] ?? null,
+    };
+  }, [doelen, doeltypen, detailsByDoel, acties, contactmomenten, cmDetailsByUuid]);
 
   const recentEvals = useMemo(() =>
-    [...contactmomenten].sort((a, b) => (b.plaatsgevondenOp || '').localeCompare(a.plaatsgevondenOp || '')).slice(0, 3),
+    contactmomenten
+      .filter(c => c.indicatieContactGelukt === true)
+      .sort((a, b) => (b.plaatsgevondenOp || '').localeCompare(a.plaatsgevondenOp || ''))
+      .slice(0, 3),
   [contactmomenten]);
 
   const showSuccess = useCallback((msg: string) => {
@@ -235,19 +259,36 @@ export function PlanOverview() {
     setTimeout(() => setSuccessMsg(null), 3000);
   }, []);
 
-  const handleStatusChange = useCallback(async (newStatus: 'actief' | 'afgerond' | 'geannuleerd') => {
-    if (!plan) return;
-    try {
-      const body: any = { status: newStatus };
-      if (newStatus === 'afgerond') body.einddatum = new Date().toISOString();
+  const openPlanActie = useCallback((actie: PlanActie) => {
+    setRedenEinde('');
+    planSubmit.reset();
+    setPlanActie(actie);
+  }, [planSubmit]);
+
+  // Closing a plan sets its register status with einddatum and redenEinde
+  // (optional explanation when afgerond, a required reason when afgebroken);
+  // reopening clears both.
+  const handlePlanActie = useCallback(async () => {
+    if (!plan || !planActie) return;
+    const reden = redenEinde.trim();
+    if (planActie === 'afbreken' && !reden) return;
+    const status = planActie === 'afronden' ? 'afgerond' : planActie === 'afbreken' ? 'geannuleerd' : 'actief';
+    const ok = await planSubmit.submit(async () => {
+      const body = status === 'actief'
+        ? { status, einddatum: null, redenEinde: '' }
+        : { status, einddatum: new Date().toISOString(), redenEinde: reden };
       const updated = await openplan.plannen.update(plan.uuid, body);
-      rec({ soort: 'PLAN_STATUS', samenvoegen: true, vanWaarde: statusLabel(plan.status), naarWaarde: statusLabel(newStatus) });
+      const naar = planStatus(status, details?.weergaveStatus).label;
+      rec({
+        soort: 'PLAN_STATUS', samenvoegen: true,
+        vanWaarde: planStatus(plan.status, details?.weergaveStatus).label, naarWaarde: naar,
+        toelichting: reden || undefined,
+      });
       setPlan(updated);
-      showSuccess('Status gewijzigd naar ' + statusLabel(newStatus));
-    } catch (err: any) {
-      setError('Status wijzigen mislukt: ' + err.message);
-    }
-  }, [plan, showSuccess, rec]);
+      showSuccess(status === 'actief' ? 'Plan heractiveerd' : `Plan ${naar.toLowerCase()}`);
+    });
+    if (ok) setPlanActie(null);
+  }, [plan, planActie, redenEinde, details, planSubmit, showSuccess, rec]);
 
   // Configurable plan status (Concept, Vastgesteld, ...) — overlay.
   const handleWeergaveStatus = useCallback(async (weergaveStatus: string) => {
@@ -262,53 +303,60 @@ export function PlanOverview() {
     }
   }, [plan, details, showSuccess, rec]);
 
-  // notitie/procesbegeleider live on the Open Plan plan; positions and
-  // hoofddoel in the PDCA overlay. Positions and hoofddoel are
-  // register-driven choices (positietype resp. doeltype register) — no free
-  // text; only the explanation for the inwoner remains free text.
+  // notitie lives on the Open Plan plan; positions and hoofddoel in the PDCA
+  // overlay; the procesbegeleider is one of the plan's betrokkenen.
+  // Positions and hoofddoel are register-driven choices (positietype resp.
+  // doeltype register) — no free text; only the explanation for the inwoner
+  // remains free text.
   const hoofddoelOpties = hoofddoelTypen(doeltypen);
   const gekozenHoofddoel = doeltypen.find(t => t.uuid === details?.hoofddoelTypeUuid);
   const editableFields: {
     key: string; label: string; emptyText: string; value?: string;
-    display?: string; options?: { value: string; text: string }[];
+    display?: string; options?: { value: string; text: string }[]; placeholder?: string;
+    /** Shown instead of the edit button when the field cannot be edited yet. */
+    hint?: string;
   }[] = [
-    { key: 'medewerker', label: 'Procesbegeleider (hoofdverantwoordelijke)', emptyText: 'Nog geen procesbegeleider', value: urnId(plan?.medewerker) || '' },
     {
-      key: 'hoofddoelTypeUuid', label: 'Hoofddoel (uit doeltype-register)', emptyText: 'Nog geen hoofddoel gekozen',
+      key: 'procesbegeleider', label: 'Procesbegeleider', emptyText: 'Nog geen procesbegeleider',
+      value: procesbegeleider?.id || '', display: procesbegeleider ? betrokkeneNaam(procesbegeleider) : '',
+      options: betrokkenen.map(b => ({ value: b.id, text: betrokkeneNaam(b) })),
+      placeholder: '-- Kies een verantwoordelijke --',
+      hint: betrokkenen.length === 0 ? 'Voeg eerst een verantwoordelijke toe onder Verantwoordelijkheden.' : undefined,
+    },
+    {
+      key: 'hoofddoelTypeUuid', label: 'Hoofddoel', emptyText: 'Nog geen hoofddoel gekozen',
       value: details?.hoofddoelTypeUuid || '', display: doelTypeNaam(gekozenHoofddoel),
       options: hoofddoelOpties.map(t => ({ value: t.uuid, text: t.doelType })),
     },
-    { key: 'notitie', label: 'Toelichting bij hoofddoel (t.b.v. de inwoner)', emptyText: 'Geen toelichting', value: plan?.notitie },
+    { key: 'notitie', label: 'Toelichting bij hoofddoel', emptyText: 'Geen toelichting', value: plan?.notitie },
+    { key: 'subdoelgroep', label: 'Subdoelgroep', emptyText: 'Nog niet bepaald', value: details?.subdoelgroep },
     {
-      key: 'subdoelgroep', label: 'Subdoelgroep (W&P-segmentatie, uit de intake)',
-      emptyText: 'Nog niet bepaald', value: details?.subdoelgroep,
-    },
-    {
-      key: 'beginPositie', label: 'Positie (doorgaans uit de intake; wordt later opnieuw bepaald)',
-      emptyText: 'Nog niet gezet',
+      key: 'beginPositie', label: 'Positie', emptyText: 'Nog niet gezet',
       value: details?.beginPositie, options: positieTypen.map(p => ({ value: p, text: p })),
     },
   ];
 
   const startEditing = useCallback((key: string, value?: string) => {
+    fieldSubmit.reset();
     setEditingField(key);
     setEditValue(value || '');
-  }, []);
+  }, [fieldSubmit]);
 
   const saveField = useCallback(async () => {
     if (!plan || !editingField) return;
-    try {
+    const ok = await fieldSubmit.submit(async () => {
       if (editingField === 'notitie') {
         const updated = await openplan.plannen.update(plan.uuid, { notitie: editValue.trim() });
         rec({ soort: 'HOOFDDOEL_TOELICHTING', samenvoegen: true, vanWaarde: plan.notitie, naarWaarde: editValue.trim() });
         setPlan(updated);
-      } else if (editingField === 'medewerker') {
-        const value = editValue.trim();
-        const updated = await openplan.plannen.update(plan.uuid, {
-          medewerker: value ? urn('medewerkers', 'medewerker', value.replace(/\s+/g, '.').toLowerCase()) : '',
-        });
-        rec({ soort: 'PROCESBEGELEIDER', samenvoegen: true, vanWaarde: urnId(plan.medewerker), naarWaarde: urnId(updated.medewerker) });
-        setPlan(updated);
+      } else if (editingField === 'procesbegeleider') {
+        // The backend also keeps the Open Plan plan.medewerker in step.
+        if (editValue !== procesbegeleider?.id) {
+          const bijgewerkt = await pdca.betrokkenen.setProcesbegeleider(editValue);
+          const nieuw = bijgewerkt.find(b => b.id === editValue);
+          rec({ soort: 'PROCESBEGELEIDER', samenvoegen: true, vanWaarde: procesbegeleider?.name, naarWaarde: nieuw?.name });
+          setBetrokkenen(bijgewerkt);
+        }
       } else if (editingField === 'hoofddoelTypeUuid') {
         // W&P: "een plan heeft maar 1 hoofddoel actief". Switching completes
         // the current hoofddoel-doel (history in the doelen tab), creates a
@@ -350,55 +398,58 @@ export function PlanOverview() {
         }
         setDetails(updated);
       }
+    });
+    if (ok) {
       setEditingField(null);
       showSuccess('Wijziging opgeslagen');
-    } catch (err: any) {
-      setError('Opslaan mislukt: ' + err.message);
     }
-  }, [plan, editingField, editValue, doelen, doeltypen, details, showSuccess, rec]);
+  }, [plan, editingField, editValue, doelen, doeltypen, details, procesbegeleider, fieldSubmit, showSuccess, rec]);
 
-  // Every plan has at least one main responsible: the first responsibility
-  // is marked as the main responsible by default.
+  // A plan without procesbegeleider gets its first verantwoordelijke as procesbegeleider by default.
   const openPartyModal = useCallback(() => {
-    setPartyForm({ name: '', role: '', email: '', phone: '', isPrimary: betrokkenen.every(b => !b.isPrimary) });
+    setPartyForm({ name: '', role: '', email: '', phone: '', isPrimary: !procesbegeleider });
+    partySubmit.reset();
     setModalOpen(true);
-  }, [betrokkenen]);
+  }, [procesbegeleider, partySubmit]);
 
   const handleAddParty = useCallback(async () => {
-    if (!plan) return;
-    if (!partyForm.name.trim() || !partyForm.role) {
-      setError('Naam en rol zijn verplicht');
-      return;
-    }
-    try {
+    if (!plan || !partyForm.name.trim() || !partyForm.role) return;
+    const ok = await partySubmit.submit(async () => {
+      const name = partyForm.name.trim();
       await pdca.betrokkenen.create({
         planUuid: plan.uuid,
-        name: partyForm.name.trim(),
+        name,
         role: partyForm.role,
         email: partyForm.email.trim() || undefined,
         phone: partyForm.phone.trim() || undefined,
         isPrimary: partyForm.isPrimary,
       });
-      rec({ soort: 'BETROKKENE_TOEGEVOEGD', naarWaarde: `${partyForm.name.trim()} (${partyForm.role})` });
+      rec({ soort: 'BETROKKENE_TOEGEVOEGD', naarWaarde: `${name} (${partyForm.role})` });
+      if (partyForm.isPrimary) {
+        rec({ soort: 'PROCESBEGELEIDER', samenvoegen: true, vanWaarde: procesbegeleider?.name, naarWaarde: name });
+      }
       setBetrokkenen(await pdca.betrokkenen.listByPlan(plan.uuid));
+    });
+    if (ok) {
       setModalOpen(false);
       showSuccess('Verantwoordelijkheid toegevoegd');
-    } catch (err: any) {
-      setError('Toevoegen mislukt: ' + err.message);
     }
-  }, [plan, partyForm, showSuccess, rec]);
+  }, [plan, partyForm, procesbegeleider, partySubmit, showSuccess, rec]);
 
-  const handleDeleteParty = useCallback(async (partyId: string) => {
-    try {
-      const party = betrokkenen.find(p => p.id === partyId);
-      await pdca.betrokkenen.delete(partyId);
-      if (party) rec({ soort: 'BETROKKENE_VERWIJDERD', naarWaarde: `${party.name} (${party.role})` });
-      setBetrokkenen(prev => prev.filter(p => p.id !== partyId));
+  const handleDeleteParty = useCallback(async () => {
+    const party = partyToDelete;
+    if (!party) return;
+    const ok = await deleteSubmit.submit(async () => {
+      await pdca.betrokkenen.delete(party.id);
+      rec({ soort: 'BETROKKENE_VERWIJDERD', naarWaarde: `${party.name} (${party.role})` });
+      if (party.isPrimary) rec({ soort: 'PROCESBEGELEIDER', samenvoegen: true, vanWaarde: party.name, naarWaarde: null });
+      setBetrokkenen(prev => prev.filter(p => p.id !== party.id));
+    });
+    if (ok) {
+      setPartyToDelete(null);
       showSuccess('Verantwoordelijkheid verwijderd');
-    } catch (err: any) {
-      setError('Verwijderen mislukt: ' + err.message);
     }
-  }, [betrokkenen, showSuccess, rec]);
+  }, [partyToDelete, deleteSubmit, showSuccess, rec]);
 
   if (loading) {
     return <Loading description="Plan laden..." withOverlay={false} />;
@@ -410,15 +461,29 @@ export function PlanOverview() {
 
   if (!plan) return null;
 
+  const { voortgang } = kpi;
+  const voortgangSub = voortgang.beoordeeld === 0
+    ? 'Nog niet beoordeeld'
+    : 'op koers'
+      + (voortgang.aandacht ? ` · ${voortgang.aandacht} ${voortgang.aandacht === 1 ? 'vraagt' : 'vragen'} aandacht` : '')
+      + (voortgang.nietBeoordeeld ? ` · ${voortgang.nietBeoordeeld} nog niet beoordeeld` : '');
+  const volgendeVerlopen = isVerlopen(kpi.volgendeEvaluatie);
   const kpiItems = [
     {
-      label: 'Voortgang', value: `${kpi.voortgang.opKoers}/${kpi.voortgang.actief}`,
-      sub: `actieve subdoelen op koers${kpi.voortgang.aandacht ? ` · ${kpi.voortgang.aandacht} vragen aandacht` : ''}`,
+      label: 'Voortgang',
+      value: voortgang.beoordeeld === 0 ? '–' : `${voortgang.opKoers}/${voortgang.beoordeeld}`,
+      sub: voortgangSub,
       color: KPI_COLORS[0],
     },
-    { label: 'Actieve doelen', value: String(kpi.actieveDoelen), sub: `van ${kpi.totalDoelen} totaal`, color: KPI_COLORS[1] },
+    { label: 'Subdoelen', value: String(kpi.lopendeSubdoelen), sub: `van ${kpi.totaalSubdoelen} subdoelen`, color: KPI_COLORS[1] },
     { label: 'Open acties', value: String(kpi.openActies), sub: 'openstaand', color: KPI_COLORS[2] },
-    { label: 'Evaluaties', value: String(contactmomenten.length), sub: `${kpi.afgerondeEvaluaties} afgerond`, color: KPI_COLORS[3] },
+    {
+      label: 'Volgende evaluatie',
+      value: kpi.volgendeEvaluatie ? formatDate(kpi.volgendeEvaluatie) : 'Niet gepland',
+      sub: `${volgendeVerlopen ? 'verlopen · ' : ''}${kpi.afgerondeEvaluaties} afgerond`,
+      color: KPI_COLORS[3],
+      compact: true,
+    },
   ];
 
   const partyHeaders = [
@@ -428,10 +493,8 @@ export function PlanOverview() {
     { key: 'actions', header: '' },
   ];
 
-  // Responsibilities model: roles from the Open Plan relatietype register,
-  // main responsible(s) marked; the procesbegeleider (plan.medewerker) is
-  // additionally always the main responsible at plan level.
-  const primaryIds = new Set(betrokkenen.filter(p => p.isPrimary).map(p => p.id));
+  // Responsibilities model: roles from the Open Plan relatietype register;
+  // one of them is the plan's procesbegeleider.
   const partyRows = betrokkenen.map(p => ({
     id: p.id,
     name: p.name,
@@ -439,6 +502,10 @@ export function PlanOverview() {
     contact: [p.email, p.phone].filter(Boolean).join(' / '),
     actions: p.id,
   }));
+
+  const status = planStatus(plan.status, details?.weergaveStatus);
+  const actief = plan.status === 'actief';
+  const huidigeWeergave = details?.weergaveStatus || 'Concept';
 
   return (
     <Theme theme="g10">
@@ -470,31 +537,22 @@ export function PlanOverview() {
           <h1>{plan.titel}</h1>
           <div className="pdca-meta">
             <div className="pdca-status-control">
-              {plan.status === 'actief' ? (
-                <>
-                  <Tag type="blue">{details?.weergaveStatus || 'Concept'}</Tag>
-                  <Select
-                    id="plan-weergave-status"
-                    size="sm"
-                    labelText=""
-                    hideLabel
-                    value={details?.weergaveStatus || ''}
-                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleWeergaveStatus(e.target.value)}
-                  >
-                    <SelectItem value="" text="Status wijzigen..." />
-                    {planStatusOpties.map(s => <SelectItem key={s} value={s} text={s} />)}
-                  </Select>
-                  <Button size="sm" kind="tertiary" onClick={() => handleStatusChange('afgerond')}>Afronden</Button>
-                  <Button size="sm" kind="danger--tertiary" onClick={() => handleStatusChange('geannuleerd')}>Annuleren</Button>
-                </>
-              ) : (
-                <>
-                  <Tag type={STATUS_TAG_TYPE[plan.status] as any || 'gray'}>{statusLabel(plan.status)}</Tag>
-                  <Button size="sm" kind="tertiary" onClick={() => handleStatusChange('actief')}>Heractiveren</Button>
-                </>
-              )}
+              <Tag type={status.tag}>{status.label}</Tag>
+              <MenuButton label="Planacties" size="sm" kind="ghost" menuAlignment="bottom-start">
+                {actief ? <>
+                  {planStatusOpties.map(s => (
+                    <MenuItem key={s} label={`Status: ${s}`} disabled={s === huidigeWeergave}
+                      onClick={() => handleWeergaveStatus(s)} />
+                  ))}
+                  <MenuItemDivider />
+                  <MenuItem label="Plan afronden" onClick={() => openPlanActie('afronden')} />
+                  <MenuItem label="Plan afbreken" kind="danger" onClick={() => openPlanActie('afbreken')} />
+                </> : (
+                  <MenuItem label="Plan heractiveren" onClick={() => openPlanActie('heractiveren')} />
+                )}
+              </MenuButton>
             </div>
-            {urnId(plan.medewerker) && <Tag size="sm" type="green">Procesbegeleider: {urnId(plan.medewerker)}</Tag>}
+            {procesbegeleider && <Tag size="sm" type="green">Procesbegeleider: {procesbegeleider.name}</Tag>}
             {plan.plantype && <Tag size="sm" type="cool-gray">Dienstverlening: {dienstverleningLabel(plan.plantype.type)}</Tag>}
             {details?.subdoelgroep && <Tag size="sm" type="teal">Subdoelgroep: {details.subdoelgroep}</Tag>}
             {details?.beginPositie && (
@@ -503,8 +561,12 @@ export function PlanOverview() {
             {plan.startdatum && <span>Start: {formatDate(plan.startdatum)}</span>}
             {details?.streefEinddatum && <span>Streefdatum: {formatDate(details.streefEinddatum)}</span>}
             {plan.einddatum && <span>Einde: {formatDate(plan.einddatum)}</span>}
-            {details?.dossierId && <span>Gekoppeld dossier: <code className="pdca-text-wrap" style={{fontSize: 11}}>{details.dossierId}</code></span>}
           </div>
+          {!actief && plan.redenEinde && (
+            <p className="pdca-plan-reden">
+              {plan.status === 'geannuleerd' ? 'Reden afbreken' : 'Toelichting afronden'}: {plan.redenEinde}
+            </p>
+          )}
         </div>
 
         {/* Subject card (via plan.domeinregister URN) */}
@@ -563,11 +625,11 @@ export function PlanOverview() {
         {/* KPI tiles */}
         <div className="pdca-kpi-grid">
           {kpiItems.map((item, i) => (
-            <ClickableTile key={i} className="pdca-kpi-card" style={{ borderTopColor: item.color }}>
+            <Tile key={i} className="pdca-kpi-card" style={{ borderTopColor: item.color }}>
               <div className="pdca-kpi-label">{item.label}</div>
-              <div className="pdca-kpi-value">{item.value}</div>
+              <div className={`pdca-kpi-value${'compact' in item ? ' compact' : ''}`}>{item.value}</div>
               <div className="pdca-kpi-sub">{item.sub}</div>
-            </ClickableTile>
+            </Tile>
           ))}
         </div>
 
@@ -580,11 +642,11 @@ export function PlanOverview() {
                   <h4>Plangegevens</h4>
                 </div>
                 <div className="pdca-card-body">
-                  {editableFields.map(({ key, label, emptyText, value, display, options }) => (
+                  {editableFields.map(({ key, label, emptyText, value, display, options, placeholder, hint }) => (
                     <div key={key} className="pdca-info-block">
                       <div className="pdca-info-label">
                         <span>{label}</span>
-                        {editingField !== key && (
+                        {editingField !== key && !hint && (
                           <Button size="sm" kind="ghost" onClick={() => startEditing(key, value)}>Bewerken</Button>
                         )}
                       </div>
@@ -598,7 +660,7 @@ export function PlanOverview() {
                               value={editValue}
                               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setEditValue(e.target.value)}
                             >
-                              <SelectItem value="" text="-- Kies uit het register --" />
+                              <SelectItem value="" text={placeholder ?? '-- Kies uit het register --'} />
                               {options.map(o => <SelectItem key={o.value} value={o.value} text={o.text} />)}
                             </Select>
                           ) : (
@@ -611,21 +673,29 @@ export function PlanOverview() {
                               rows={3}
                             />
                           )}
+                          {fieldSubmit.fout && (
+                            <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fieldSubmit.fout}
+                              lowContrast hideCloseButton />
+                          )}
                           <div className="pdca-edit-actions">
-                            <Button size="sm" kind="secondary" onClick={() => setEditingField(null)}>Annuleren</Button>
-                            <Button size="sm" kind="primary" onClick={saveField} disabled={!!options && !editValue}>Opslaan</Button>
+                            <Button size="sm" kind="secondary" disabled={fieldSubmit.saving} onClick={() => setEditingField(null)}>Annuleren</Button>
+                            <Button size="sm" kind="primary" onClick={saveField}
+                              disabled={fieldSubmit.saving || (!!options && !editValue)}>
+                              {fieldSubmit.saving ? 'Opslaan…' : 'Opslaan'}
+                            </Button>
                           </div>
                         </div>
-                      ) : (
+                      ) : <>
                         <p className={`pdca-info-value${value ? '' : ' empty'}`}>{(display ?? value) || emptyText}</p>
-                      )}
+                        {hint && <p className="pdca-field-hint">{hint}</p>}
+                      </>}
                     </div>
                   ))}
                 </div>
               </Layer>
             </Tile>
 
-            {/* Recent contactmomenten */}
+            {/* Contactmomenten that took place */}
             <Tile className="pdca-card">
               <Layer>
                 <div className="pdca-card-header">
@@ -640,7 +710,7 @@ export function PlanOverview() {
                       return (
                         <div key={cm.uuid} className="pdca-eval-item">
                           <Tag type={(cmd && EVAL_TAG_TYPE[cmd.evaluatieType]) as any || 'gray'} size="sm">
-                            {cmd ? evalTypeLabel(cmd.evaluatieType) : contactmomentStatusLabel(cm)}
+                            {cmd ? evalTypeLabel(cmd.evaluatieType) : 'Afgerond'}
                           </Tag>
                           <div className="pdca-eval-info">
                             <div className="pdca-eval-date">{cm.plaatsgevondenOp ? formatDate(cm.plaatsgevondenOp) : 'Geen datum'}</div>
@@ -694,10 +764,13 @@ export function PlanOverview() {
                                         hasIconOnly
                                         renderIcon={TrashCan}
                                         iconDescription="Verwijderen"
-                                        onClick={() => handleDeleteParty(cell.value)}
+                                        onClick={() => {
+                                          deleteSubmit.reset();
+                                          setPartyToDelete(betrokkenen.find(b => b.id === cell.value) ?? null);
+                                        }}
                                       />
-                                    ) : cell.info.header === 'name' && primaryIds.has(row.id) ? (
-                                      <>{cell.value} <Tag size="sm" type="green">Hoofdverantwoordelijk</Tag></>
+                                    ) : cell.info.header === 'name' && row.id === procesbegeleider?.id ? (
+                                      <>{cell.value} <Tag size="sm" type="green">Procesbegeleider</Tag></>
                                     ) : (
                                       cell.value
                                     )}
@@ -721,14 +794,18 @@ export function PlanOverview() {
         <Modal
           open={modalOpen}
           modalHeading="Verantwoordelijkheid toevoegen"
-          primaryButtonText="Toevoegen"
+          primaryButtonText={partySubmit.saving ? 'Toevoegen…' : 'Toevoegen'}
           secondaryButtonText="Annuleren"
+          primaryButtonDisabled={partySubmit.saving || !partyForm.name.trim() || !partyForm.role}
           onRequestClose={() => setModalOpen(false)}
           onRequestSubmit={handleAddParty}
           onSecondarySubmit={() => setModalOpen(false)}
           size="sm"
         >
           <div className="pdca-modal-form">
+            {partySubmit.fout && (
+              <InlineNotification kind="error" title="Toevoegen mislukt" subtitle={partySubmit.fout} lowContrast hideCloseButton />
+            )}
             <TextInput
               id="party-name"
               labelText="Naam *"
@@ -738,7 +815,7 @@ export function PlanOverview() {
             />
             <Select
               id="party-role"
-              labelText="Rol * (uit relatietype-register)"
+              labelText="Rol *"
               value={partyForm.role}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPartyForm(prev => ({ ...prev, role: e.target.value }))}
             >
@@ -749,7 +826,8 @@ export function PlanOverview() {
             </Select>
             <Checkbox
               id="party-primary"
-              labelText="Hoofdverantwoordelijke"
+              labelText="Procesbegeleider"
+              helperText={procesbegeleider && partyForm.isPrimary ? `Vervangt ${procesbegeleider.name} als procesbegeleider` : undefined}
               checked={partyForm.isPrimary}
               onChange={(_: unknown, { checked }: { checked: boolean }) => setPartyForm(prev => ({ ...prev, isPrimary: checked }))}
             />
@@ -767,6 +845,66 @@ export function PlanOverview() {
               value={partyForm.phone}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPartyForm(prev => ({ ...prev, phone: e.target.value }))}
             />
+          </div>
+        </Modal>
+
+        {/* Remove verantwoordelijkheid */}
+        <Modal
+          open={!!partyToDelete}
+          danger
+          modalHeading="Verantwoordelijke verwijderen"
+          primaryButtonText={deleteSubmit.saving ? 'Verwijderen…' : 'Verwijderen'}
+          secondaryButtonText="Annuleren"
+          primaryButtonDisabled={deleteSubmit.saving}
+          onRequestClose={() => setPartyToDelete(null)}
+          onRequestSubmit={handleDeleteParty}
+          size="sm"
+        >
+          <div className="pdca-modal-form">
+            {deleteSubmit.fout && (
+              <InlineNotification kind="error" title="Verwijderen mislukt" subtitle={deleteSubmit.fout} lowContrast hideCloseButton />
+            )}
+            <p>
+              <strong>{partyToDelete?.name}</strong> ({partyToDelete?.role}) wordt verwijderd als verantwoordelijke bij dit plan.
+              {partyToDelete?.isPrimary && ' Het plan heeft daarna geen procesbegeleider meer.'}
+            </p>
+          </div>
+        </Modal>
+
+        {/* Close or reopen the plan */}
+        <Modal
+          open={!!planActie}
+          danger={planActie === 'afbreken'}
+          modalHeading={planActie === 'afronden' ? 'Plan afronden' : planActie === 'afbreken' ? 'Plan afbreken' : 'Plan heractiveren'}
+          primaryButtonText={planSubmit.saving ? 'Bezig…'
+            : planActie === 'afronden' ? 'Afronden' : planActie === 'afbreken' ? 'Afbreken' : 'Heractiveren'}
+          secondaryButtonText="Annuleren"
+          primaryButtonDisabled={planSubmit.saving || (planActie === 'afbreken' && !redenEinde.trim())}
+          onRequestClose={() => setPlanActie(null)}
+          onRequestSubmit={handlePlanActie}
+          size="sm"
+        >
+          <div className="pdca-modal-form">
+            {planSubmit.fout && (
+              <InlineNotification kind="error" title="Opslaan mislukt" subtitle={planSubmit.fout} lowContrast hideCloseButton />
+            )}
+            {planActie === 'heractiveren' ? (
+              <p>Het plan wordt weer actief, met status {huidigeWeergave}. De einddatum en de reden van beëindigen vervallen.</p>
+            ) : <>
+              <p>
+                {planActie === 'afronden'
+                  ? 'Het plan wordt afgerond met de datum van vandaag als einddatum.'
+                  : 'Het plan wordt afgebroken met de datum van vandaag als einddatum.'}
+              </p>
+              <TextArea
+                id="plan-reden-einde"
+                labelText={planActie === 'afronden' ? 'Toelichting (optioneel)' : 'Reden (verplicht)'}
+                placeholder={planActie === 'afronden' ? 'Hoe is het plan afgesloten?' : 'Waarom wordt het plan afgebroken?'}
+                value={redenEinde}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setRedenEinde(e.target.value)}
+                rows={3}
+              />
+            </>}
           </div>
         </Modal>
       </div>

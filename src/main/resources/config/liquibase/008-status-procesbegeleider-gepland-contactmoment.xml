@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Instrumenten get the same gepland/gestart uitvoeringsstatus as doelen (null
+  on an actief instrument means gestart). A plan has at most one
+  procesbegeleider (the primary betrokkene). An evaluation session can carry
+  out a planned contactmoment, and can be cancelled (status CANCELLED).
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="008-01-instrument-details-uitvoerings-status" author="pdca">
+        <addColumn tableName="instrument_details">
+            <column name="uitvoerings_status" type="VARCHAR(32)"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="008-02-involved-party-single-procesbegeleider" author="pdca">
+        <!-- Plans with more than one primary betrokkene keep the earliest one. -->
+        <sql>
+            UPDATE involved_party SET is_primary = FALSE
+            WHERE is_primary
+              AND id NOT IN (
+                  SELECT DISTINCT ON (plan_uuid) id
+                  FROM involved_party
+                  WHERE is_primary
+                  ORDER BY plan_uuid, created_at, id
+              )
+        </sql>
+        <sql>
+            CREATE UNIQUE INDEX uq_involved_party_procesbegeleider
+                ON involved_party (plan_uuid) WHERE is_primary
+        </sql>
+    </changeSet>
+
+    <changeSet id="008-03-evaluation-session-gepland-contactmoment" author="pdca">
+        <addColumn tableName="evaluation_session">
+            <column name="gepland_contactmoment_uuid" type="UUID"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

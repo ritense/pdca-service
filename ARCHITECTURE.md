@@ -100,9 +100,9 @@ flowchart LR
 | Resource | Path | Purpose |
 |---|---|---|
 | `PdcaResource` | `/api/v1/pdca/{plandetails,doeldetails,instrumentdetails,contactmomentdetails}` | Overlay CRUD per register object |
-| `PdcaResource` | `POST /api/v1/pdca/contactmomenten`, `DELETE /api/v1/pdca/contactmomenten/{uuid}` | Create/delete a contactmoment: the klantcontact in Open Klant plus its overlay row (§5.1) |
+| `PdcaResource` | `POST /api/v1/pdca/contactmomenten`, `PATCH /api/v1/pdca/contactmomenten/{uuid}` | Create a contactmoment (took place or planned) and reschedule a planned one: the klantcontact in Open Klant plus its overlay row (§5.1); contactmomenten cannot be deleted |
 | `ActieResource` | `/api/v1/pdca/acties` | Actions per doel (local and building block) |
-| `BetrokkeneResource` | `/api/v1/pdca/betrokkenen` | Responsibilities/involved parties per plan |
+| `BetrokkeneResource` | `/api/v1/pdca/betrokkenen` (+ `PUT /{id}/procesbegeleider`) | Responsibilities/involved parties per plan and the plan's procesbegeleider (§5.2) |
 | `EvaluatieResource` | `/api/v1/pdca/evaluaties?planUuid=` | Completed evaluations with their plan changes (§6.1); running ones are never listed here (the owner reads theirs through `/data`) |
 | `DossierResource` | `/api/v1/pdca/dossiers/...`, `/plan-intake`, `/plans/{uuid}/dossier`, `/case-definitions` | Plan↔dossier link, prefill and creation routes (§7, §8) |
 | `PhaseConfigResource` | `/api/v1/admin/phase-configs` | Case configuration per case definition (§10) |
@@ -117,21 +117,22 @@ All tables via Liquibase (`src/main/resources/config/liquibase/`:
 `001-schema.xml` as the consolidated baseline, `002-seed-data.xml` for the
 demo case configs, `003-subdoel-mapping.xml` for the subdoelmapping,
 `004-drop-doelpositie.xml`, `005-plan-details-intake-dossier.xml`,
-`006-evaluation-session.xml` and `007-evaluation-content.xml`; new changes
-continue the numbering). Core:
+`006-evaluation-session.xml`, `007-evaluation-content.xml` and
+`008-status-procesbegeleider-gepland-contactmoment.xml`; new changes continue
+the numbering). Core:
 
 | Entity | Key | Holds |
 |---|---|---|
-| `PlanDetails` | `planUuid` | `dossierId` (1:1, unique), `intakeDossierId` (the intake this plan came from, §7), `caseDefinitionKey`, execution status (gepland/gestart), plan display status, positie, subdoelgroep (W&P segmentation, advised by the intake DMN), hoofddoel type |
-| `DoelDetails` | `doelUuid` | subdoelen and the hoofddoel: `VoortgangStatus` (OP_KOERS, AANDACHT_NODIG, LOOPT_ACHTER; how an active subdoel or the hoofddoel is going, shown in the plan tabs) with its explanation `voortgangToelichting`, internal and external note, sort order; plus the numeric `voortgangScore` that the intake and the `evaluate` task form still write (both also fill `voortgangToelichting`) |
-| `InstrumentDetails` | `instrumentUuid` | hours, effectiveness with its explanation (`effectiviteitToelichting`), internal and external note, abort reason |
-| `ContactmomentDetails` | `contactmomentUuid` (= klantcontact uuid in Open Klant) | evaluation type, deelnemers, doel progress and action points (intake contactmomenten), `evaluationSessionId` when the contactmoment is a completed evaluation |
-| `InvolvedParty` | own id | involved parties per plan, incl. the main responsible |
+| `PlanDetails` | `planUuid` | `dossierId` (1:1, unique), `intakeDossierId` (the intake this plan came from, §7), `caseDefinitionKey`, `persoonUuid`, plan display status, positie, subdoelgroep (W&P segmentation, advised by the intake DMN), hoofddoel type, `streefEinddatum` |
+| `DoelDetails` | `doelUuid` | subdoelen and the hoofddoel: `UitvoeringsStatus` (GEPLAND or GESTART, §5.2), `VoortgangStatus` (OP_KOERS, AANDACHT_NODIG, LOOPT_ACHTER; how an active subdoel or the hoofddoel is going, shown in the plan tabs) with its explanation `voortgangToelichting`, internal and external note, sort order (the hoofddoel's row has -1); plus the numeric `voortgangScore` that only the `evaluate` task form still writes |
+| `InstrumentDetails` | `instrumentUuid` | `uitvoeringsStatus` (GEPLAND or GESTART, §5.2; null on an actief instrument means gestart), hours, effectiveness with its explanation (`effectiviteitToelichting`), internal and external note, abort reason |
+| `ContactmomentDetails` | `contactmomentUuid` (= klantcontact uuid in Open Klant) | evaluation type, planned date (`geplandeDatum`), deelnemers, doel progress and action points (intake contactmomenten), `evaluationSessionId` when the contactmoment is a completed evaluation |
+| `InvolvedParty` | own id | involved parties per plan; `isPrimary` marks the plan's **procesbegeleider** (at most one per plan, partial unique index; §5.2) |
 | `Action` | own id | actions per doel, optionally attached to an instrument (`instrumentUuid`; W&P: instrument → 0..n taken, shown in the instrument block): title/description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED), `Uitvoering` (LOKAAL or BOUWBLOK), and for building block actions `bouwblokKoppelingId` + `gzacProcessInstanceId` + result |
 | `ActieBouwblokKoppeling` | own id | admin link case type→process (§9): `soort` (ACTIE or PRODUCT), `uitvoeringsvorm` (BOUWBLOK or DOSSIER), name, `caseDefinitionKey`, building block key/version + `processDefinitionKey` (BOUWBLOK) or `productCaseDefinitionKey` (DOSSIER), `pluginConfigId`, doeltype uuids (JSON) |
 | `PhaseConfig` | `caseDefinitionKey` | case configuration (§10) |
 | `StoredPluginConfiguration` | `configId` | plugin configurations pushed by GZAC: serviceToken, gzacBaseUrl, title, properties |
-| `EvaluationSession` | own id | an evaluation a user runs on a plan (§6.1): `dossierId`, `planUuid`, `caseDefinitionKey`, owner `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED), start/end time, the contactmoment fields (`evaluatieType`, `deelnemers`, `verslag`) and, once completed, `contactmomentUuid`; at most one RUNNING per user (partial unique index) |
+| `EvaluationSession` | own id | an evaluation a user runs on a plan (§6.1): `dossierId`, `planUuid`, `caseDefinitionKey`, owner `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED or CANCELLED), start/end time, the contactmoment fields (`evaluatieType`, `deelnemers`, `verslag`), the planned contactmoment it carries out (`geplandContactmomentUuid`) and, once completed, `contactmomentUuid`; at most one RUNNING per user (partial unique index) |
 | `EvaluationChange` | own id | one plan change recorded in a session (§6.1): `subjectType` (PLAN, HOOFDDOEL, SUBDOEL, INSTRUMENT, ACTIE) + `subjectUuid` + `subjectTitel`, `soort`, `vanWaarde`/`naarWaarde` (display values), `toelichting` (the reason given in the evaluation) |
 
 ### 5.1 Contactmomenten in Open Klant
@@ -159,19 +160,65 @@ doelvoortgang, actiepunten and the evaluation it came from.
     yet — the name stays in the BRP. Object plans get no betrokkene.
 
   Routes that create a contactmoment: completing an evaluation (§6.1), the
-  intake (`POST /plan-intake`, §8) and the `evaluate` task form
-  (`POST /api/v1/pdca/contactmomenten`). `DELETE
-  /api/v1/pdca/contactmomenten/{uuid}` removes the klantcontact (Open Klant
-  removes its betrokkenen and onderwerpobjecten with it) and the overlay row.
+  intake (`POST /plan-intake`, §8; its "Geplande evaluaties"), planning an
+  evaluation on the Evaluaties tab or after completing one in the side panel,
+  and the `evaluate` task form (all three via
+  `POST /api/v1/pdca/contactmomenten`, `afgerond` false for a planned one).
+- **Planned evaluations** — a planned contactmoment is a klantcontact with
+  `indicatieContactGelukt` null whose `plaatsgevondenOp` is the planned
+  moment (12:00 on the planned date; the overlay keeps `geplandeDatum`).
+  `PATCH /api/v1/pdca/contactmomenten/{uuid}` with `{datum}` reschedules it
+  (409 once it took place). It is carried out by an evaluation session
+  (§6.1): completing that session records *this* klantcontact as having
+  taken place (indicatieContactGelukt true, the verslag as inhoud, the
+  session's start as `plaatsgevondenOp`) instead of creating a new one.
+- **No deleting** — a contactmoment is a record of a conversation in the
+  inwoner's klantbeeld; the app offers no way to delete one.
 - **Status** — a klantcontact has no status; one that took place has
-  `indicatieContactGelukt` true (*Afgerond*), a planned one (an intake
-  afspraak with status `actief`) has null (*Gepland*); false shows as *Niet
+  `indicatieContactGelukt` true (*Afgerond*), a planned one has null
+  (*Gepland*, or *Verlopen* once its date has passed); false shows as *Niet
   gelukt*.
 - **Reading** is native, through the proxy:
   `/openklant/klantinteracties/api/v1/klantcontacten` filtered on the
   plan's onderwerpobject (`onderwerpobject__onderwerpobjectidentificator…`).
-  The Planoverzicht (KPI and recent evaluaties) and the Evaluaties tab read
-  it this way.
+  The Planoverzicht (KPI "Volgende evaluatie" and recent evaluaties) and the
+  Evaluaties tab read it this way.
+
+### 5.2 Statuses and procesbegeleider
+
+One lifecycle, with the same words everywhere (`labels.ts`: `doelStatus`,
+`instrumentStatus`, `actieStatus`, `planStatus`, `contactmomentStatus`):
+
+| Object | Gepland | Gestart | Afgerond | Afgebroken |
+|---|---|---|---|---|
+| Subdoel | register `actief` + overlay GEPLAND | `actief` + GESTART | `afgerond` (resultaat `gefaald`: *Niet behaald*) | `geannuleerd` |
+| Hoofddoel | `actief` + overlay GEPLAND | `actief` otherwise | `afgerond` | `geannuleerd` |
+| Instrument | `actief` + overlay GEPLAND | `actief` otherwise (also without overlay row) | `afgerond` | `geannuleerd` |
+| Actie | PLANNED | IN_PROGRESS | COMPLETED | — (plus *Ter beoordeling* PENDING_REVIEW and *Afgekeurd* REJECTED) |
+| Plan | — (the configured display status while `actief`) | — | `afgerond` | `geannuleerd` |
+
+- Starting or completing an instrument under a *Gepland* subdoel starts that
+  subdoel too, so a subdoel never looks unstarted while work under it runs.
+- The intake and the create-plan form use the row values `gepland` /
+  `gestart` / `afgerond` for subdoelen and instrumenten; `POST /plan-intake`
+  maps them onto register status + overlay, gives every instrument an
+  overlay row, starts a subdoel whose instrument is gestart or afgerond, and
+  gives the hoofddoel a GESTART row. Legacy `actief` still works (doel:
+  gestart when `voortgang` > 0, otherwise gepland; instrument: gestart).
+- A plan is closed with *Plan afronden* (optional explanation) or *Plan
+  afbreken* (reason required), both stored in Open Plan's `redenEinde`.
+
+The **procesbegeleider** is one concept: the betrokkene with `isPrimary`
+(label "Procesbegeleider" everywhere; the intake rows carry
+`procesbegeleider`, older documents' `hoofdverantwoordelijke` is still
+read). A plan has at most one. `BetrokkeneService` makes a betrokkene the
+procesbegeleider on create (`isPrimary` true) or via
+`PUT /api/v1/pdca/betrokkenen/{id}/procesbegeleider`, unsetting the previous
+one, and writes it to Open Plan as `plan.medewerker`
+(`urn:pdca:medewerkers:medewerker:<name, dots/spaces as single dots,
+lowercase>`, empty when there is none) in the same transaction — a refusal
+by Open Plan rolls the change back. The plan intake sets `medewerker` the
+same way.
 
 ## 6. GZAC integration: the external-plugin host contract
 
@@ -238,7 +285,21 @@ The app implements the Valtimo **"URL app" contract** (`plugin/`):
 The iframe↔host communication (passing the documentId, completing a task,
 navigation, `/data` calls, side-panel offers) uses the
 `valtimo-plugin`/`valtimo-host` postMessage protocol in
-`frontend/src/shared/bridge.ts`.
+`frontend/src/shared/bridge.ts`:
+
+- **Completing a task** — `submitTask(data)` posts the task-form data with a
+  correlation id; GZAC submits it as the user and answers with
+  `submitResult` (errors are shown in the form). On success GZAC closes the
+  task modal and removes the iframe at once.
+- **Navigation** — `navigateHost(route)` posts the plugin SDK's `navigate`
+  event (e.g. to `/cases/<caseDefinitionKey>/document/<documentId>`). The
+  SDK marks it *reserved*: current GZAC frontends do not act on it yet, and
+  the iframe sandbox (`allow-scripts allow-forms`) blocks navigating the
+  page any other way. The app sends it where a jump belongs (after
+  create-plan, §7; opening a product dossier, §9.1), so the jumps work once
+  the host handles the event.
+- The sandbox has no `allow-modals` either, so the bundles never use
+  `window.confirm`/`alert`; confirmations are Carbon modals.
 
 ### 6.1 Evaluations in GZAC's side panel
 
@@ -265,9 +326,15 @@ fields.
   only for the owner; colleagues see an evaluation once it is completed.
 - **One running session per user.** Starting a second one returns 409 with
   the running session; the Evaluaties tab then says to finish that one first.
-- **Start** — the "Start evaluatie" button on the Evaluaties tab starts a
-  session (`POST /evaluation-sessions`, dossier from the tab's GZAC context)
-  and offers the panel.
+- **Start** — "Start evaluatie" on the Evaluaties tab starts a session
+  (`POST /evaluation-sessions`, dossier from the tab's GZAC context) and
+  offers the panel. A planned evaluation's "Starten" passes its uuid
+  (`{geplandContactmomentUuid}`): the session then carries out that planned
+  contactmoment (§5.1) and takes over its type. Without one, the session
+  carries out the plan's earliest planned contactmoment that is due (today
+  or earlier) and not already taken by another running session; without a
+  due one it carries out none. The panel names the planned evaluation it
+  carries out.
 - **Back on the plan** — every plan tab calls `syncEvaluationPanel` on load:
   when the user's running session belongs to this dossier, the panel is
   offered again, so it reappears after it was closed or after a page reload.
@@ -295,8 +362,8 @@ fields.
   panel and the tabs cannot message each other. The panel polls its changes
   every 3 seconds while the session runs; a tab that knows a running session
   polls `/evaluation-sessions/current` at the same interval and, once the
-  session is gone (completed in the panel), drops the banner and — on the
-  Evaluaties tab — reloads the list. A change rejected with 404/409 ends the
+  session is gone (completed or cancelled in the panel), drops the banner
+  and — on the Evaluaties tab — reloads the list. A change rejected with 404/409 ends the
   session in that tab as well.
 - **The panel** shows plan and start time, the contactmoment fields (saved
   automatically, `POST /evaluation-sessions/current/draft`) and the changes
@@ -305,24 +372,39 @@ fields.
   explanation entered in the tab) — e.g. why an instrument stops, which may
   matter for subsidies. Note changes get no reason field: a note is its own
   explanation.
-- **End** — only explicitly and only by completing; there is no cancel.
-  "Evaluatie afronden" needs a gespreksverslag and asks for confirmation;
-  `POST /evaluation-sessions/current/complete` creates a klantcontact in
-  Open Klant that took place at the session's start, with the verslag as
-  inhoud (§5.1), a `ContactmomentDetails` row (type, deelnemers,
-  `evaluationSessionId`) and marks the session COMPLETED. The gespreksverslag
-  is limited to 1000 characters for that reason. A failure is shown next to
-  the buttons and leaves the evaluation running. Closing the panel only hides
-  it.
+- **End** — only explicitly, by completing or cancelling. Closing the panel
+  only hides it.
+  - "Evaluatie afronden" needs a gespreksverslag and asks for confirmation;
+    it first writes any pending draft (a failed save blocks completing, so
+    the latest verslag is always the one recorded).
+    `POST /evaluation-sessions/current/complete` records the contactmoment
+    that took place at the session's start with the verslag as inhoud: the
+    planned klantcontact the session carries out, or a new one (§5.1). Its
+    `ContactmomentDetails` row gets type, deelnemers and
+    `evaluationSessionId`; the session becomes COMPLETED. The gespreksverslag
+    is limited to 1000 characters for that reason. A failure is shown next
+    to the buttons and leaves the evaluation running. After completing, the
+    panel offers "Volgende evaluatie plannen" (date, default six weeks
+    ahead, and type), which creates the next planned contactmoment.
+  - "Evaluatie annuleren" asks for confirmation;
+    `POST /evaluation-sessions/current/cancel` marks the session CANCELLED.
+    Nothing is written to Open Klant, a planned contactmoment it carried out
+    stays planned, and the recorded changes stay with the cancelled session,
+    which is never shown. The plan changes made during it stay: they were
+    made in the registers already.
 - **Calls through the host** (`pluginData`) resolve with status 0 when GZAC
   does not answer within 30 seconds, so the panel never waits forever.
-- **Evaluaties tab** — the user's own running evaluation of this plan is
-  shown on top (tag *Loopt*, start time, deelnemers, the concept verslag and
-  the changes so far, refreshed on opening; only its owner sees it), then the
-  plan's contactmomenten; a completed evaluation shows who ran it, the
-  deelnemers, the gespreksverslag and its plan changes with their reasons
-  (`GET /api/v1/pdca/evaluaties`). Planned and intake contactmomenten keep
-  their notitie, doelvoortgang and actiepunten.
+- **Evaluaties tab** — the toolbar has "Evaluatie plannen" (date, type,
+  optional agenda) and "Start evaluatie" / "Toon lopende evaluatie". The
+  user's own running evaluation of this plan is shown on top (tag *Loopt*,
+  start time, deelnemers, the concept verslag and the changes so far,
+  refreshed on opening; only its owner sees it), then the planned
+  evaluations (*Gepland* or *Verlopen*, with "Starten" and "Verzetten"), then
+  the contactmomenten that took place; a completed evaluation shows who ran
+  it, the deelnemers, the gespreksverslag and its plan changes with their
+  reasons (`GET /api/v1/pdca/evaluaties`). Intake contactmomenten keep their
+  notitie, doelvoortgang and actiepunten. A type filter (content switcher)
+  narrows the list.
 - The panel fills the full panel height and follows GZAC's light/dark theme
   (the `theme` in `init` plus `themeChanged`, bridge `onHostThemeChanged`),
   on the same `--cds-layer` surface as GZAC's panel and menu; its content is
@@ -335,19 +417,38 @@ fields.
 - **Voortgang per subdoel and of the hoofddoel** — an active subdoel and the
   active hoofddoel (expand its card) get one of *Op koers*, *Aandacht nodig*
   or *Loopt achter* (`DoelDetails.voortgangStatus`) with an explanation
-  (`voortgangToelichting`), saved together and shown as a tag in the card
-  header. The Planoverzicht KPI "Voortgang" counts the active subdoelen on
-  koers and those that need attention. The numeric `voortgangScore` is no
-  longer shown in the plan tabs; the intake (doelen grid) and the `evaluate`
-  task form still write it.
-- **Voortgang per instrument** — under "Voortgang & notities" on the
-  instrument row: hours spent, effectiveness (1–5) and an explanation
-  (`InstrumentDetails.effectiviteitToelichting`), saved together, followed by
-  the instrument's notes in the same nested panel.
+  (`voortgangToelichting`), shown as a tag in the card header. The numeric
+  `voortgangScore` is not shown in the plan tabs; only the `evaluate` task
+  form still writes it.
+- **Voortgang per instrument** — hours spent, effectiveness (1–5) and an
+  explanation (`InstrumentDetails.effectiviteitToelichting`).
 - **Internal and external note** on every subdoel, on the active hoofddoel
   and on every instrument: internal is for colleagues only, external may be
-  shared with the inwoner. Both are saved together on `DoelDetails` resp.
-  `InstrumentDetails`.
+  shared with the inwoner (`DoelDetails` resp. `InstrumentDetails`).
+- **Read first, edit on request** — a card shows "Voortgang & notities" as a
+  compact summary (status tag and explanation, or *Nog niet beoordeeld*; the
+  first line of each note, or *Geen notities*) with "Bijwerken", which opens
+  one form for voortgang and notes; it saves only what changed and closes
+  after saving or "Annuleren". An instrument opens the same pattern from its
+  menu, scrolled into view. In a subdoel card the order is: description,
+  actions, Acties, Instrumenten, Voortgang & notities; the collapsed header
+  shows the status, the voortgang and a count of acties and instrumenten.
+- **Actions and confirmations** — a subdoel has one state button (Starten /
+  Afronden) and an overflow menu (Bewerken, Afbreken, Verwijderen); an
+  instrument has its state button and a menu (Actie toevoegen, Voortgang &
+  notities, Afbreken). Afbreken asks for a reason; Verwijderen and removing a
+  betrokkene ask for confirmation in a danger modal that says what goes with
+  it. The plan header shows the status tag and a "Planacties" menu (the
+  configured display statuses, Plan afronden, Plan afbreken; Plan
+  heractiveren for a closed plan). Building-block menus only appear when a
+  koppeling exists for the doeltype. Modals block a second submit while
+  saving (`useSubmit`).
+- **Planoverzicht KPIs** — *Voortgang*: active subdoelen on koers out of
+  those assessed, with the number that needs attention and the number not
+  yet assessed (*Nog niet beoordeeld* while none is); *Subdoelen*: running
+  out of all subdoelen (hoofddoel excluded); *Open acties*; *Volgende
+  evaluatie*: the earliest planned evaluation (marked *verlopen* when
+  overdue) or *Niet gepland*, with the number completed.
 - During an evaluation, the explanation of a voortgang becomes the reason of
   the recorded change (§6.1).
 
@@ -360,10 +461,19 @@ through `plan_details.dossier_id`. A second W&P invariant guards creation:
 active plan of that type exists (overlay rows give the candidates, the
 register status decides).
 
+Plan dossiers come into existence **only through the app**: their process
+has no user tasks and users cannot start it by hand (§12).
+
 1. **From a dossier, fed by the intake** — the `create-plan` task form prefills
    itself from the dossier content (`GET /dossiers/{id}/plan-prefill`, mapping
    from the case configuration) and creates plan + overlay + link in a single
-   call (`POST /plan-intake`).
+   call (`POST /plan-intake`). The plan dossier the call creates gets the
+   subject line `onderwerp` (the `subjectNaam` the form sends — the inwoner's
+   or object's name as the register or the intake knows it — else the
+   register name, else the plan titel), which is the first column of the
+   plan case lists. After submitting its task the form asks the host to
+   navigate to the new plan dossier (`navigateHost`, §6); until GZAC acts on
+   that, the intake's *Aangemaakt plan* widget links to it (§8).
 
 On the intake route the plan belongs to the **plan dossier** the call creates,
 so the intake dossier itself holds no link; `plan_details.intake_dossier_id`
@@ -386,10 +496,12 @@ history in the goals tab), creates a new one and re-points the subdoelen.
 The goals tab renders the active hoofddoel as a fixed card (the strategy,
 expandable for its notes) above the flat subdoelen list; voortgang (status
 and doelvoortgang) covers only the subdoelen.
-2. **Via the start form** — an optional `planId` field in the dossier content;
-   when a PDCA view opens a dossier without a linked plan the frontend calls
+2. **Via the dossier content** — a `planId` in the dossier content (the app
+   writes it into every plan dossier it creates); when a PDCA view opens a
+   dossier without a linked plan the frontend calls
    `POST /dossiers/{id}/resolve-plan` and the backend links the plan "under
-   water" (conflicts → 409).
+   water" (conflicts → 409). A dossier without plan shows "Bij dit dossier
+   hoort (nog) geen plan. Een plan ontstaat uit een intake."
 3. **Standalone** — create a plan without dossier context; the app then creates
    the dossier itself (`POST /plans/{planUuid}/dossier` →
    `new-document-and-start-process`) and links it. Idempotent.
@@ -408,7 +520,7 @@ that type and links to that instead.
 
 `renovatie-intake` is the minimal form of this pattern: the intake form is
 the start form, followed directly by the plan task. `intake-werk-participatie`
-(1.0.0, "Intake werk en participatie") models a **realistic W&P intake** in
+(1.1.0, "Intake werk en participatie") models a **realistic W&P intake** in
 which the dossier grows per conversation and a first mock of the DVKM
 (dienstverleningskeuzemodel) decides along:
 
@@ -460,24 +572,38 @@ which the dossier grows per conversation and a first mock of the DVKM
    `inwonerpositieAdvies`, `hoofddoelAdvies`); `subdoelgroep`,
    `beginPositie` and `hoofddoel` follow the advice via calculated values
    with manual override, and deviating requires one of the eight DVKM
-   afwijkgronden (`adviesOvergenomen`/`afwijkGrond`). Also records doelen
-   and beoogde instrumenten.
-5. **Plan aanmaken (PDCA)** — prefilled from the dossier content, creates
-   plan + overlay + link in a single call (§7), idempotent per intake
-   dossier, and completes the task on the result. Its
-   `external_plugin_task_form` process link ships in the zip with the
-   placeholder configuration id (§12). A refusal from the backend (unknown
-   hoofddoel, a positie outside the register, the one-active-plan rule) is
-   shown as its own message above the button and leaves the form usable, so
-   the task is never stuck on an error the user cannot read.
+   afwijkgronden (`adviesOvergenomen`/`afwijkGrond`). Also records the
+   subdoelen and beoogde instrumenten (status *Gepland*, *Gestart* or
+   *Afgerond*, §5.2; no progress is recorded at intake time — the titel of
+   an instrument is its product's name). The betrokkenen (intakegesprek)
+   mark at most one *Procesbegeleider*.
+5. **Plan aanmaken (PDCA)** — the `create-plan` task form (React/Carbon,
+   §11), prefilled from the dossier content, creates plan + overlay + plan
+   dossier in a single call (§7), idempotent per intake dossier, and
+   completes the task on the result. Its `external_plugin_task_form`
+   process link ships in the zip with the placeholder configuration id
+   (§12). The form shows the subject, the plan fields and collapsible
+   sections for subdoelen, instrumenten, geplande evaluaties and betrokkenen
+   (one-line summary when collapsed), with a sticky footer holding a
+   one-line summary of the plan and the "Plan aanmaken" button — GZAC
+   gives a task form a fixed-height iframe. Page and footer use the task
+   modal's own surface (`layer-01`, white in the light theme; the footer is
+   set off by a thin top border) and the content sits one Carbon `Layer`
+   up, so the fields take the next field colour; list rows are separated by
+   dividers instead of boxes.
+   A refusal from the backend (unknown hoofddoel, a positie outside the
+   register, the one-active-plan rule) is shown above the button and leaves
+   the form usable, so the task is never stuck on an error the user cannot
+   read.
 
 There is deliberately **no planafspraken step**: the W&P intake carries no
 plan administration (titel, weergavestatus, looptijd, contactmomenten). The
 create-plan task form fills those with sensible defaults when the prefill
 leaves them empty (titel "Plan – <naam>", startdatum today, the first
-configured plan status) and keeps its contactmomenten grid — seeding a plan
-*with* afspraken stays possible there and via case types whose document does
-carry `contactmomenten` (e.g. `renovatie-intake`).
+configured plan status, and one planned evaluation six weeks after the
+startdatum) — seeding a plan *with* afspraken stays possible there and via
+case types whose document does carry `contactmomenten` (e.g.
+`renovatie-intake`).
 
 ### Phase statuses and the widget summary tab
 
@@ -804,16 +930,17 @@ field once the register owns the catalog.
 ## 11. Frontend
 
 - **React bundles** in `frontend/src/` (`plan-overview`, `plan-goals`,
-  `plan-evaluations`, `pdca-admin`, `evaluation-panel`), shared API clients,
-  bridge, the evaluation-session client (`evaluationSession.ts`: session
-  calls, change recording and the polling that keeps panel and tabs in sync)
+  `plan-evaluations`, `pdca-admin`, `evaluation-panel` and the task form
+  `create-plan`), shared API clients, bridge, labels (status vocabulary,
+  §5.2), the evaluation-session client (`evaluationSession.ts`: session
+  calls, change recording and the polling that keeps panel and tabs in
+  sync), the `useSubmit` hook (no double submit; errors stay in the modal)
   and shared components (`WijzigingenLijst`, `EvaluatieBanner`) in
   `frontend/src/shared/`. Vite builds into
   `src/main/resources/static/bundles/react/` (gitignored; build after a fresh
-  clone).
-- **Task forms** (`create-plan.html`, `update-goals.html`, `evaluate.html`)
-  are hand-written static html files in `static/bundles/`, committed and
-  served as-is.
+  clone); `/bundles/<name>.html` is served from there first.
+- **Task forms** `update-goals.html` and `evaluate.html` are hand-written
+  static html files in `static/bundles/`, committed and served as-is.
 - **Responsive to the iframe width.** The case tabs get narrow when GZAC's
   side panel is open, so layout lives in the shared classes of
   `shared/styles.css` (`pdca-row`, `pdca-row-main`, `pdca-row-actions`,
@@ -839,11 +966,20 @@ field once the register owns the catalog.
   product-dossier type `werkfit-aanvraag` (§9.1).
 - `gzac/bouwblokken/` — importable building blocks: `pdca-actie.zip` (action
   execution) and `jobcoaching-aanvragen.zip` (product request demo, §9).
+- **Plan dossiers have no user tasks.** The process of `inwonerplan` and
+  `binnenhof-renovatie` is start → end: the app creates the dossier
+  (`new-document-and-start-process`, so `canInitializeDocument` stays true)
+  and `startableByUser` is false, so nobody creates a plan dossier or
+  restarts its process by hand. The only tasks in a plan dossier are those of
+  building blocks started from the plan (§9). Their document schema has
+  `onderwerp`, the first column of their case lists (§7).
 - **The PDCA couplings ship in the zips**: the plan case types carry the
   three PDCA case tabs (type external plugin; on `inwonerplan` these are
-  the only tabs — no standard Valtimo tabs). In every zip only the first
-  tab sets `showTasks`, so GZAC's task panel shows next to that tab only.
-  Every plan/intake case type carries the `create-plan`
+  the only tabs — no standard Valtimo tabs) and all three set
+  `showTasks`, so GZAC's task panel (building-block tasks of the plan)
+  stays visible on every plan tab. In the other zips only the first tab
+  sets `showTasks`, so the other tabs use the full width.
+  The intake case types carry the `create-plan`
   task-form process link (`external_plugin_task_form`). Configuration UUIDs are
   environment-specific (§3.5), so these references use the fixed
   placeholder id `00000000-0000-4000-8000-00000000dca0`; GZAC's import
@@ -868,7 +1004,12 @@ field once the register owns the catalog.
   7503, Open Klant 7504 — deliberately outside every range used by the
   Valtimo stack.
 - **Dev**: `./gradlew bootRunWithDocker` (compose for registers + database,
-  then bootRun). Entire stack in Docker: `docker compose --profile app up`.
+  waiting until they are healthy, then bootRun). It also opens the register
+  admins in the browser, logged in: the compose stack runs the registers with
+  dev settings (`docker/register-dev/pdca_dev.py`) that log every admin
+  visitor in as `admin` (off with `PDCA_ADMIN_AUTOLOGIN=false`), honour
+  `DISABLE_2FA` and give each register its own CSRF cookie, since all share
+  `localhost`. Entire stack in Docker: `docker compose --profile app up`.
 - **Dockerfile** is self-contained (builds frontend + jar inside the image).
 - **CI/CD**: a push to `main` builds and publishes the image to GHCR
   (`.github/workflows/release.yaml`); Helm chart via `helm-publish.yaml`.

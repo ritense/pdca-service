@@ -30,6 +30,7 @@ import com.ritense.pdca.repository.PlanDetailsRepository
 import com.ritense.pdca.service.KlantcontactService
 import com.ritense.pdca.service.NewContactmoment
 import com.ritense.pdca.service.PhaseConfigService
+import com.ritense.pdca.web.rest.dto.ContactmomentDatumRequest
 import com.ritense.pdca.web.rest.dto.ContactmomentDetailsRequest
 import com.ritense.pdca.web.rest.dto.ContactmomentRequest
 import com.ritense.pdca.web.rest.dto.DoelDetailsRequest
@@ -42,6 +43,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
@@ -50,6 +52,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.server.ResponseStatusException
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.util.UUID
@@ -66,9 +69,10 @@ import java.util.UUID
  *
  * The DELETE endpoints clean up local overlay rows after the caller removed
  * the register resource through the proxy. Contactmomenten are the
- * exception: creating and deleting one goes through this resource
- * ([KlantcontactService] writes the klantcontact with its betrokkene and
- * onderwerpobject), reading them goes through the proxy.
+ * exception: creating one and rescheduling a planned one go through this
+ * resource ([KlantcontactService] writes the klantcontact with its betrokkene
+ * and onderwerpobject), reading them goes through the proxy. Contactmomenten
+ * cannot be deleted.
  */
 @RestController
 @Transactional
@@ -223,6 +227,7 @@ class PdcaResource(
             InstrumentDetails(
                 instrumentUuid = instrumentUuid,
                 planUuid = planUuid,
+                uitvoeringsStatus = request.uitvoeringsStatus,
                 urenBesteed = request.urenBesteed,
                 effectiviteitScore = request.effectiviteitScore,
                 effectiviteitToelichting = request.effectiviteitToelichting,
@@ -232,6 +237,7 @@ class PdcaResource(
             )
         } else {
             existing.apply {
+                uitvoeringsStatus = request.uitvoeringsStatus ?: uitvoeringsStatus
                 urenBesteed = request.urenBesteed ?: urenBesteed
                 effectiviteitScore = request.effectiviteitScore ?: effectiviteitScore
                 effectiviteitToelichting = request.effectiviteitToelichting ?: effectiviteitToelichting
@@ -300,7 +306,7 @@ class PdcaResource(
             NewContactmoment(
                 planUuid = request.planUuid,
                 evaluatieType = request.evaluatieType,
-                plaatsgevondenOp = request.datum.atTime(12, 0).atZone(ZoneId.systemDefault()).toOffsetDateTime(),
+                plaatsgevondenOp = plaatsgevondenOp(request.datum),
                 afgerond = request.afgerond,
                 verslag = request.verslag
             )
@@ -319,15 +325,45 @@ class PdcaResource(
         return ResponseEntity.status(HttpStatus.CREATED).body(details)
     }
 
-    /** Deletes the klantcontact in Open Klant and its overlay row. */
-    @DeleteMapping("/contactmomenten/{contactmomentUuid}")
-    fun deleteContactmoment(@PathVariable(name = "contactmomentUuid") contactmomentUuid: UUID): ResponseEntity<Unit> {
-        klantcontactService.delete(contactmomentUuid)
-        contactmomentDetailsRepository.deleteById(contactmomentUuid)
-        return ResponseEntity.noContent().build()
+    /**
+     * Reschedules a planned contactmoment: moves the klantcontact's
+     * plaatsgevondenOp in Open Klant and the overlay's geplandeDatum. A
+     * contactmoment that already took place cannot be moved (409).
+     */
+    @PatchMapping("/contactmomenten/{contactmomentUuid}")
+    fun rescheduleContactmoment(
+        @PathVariable(name = "contactmomentUuid") contactmomentUuid: UUID,
+        @Valid @RequestBody request: ContactmomentDatumRequest
+    ): ContactmomentDetails {
+        val klantcontact = klantcontactService.get(contactmomentUuid)
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Contactmoment niet gevonden")
+        if (!klantcontact.gepland) {
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Dit contactmoment heeft al plaatsgevonden en kan niet meer worden verplaatst"
+            )
+        }
+        val existing = contactmomentDetailsRepository.findById(contactmomentUuid).orElse(null)
+        val details = existing?.apply {
+            geplandeDatum = request.datum
+            updatedAt = LocalDateTime.now()
+        } ?: ContactmomentDetails(
+            contactmomentUuid = contactmomentUuid,
+            planUuid = klantcontact.planUuid
+                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Dit contactmoment hoort niet bij een plan"),
+            evaluatieType = klantcontactService.evaluatieTypeOf(klantcontact.onderwerp) ?: DEFAULT_EVALUATIE_TYPE,
+            geplandeDatum = request.datum
+        )
+        val saved = contactmomentDetailsRepository.saveAndFlush(details)
+        klantcontactService.reschedule(contactmomentUuid, plaatsgevondenOp(request.datum))
+        return saved
     }
 
     // ------------------------------------------------------------- helpers
+
+    /** A contactmoment on a date takes place at noon, local time. */
+    private fun plaatsgevondenOp(datum: LocalDate) =
+        datum.atTime(12, 0).atZone(ZoneId.systemDefault()).toOffsetDateTime()
 
     private fun validateWeergaveStatus(caseDefinitionKey: String?, weergaveStatus: String) {
         if (caseDefinitionKey == null) return
@@ -358,5 +394,9 @@ class PdcaResource(
         if (evaluatieType !in validTypes) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid evaluatieType '$evaluatieType'. Valid types: $validTypes")
         }
+    }
+
+    private companion object {
+        const val DEFAULT_EVALUATIE_TYPE = "EVALUATION"
     }
 }

@@ -1,0 +1,222 @@
+/* Task form "Plan aanmaken". GZAC shows task forms in a fixed-height iframe
+   inside the task modal, so the page is a full-height column: the content
+   scrolls on its own and the footer with the primary action stays visible.
+   Page and footer take the modal's own surface (layer-01, white in GZAC's
+   light theme) so the form reads as part of the modal; the content sits in
+   one Carbon Layer, which gives the fields the next field colour. */
+
+.cp-theme {
+  height: 100%;
+  background: var(--cds-layer-01);
+  color: var(--cds-text-primary);
+}
+
+.cp-laag {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.cp-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-06);
+  padding: var(--pdca-spacing-05);
+}
+
+.cp-content .cds--inline-notification {
+  max-width: none;
+  margin: 0;
+}
+
+.cp-blok {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-05);
+}
+
+.cp-kop {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.375;
+}
+
+.cp-velden,
+.cp-rij-velden {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-05);
+}
+
+.cp-rij-velden {
+  flex: 1 1 auto;
+  min-width: 0;
+  gap: var(--pdca-spacing-04);
+}
+
+/* Fields wrap to the next line instead of squeezing on narrow widths. */
+.cp-veld {
+  flex: 1 1 11rem;
+  min-width: 0;
+}
+
+.cp-veld--breed {
+  flex: 2 1 16rem;
+}
+
+.cp-veld--smal {
+  flex: 0 1 8rem;
+}
+
+.cp-veld--check {
+  display: flex;
+  align-items: flex-end;
+  min-height: 3.5rem;
+}
+
+.cp-zoek {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--pdca-spacing-03);
+}
+
+.cp-zoek > .cds--form-item {
+  flex: 1 1 auto;
+}
+
+/* Align the button with the input below the field label. */
+.cp-zoek > .cds--btn {
+  margin-top: 1.5rem;
+  flex: 0 0 auto;
+}
+
+.cp-tile {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-02);
+  font-size: 0.875rem;
+}
+
+.cp-tile--koppel {
+  gap: var(--pdca-spacing-03);
+  border-inline-start: 3px solid var(--cds-support-info);
+}
+
+.cp-tile--koppel .cds--btn {
+  align-self: flex-start;
+}
+
+.cp-subject-naam {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pdca-spacing-03);
+}
+
+.cp-subject-regel {
+  color: var(--cds-text-secondary);
+}
+
+/* Collapsible list sections; the heading carries a one-line summary when collapsed. */
+
+.cp-secties .cds--accordion__content {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--pdca-spacing-03);
+  padding-inline-end: var(--pdca-spacing-05);
+}
+
+.cp-secties .cds--accordion__content > .cds--btn {
+  align-self: flex-start;
+}
+
+.cp-sectie-kop {
+  display: flex;
+  align-items: center;
+  gap: var(--pdca-spacing-03);
+  min-width: 0;
+}
+
+.cp-sectie-titel {
+  flex: 0 0 auto;
+  font-weight: 600;
+}
+
+.cp-sectie-samenvatting {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--cds-text-secondary);
+}
+
+.cp-secties .cds--accordion__title {
+  min-width: 0;
+}
+
+/* List rows sit on the page surface, separated by a divider. */
+.cp-rij {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--pdca-spacing-02);
+  padding-block: var(--pdca-spacing-03) var(--pdca-spacing-04);
+  border-bottom: 1px solid var(--cds-border-subtle-01);
+}
+
+.cp-rij-verwijder {
+  flex: 0 0 auto;
+  margin-top: 1.25rem;
+}
+
+.cp-leeg {
+  font-size: 0.875rem;
+  color: var(--cds-text-helper);
+}
+
+/* Footer bar with the primary action. */
+
+.cp-voet {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-03);
+  padding: var(--pdca-spacing-04) var(--pdca-spacing-05);
+  background: var(--cds-layer-01);
+  border-top: 1px solid var(--cds-border-subtle-01);
+}
+
+.cp-voet .cds--inline-notification {
+  max-width: none;
+  margin: 0;
+}
+
+.cp-voet-balk {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pdca-spacing-05);
+}
+
+.cp-voet-tekst {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.875rem;
+  color: var(--cds-text-secondary);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cp-voet-fout {
+  color: var(--cds-text-error);
+  font-size: 0.875rem;
+}
+
+.cp-voet-balk > .cds--btn {
+  flex: 0 0 auto;
+}

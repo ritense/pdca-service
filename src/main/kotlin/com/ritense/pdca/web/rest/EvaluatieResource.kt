@@ -35,7 +35,8 @@ data class CompletedEvaluationDto(
 /**
  * Completed evaluations of a plan with the plan changes made during them, for
  * the Evaluaties tab. Running evaluations are never returned here: they are
- * only visible to their owner through the plugin `/data` route.
+ * only visible to their owner through the plugin `/data` route. Cancelled
+ * evaluations are never returned at all.
  */
 @RestController
 @RequestMapping("/api/v1/pdca", produces = [MediaType.APPLICATION_JSON_VALUE])

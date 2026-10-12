@@ -12,6 +12,13 @@ export interface PluginDataResult<T> {
   body: T;
 }
 
+/** GZAC's answer to a task-form submission (plugin-SDK `submitResult`). */
+export interface SubmitTaskResult {
+  ok: boolean;
+  errors?: string[];
+  fieldErrors?: Record<string, string>;
+}
+
 export type HostTheme = 'white' | 'g10' | 'g90' | 'g100';
 
 const HOST_THEMES: HostTheme[] = ['white', 'g10', 'g90', 'g100'];
@@ -37,6 +44,7 @@ let hostTheme: HostTheme = 'white';
 const themeListeners = new Set<(theme: HostTheme) => void>();
 let correlationCounter = 0;
 const pendingRequests = new Map<string, (result: PluginDataResult<unknown>) => void>();
+const pendingSubmits = new Map<string, (result: SubmitTaskResult) => void>();
 
 window.addEventListener('message', (event) => {
   const data = event.data;
@@ -55,6 +63,15 @@ window.addEventListener('message', (event) => {
     if (!resolve) return;
     pendingRequests.delete(data.payload.correlationId);
     resolve({ status: data.payload.status ?? 0, body: data.payload.body ?? null });
+  } else if (data.event === 'submitResult') {
+    const resolve = pendingSubmits.get(data.payload?.correlationId);
+    if (!resolve) return;
+    pendingSubmits.delete(data.payload.correlationId);
+    resolve({
+      ok: data.payload.ok === true,
+      errors: Array.isArray(data.payload.errors) ? data.payload.errors : undefined,
+      fieldErrors: data.payload.fieldErrors ?? undefined,
+    });
   }
 });
 
@@ -145,4 +162,31 @@ export function offerPanel(offer: PanelOffer): void {
 /** Removes the side-panel content this app offered under `key`. */
 export function withdrawPanel(key: string, bundleKey?: string): void {
   window.parent.postMessage({ source: 'valtimo-plugin', event: 'withdrawPanel', payload: { bundleKey, key } }, '*');
+}
+
+function newCorrelationId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try { return crypto.randomUUID(); } catch { /* not a secure context */ }
+  }
+  return `pdca-${++correlationCounter}`;
+}
+
+/**
+ * Submits the external task form this bundle runs in (plugin-SDK
+ * `submitTask`); GZAC completes the user task with `data`. Resolves with the
+ * host's `submitResult` for this submission. On success GZAC closes the task
+ * modal and removes the iframe right away, so the promise may never resolve
+ * then: anything that has to happen after a successful submission must be
+ * posted in the same tick as this call.
+ */
+export function submitTask(data: Record<string, unknown>): Promise<SubmitTaskResult> {
+  const correlationId = newCorrelationId();
+  return new Promise(resolve => {
+    pendingSubmits.set(correlationId, resolve);
+    window.parent.postMessage({
+      source: 'valtimo-plugin',
+      event: 'submitTask',
+      payload: { correlationId, data },
+    }, '*');
+  });
 }

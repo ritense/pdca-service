@@ -40,6 +40,19 @@ data class NewContactmoment(
     val verslag: String?
 )
 
+/** A klantcontact as far as PDCA needs it. */
+data class Klantcontact(
+    val uuid: UUID,
+    /** The plan its onderwerpobject points at; null when it is not about a plan. */
+    val planUuid: UUID?,
+    val onderwerp: String?,
+    val indicatieContactGelukt: Boolean?,
+    val plaatsgevondenOp: OffsetDateTime?
+) {
+    /** A planned contactmoment has not taken place yet: Open Klant does not know whether it succeeded. */
+    val gepland: Boolean get() = indicatieContactGelukt == null
+}
+
 /**
  * Contactmomenten are klantcontacten in Open Klant (Klantinteracties API).
  * A contactmoment of a plan is created in one call (`maak-klantcontact`):
@@ -53,6 +66,10 @@ data class NewContactmoment(
  *  - for a plan about a person, the inwoner as betrokkene (rol klant): the
  *    partij with that BSN, created with only the identificator when Open
  *    Klant does not know it yet — the name stays in the BRP.
+ *
+ * A planned contactmoment is rescheduled by moving its `plaatsgevondenOp`
+ * ([reschedule]) and recorded as having taken place by patching that same
+ * klantcontact ([completePlanned]). Contactmomenten are never deleted.
  *
  * The PDCA overlay ([com.ritense.pdca.domain.ContactmomentDetails]) is keyed
  * by the klantcontact uuid.
@@ -71,6 +88,7 @@ class KlantcontactService(
         const val PLAN_CODE_REGISTER = "open-plan"
         const val PLAN_CODE_OBJECTTYPE = "plan"
         private const val ONDERWERP_MAX_LENGTH = 200
+        private const val MAX_PAGES = 20
 
         private val EVALUATIE_TYPE_LABELS = mapOf(
             "INTAKE" to "Intake",
@@ -83,29 +101,20 @@ class KlantcontactService(
 
     /** Creates the klantcontact for a contactmoment of a plan; returns its uuid. */
     fun create(contact: NewContactmoment): UUID {
-        val verslag = contact.verslag?.trim().orEmpty()
-        if (verslag.length > INHOUD_MAX_LENGTH) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Het verslag is te lang: maximaal $INHOUD_MAX_LENGTH tekens (${verslag.length} ingevuld)"
-            )
-        }
+        val verslag = checkedVerslag(contact.verslag)
         val plan = getPlan(contact.planUuid)
-        val titel = plan["titel"] as? String ?: "Plan"
-        val typeLabel = EVALUATIE_TYPE_LABELS[contact.evaluatieType] ?: contact.evaluatieType
         val bsn = bsnOf(plan["domeinregister"] as? String)
 
         val body = buildMap<String, Any?> {
             put(
                 "klantcontact", mapOf(
                     "kanaal" to KANAAL,
-                    "onderwerp" to "$typeLabel: $titel".take(ONDERWERP_MAX_LENGTH),
+                    "onderwerp" to onderwerp(contact.evaluatieType, plan),
                     "inhoud" to verslag,
                     "indicatieContactGelukt" to (if (contact.afgerond) true else null),
                     "taal" to "nld",
                     "vertrouwelijk" to true,
-                    "plaatsgevondenOp" to contact.plaatsgevondenOp.withOffsetSameInstant(ZoneOffset.UTC)
-                        .truncatedTo(ChronoUnit.SECONDS).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+                    "plaatsgevondenOp" to format(contact.plaatsgevondenOp)
                 )
             )
             put(
@@ -127,16 +136,124 @@ class KlantcontactService(
         ))
     }
 
-    /** Deletes a klantcontact; Open Klant removes its betrokkenen and onderwerpobjecten with it. */
-    fun delete(klantcontactUuid: UUID) {
-        try {
-            openKlantRestClient.delete().uri("$API/klantcontacten/$klantcontactUuid").retrieve().toBodilessEntity()
+    /** The klantcontact with this uuid, including the plan it is about; null when Open Klant does not know it. */
+    fun get(klantcontactUuid: UUID): Klantcontact? {
+        val body = try {
+            openKlantRestClient.get()
+                .uri { it.path("$API/klantcontacten/$klantcontactUuid")
+                    .queryParam("expand", "gingOverOnderwerpobjecten")
+                    .build() }
+                .retrieve()
+                .body(Map::class.java)
         } catch (e: RestClientResponseException) {
-            if (e.statusCode.value() != 404) throw registerError("verwijderen", e)
+            if (e.statusCode.value() == 404) return null
+            throw registerError("ophalen", e)
         } catch (e: Exception) {
-            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Contactmoment verwijderen in Open Klant mislukt: ${e.message}")
-        }
+            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Contactmoment ophalen uit Open Klant mislukt: ${e.message}")
+        } ?: return null
+        val onderwerpobjecten = ((body["_expand"] as? Map<*, *>)?.get("gingOverOnderwerpobjecten") as? List<*>)
+            ?.filterIsInstance<Map<*, *>>().orEmpty()
+        val planUuid = onderwerpobjecten.firstNotNullOfOrNull { planUuidOf(it) }
+        return toKlantcontact(body, planUuid)
     }
+
+    /** The plan's planned contactmomenten (not taken place yet), earliest first. */
+    fun planned(planUuid: UUID): List<Klantcontact> {
+        val result = mutableListOf<Klantcontact>()
+        var page = 1
+        while (page <= MAX_PAGES) {
+            val body = try {
+                openKlantRestClient.get()
+                    .uri { it.path("$API/klantcontacten")
+                        .queryParam("onderwerpobject__onderwerpobjectidentificatorObjectId", planUuid.toString())
+                        .queryParam("onderwerpobject__onderwerpobjectidentificatorCodeObjecttype", PLAN_CODE_OBJECTTYPE)
+                        .queryParam("onderwerpobject__onderwerpobjectidentificatorCodeRegister", PLAN_CODE_REGISTER)
+                        .queryParam("page", page)
+                        .build() }
+                    .retrieve()
+                    .body(Map::class.java)
+            } catch (e: RestClientResponseException) {
+                throw registerError("ophalen", e)
+            } catch (e: Exception) {
+                throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Contactmomenten ophalen uit Open Klant mislukt: ${e.message}")
+            } ?: break
+            (body["results"] as? List<*>)?.filterIsInstance<Map<*, *>>()?.forEach { result += toKlantcontact(it, planUuid) }
+            if (body["next"] == null) break
+            page++
+        }
+        return result.filter { it.gepland }.sortedBy { it.plaatsgevondenOp }
+    }
+
+    /** Moves a planned klantcontact to another moment. */
+    fun reschedule(klantcontactUuid: UUID, plaatsgevondenOp: OffsetDateTime) {
+        patch("$API/klantcontacten/$klantcontactUuid", mapOf("plaatsgevondenOp" to format(plaatsgevondenOp)))
+    }
+
+    /**
+     * Records a planned klantcontact of a plan as having taken place at
+     * [plaatsgevondenOp], with the verslag as inhoud and the onderwerp of
+     * the evaluation type.
+     */
+    fun completePlanned(
+        klantcontactUuid: UUID,
+        planUuid: UUID,
+        evaluatieType: String,
+        plaatsgevondenOp: OffsetDateTime,
+        verslag: String?
+    ) {
+        val inhoud = checkedVerslag(verslag)
+        patch(
+            "$API/klantcontacten/$klantcontactUuid", mapOf(
+                "onderwerp" to onderwerp(evaluatieType, getPlan(planUuid)),
+                "inhoud" to inhoud,
+                "indicatieContactGelukt" to true,
+                "plaatsgevondenOp" to format(plaatsgevondenOp)
+            )
+        )
+    }
+
+    /** The evaluation type whose label starts the onderwerp ("<label>: <plan titel>"); null when unrecognised. */
+    fun evaluatieTypeOf(onderwerp: String?): String? {
+        val label = onderwerp?.substringBefore(':')?.trim() ?: return null
+        return EVALUATIE_TYPE_LABELS.entries.firstOrNull { it.value == label }?.key
+    }
+
+    private fun checkedVerslag(verslag: String?): String {
+        val inhoud = verslag?.trim().orEmpty()
+        if (inhoud.length > INHOUD_MAX_LENGTH) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Het verslag is te lang: maximaal $INHOUD_MAX_LENGTH tekens (${inhoud.length} ingevuld)"
+            )
+        }
+        return inhoud
+    }
+
+    private fun onderwerp(evaluatieType: String, plan: Map<*, *>): String {
+        val titel = plan["titel"] as? String ?: "Plan"
+        val typeLabel = EVALUATIE_TYPE_LABELS[evaluatieType] ?: evaluatieType
+        return "$typeLabel: $titel".take(ONDERWERP_MAX_LENGTH)
+    }
+
+    private fun format(moment: OffsetDateTime): String =
+        moment.withOffsetSameInstant(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS)
+            .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+
+    private fun planUuidOf(onderwerpobject: Map<*, *>): UUID? {
+        val identificator = onderwerpobject["onderwerpobjectidentificator"] as? Map<*, *> ?: return null
+        if (identificator["codeRegister"] != PLAN_CODE_REGISTER || identificator["codeObjecttype"] != PLAN_CODE_OBJECTTYPE) {
+            return null
+        }
+        return (identificator["objectId"] as? String)?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+    }
+
+    private fun toKlantcontact(body: Map<*, *>, planUuid: UUID?) = Klantcontact(
+        uuid = UUID.fromString(body["uuid"] as String),
+        planUuid = planUuid,
+        onderwerp = body["onderwerp"] as? String,
+        indicatieContactGelukt = body["indicatieContactGelukt"] as? Boolean,
+        plaatsgevondenOp = (body["plaatsgevondenOp"] as? String)?.let { runCatching { OffsetDateTime.parse(it) }.getOrNull() }
+    )
 
     private fun betrokkene(partijUuid: UUID) = mapOf(
         "wasPartij" to mapOf("uuid" to partijUuid.toString()),
@@ -222,6 +339,24 @@ class KlantcontactService(
         throw registerError("vastleggen", e)
     } catch (e: Exception) {
         throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Contactmoment vastleggen in Open Klant mislukt: ${e.message}")
+    }
+
+    private fun patch(path: String, body: Map<String, Any?>) {
+        try {
+            openKlantRestClient.patch()
+                .uri(path)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(objectMapper.writeValueAsBytes(body))
+                .retrieve()
+                .toBodilessEntity()
+        } catch (e: RestClientResponseException) {
+            if (e.statusCode.value() == 404) {
+                throw ResponseStatusException(HttpStatus.NOT_FOUND, "Contactmoment niet gevonden in Open Klant")
+            }
+            throw registerError("bijwerken", e)
+        } catch (e: Exception) {
+            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Contactmoment bijwerken in Open Klant mislukt: ${e.message}")
+        }
     }
 
     /** Open Klant's validation errors (`invalidParams`) in the message, so they reach the UI. */

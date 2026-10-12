@@ -58,6 +58,7 @@ data class EvaluationSessionDto(
     val evaluatieType: String?,
     val deelnemers: String?,
     val verslag: String?,
+    val geplandContactmomentUuid: UUID?,
     val contactmomentUuid: UUID?
 )
 
@@ -85,6 +86,7 @@ fun EvaluationSession.toDto() = EvaluationSessionDto(
     evaluatieType = evaluatieType,
     deelnemers = deelnemers,
     verslag = verslag,
+    geplandContactmomentUuid = geplandContactmomentUuid,
     contactmomentUuid = contactmomentUuid
 )
 
@@ -102,6 +104,9 @@ fun EvaluationChange.toDto() = EvaluationChangeDto(
 
 data class ChangeToelichtingRequest(val id: UUID, val toelichting: String? = null)
 
+/** Optional body of a session start: the planned contactmoment the evaluation carries out. */
+data class StartEvaluationRequest(val geplandContactmomentUuid: UUID? = null)
+
 /**
  * The contract's `/data` route: GZAC's frontend proxies the iframe's
  * `target: "plugin"` calls here with the user's downscoped token. Data that
@@ -109,7 +114,8 @@ data class ChangeToelichtingRequest(val id: UUID, val toelichting: String? = nul
  * user is verified (token introspection against GZAC). `context` comes from
  * the GZAC frontend but is not trusted: dossier access is checked as the user.
  * The running evaluation (its contactmoment fields and recorded plan changes)
- * is only reachable here, so only its owner sees it.
+ * is only reachable here, so only its owner sees it; it ends here as well,
+ * completed or cancelled.
  */
 @RestController
 class PluginDataController(
@@ -137,7 +143,8 @@ class PluginDataController(
                 evaluationSessionService.current(userLogin)
                     ?.let { ResponseEntity.ok<Any>(it.toDto()) }
                     ?: ResponseEntity.noContent().build()
-            "POST" to "/evaluation-sessions" -> startSession(configurationId, userToken, userLogin, request.context)
+            "POST" to "/evaluation-sessions" ->
+                startSession(configurationId, userToken, userLogin, request.context, request.bodyAs<StartEvaluationRequest>())
             "POST" to "/evaluation-sessions/current/draft" ->
                 ResponseEntity.ok<Any>(evaluationSessionService.updateDraft(userLogin, request.bodyAs<EvaluationDraft>()).toDto())
             "GET" to "/evaluation-sessions/current/changes" -> {
@@ -155,6 +162,8 @@ class PluginDataController(
             }
             "POST" to "/evaluation-sessions/current/complete" ->
                 ResponseEntity.ok<Any>(evaluationSessionService.complete(userLogin).toDto())
+            "POST" to "/evaluation-sessions/current/cancel" ->
+                ResponseEntity.ok<Any>(evaluationSessionService.cancel(userLogin).toDto())
             else -> throw ResponseStatusException(HttpStatus.NOT_FOUND, "Onbekend pad ${request.path}")
         }
     } catch (e: ResponseStatusException) {
@@ -167,14 +176,17 @@ class PluginDataController(
         configurationId: String,
         userToken: String,
         userLogin: String,
-        context: Map<String, Any?>?
+        context: Map<String, Any?>?,
+        start: StartEvaluationRequest
     ): ResponseEntity<Any> {
         val documentId = context?.get("documentId") as? String
             ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Geen dossier in de context")
         if (!gzacClient.userCanReadDocument(configurationId, userToken, documentId)) {
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Geen toegang tot dit dossier")
         }
-        val session = evaluationSessionService.start(userLogin, documentId, context["caseDefinitionKey"] as? String)
+        val session = evaluationSessionService.start(
+            userLogin, documentId, context["caseDefinitionKey"] as? String, start.geplandContactmomentUuid
+        )
         return ResponseEntity.status(HttpStatus.CREATED).body(session.toDto())
     }
 

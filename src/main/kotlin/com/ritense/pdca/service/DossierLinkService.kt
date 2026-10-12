@@ -49,9 +49,10 @@ class DossierLinkService(
      * Ensures the plan has its own plan dossier (plan = dossier 1:1): an
      * existing link wins — provided that dossier still exists — otherwise a
      * GZAC dossier of the plan's caseDefinitionKey is created and linked.
-     * Returns (documentId, newly created).
+     * [onderwerp] is the subject's display name as the caller knows it (the
+     * intake); see [dossierContent]. Returns (documentId, newly created).
      */
-    fun ensurePlanDossier(planUuid: UUID): Pair<String, Boolean> {
+    fun ensurePlanDossier(planUuid: UUID, onderwerp: String? = null): Pair<String, Boolean> {
         val details = planDetailsRepository.findById(planUuid).orElseThrow {
             ResponseStatusException(HttpStatus.NOT_FOUND, "Geen plandetails voor plan $planUuid")
         }
@@ -69,7 +70,7 @@ class DossierLinkService(
             .body(Map::class.java)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Plan $planUuid niet gevonden in Open Plan")
 
-        val dossier = gzacClient.createDossier(caseDefinitionKey, dossierContent(plan))
+        val dossier = gzacClient.createDossier(caseDefinitionKey, dossierContent(plan, onderwerp?.takeIf { it.isNotBlank() }))
         link(planUuid, dossier.documentId)
         log.info("Plan $planUuid gekoppeld aan nieuw plan-dossier ${dossier.documentId} ($caseDefinitionKey)")
         return dossier.documentId to true
@@ -79,8 +80,11 @@ class DossierLinkService(
      * Dossier content following the case's document schema: subject fields
      * from plan.domeinregister (urn:pdca:brp:persoon:<bsn> or
      * urn:pdca:objecten:object:<id>) plus the plan reference fields.
+     * `onderwerp` is the dossier's subject line: [onderwerp] when given,
+     * otherwise the name from the (stub) register, otherwise the plan titel;
+     * a person unknown to the register gets that name as `naam` too.
      */
-    private fun dossierContent(plan: Map<*, *>): Map<String, Any?> {
+    private fun dossierContent(plan: Map<*, *>, onderwerp: String?): Map<String, Any?> {
         val content = mutableMapOf<String, Any?>(
             "planId" to plan["uuid"],
             "planTitel" to plan["titel"],
@@ -89,16 +93,20 @@ class DossierLinkService(
         val domeinregister = (plan["domeinregister"] as? String).orEmpty().split(':')
         val resource = domeinregister.getOrNull(3)
         val id = domeinregister.getOrNull(4)
+        var registerName: String? = null
         when {
             resource == "persoon" && id != null -> {
+                registerName = registerStubs.getPersoon(id).body?.naam
                 content["bsn"] = id
-                content["naam"] = registerStubs.getPersoon(id).body?.naam
+                content["naam"] = registerName ?: onderwerp
             }
             resource == "object" && id != null -> {
+                registerName = registerStubs.getObject(id).body?.naam
                 content["objectId"] = id
-                content["objectNaam"] = registerStubs.getObject(id).body?.naam
+                content["objectNaam"] = registerName
             }
         }
+        content["onderwerp"] = onderwerp ?: registerName ?: plan["titel"]
         return content
     }
 

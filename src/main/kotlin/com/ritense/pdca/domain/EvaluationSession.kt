@@ -30,8 +30,10 @@ import java.util.UUID
  * [EvaluationSessionStatus.RUNNING]. Belongs to user + plan: only its owner
  * sees a running session, colleagues only see it once completed. The
  * evaluation is the set of [EvaluationChange]s made to the plan while it runs
- * plus the contactmoment information below. Ending it is always an explicit
- * completion; hiding the panel does not touch it.
+ * plus the contactmoment information below. It ends explicitly: completed
+ * (it becomes a contactmoment) or cancelled (nothing is recorded in Open
+ * Klant; its changes stay with the cancelled session, the plan changes
+ * themselves remain in the registers). Hiding the panel does not touch it.
  */
 @Entity
 @Table(name = "evaluation_session")
@@ -74,9 +76,17 @@ data class EvaluationSession(
     @Column(name = "verslag", columnDefinition = "TEXT")
     var verslag: String? = null,
 
+    /**
+     * The planned contactmoment (klantcontact in Open Klant that has not taken
+     * place yet) this evaluation carries out; completing the session records
+     * it as having taken place instead of creating a new klantcontact.
+     */
+    @Column(name = "gepland_contactmoment_uuid")
+    val geplandContactmomentUuid: UUID? = null,
+
     /** The contactmoment (klantcontact in Open Klant) this evaluation became on completion. */
     @Column(name = "contactmoment_uuid")
     var contactmomentUuid: UUID? = null
 )
 
-enum class EvaluationSessionStatus { RUNNING, COMPLETED }
+enum class EvaluationSessionStatus { RUNNING, COMPLETED, CANCELLED }

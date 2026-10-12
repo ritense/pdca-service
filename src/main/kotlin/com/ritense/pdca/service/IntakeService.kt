@@ -54,6 +54,12 @@ import java.util.UUID
  *    doelen + instrumenten in Open Plan, the contactmomenten as
  *    klantcontacten in Open Klant, the matching overlay rows and
  *    betrokkenen, and links the plan to the dossier.
+ *
+ * Doelen and instrumenten come in as gepland, gestart or afgerond: gepland
+ * and gestart are register status `actief` refined by the overlay's
+ * uitvoeringsstatus, afgerond is register status `afgerond` (resultaat
+ * behaald unless given). The first betrokkene flagged as procesbegeleider
+ * becomes the plan's procesbegeleider and Open Plan's `plan.medewerker`.
  */
 @Service
 class IntakeService(
@@ -75,6 +81,9 @@ class IntakeService(
     companion object {
         /** Object plans get this administrative contact person (doelen require a persoon). */
         const val OBJECT_CONTACT_BSN = "234567892"
+
+        /** Sortering of the hoofddoel's overlay row: before every subdoel (0 and up). */
+        const val HOOFDDOEL_SORTERING = -1
 
         /**
          * Sane default document paths (JSON pointers in the dossier
@@ -217,6 +226,10 @@ class IntakeService(
             }
         }
         validatePositie(planCaseDefinitionKey, "beginPositie", request.beginPositie)
+        // Statuses are checked before anything is written to the registers.
+        val doelStatussen = request.doelen.map { doelStatus(it.status, it.voortgang) }
+        val instrumentStatussen = request.instrumenten.map { instrumentStatus(it.status) }
+        val procesbegeleider = request.betrokkenen.firstOrNull { it.procesbegeleider }
 
         val doeltypen = listRegister("/plannen/api/v0/doeltype")
         val doeltypePerNaam = doeltypen.associateBy { (it["doelType"] as? String).orEmpty() }
@@ -264,7 +277,7 @@ class IntakeService(
                 put("plantypeUuid", plantypeUuid)
                 put("overkoepelendPlanUuid", overkoepelendUuid)
                 put("domeinregister", domeinregister)
-                put("medewerker", "")
+                put("medewerker", BetrokkeneService.medewerkerUrn(procesbegeleider?.naam))
             }
         )
         val planUuid = UUID.fromString(plan["uuid"] as String)
@@ -299,17 +312,29 @@ class IntakeService(
                     put("startdatum", "${startdatum}T00:00:00Z")
                 }
             )
-            hoofddoelDoel["uuid"] as String
+            val uuid = hoofddoelDoel["uuid"] as String
+            // The hoofddoel runs from the start; its sortering keeps it out of the subdoel ordering.
+            doelDetailsRepository.save(
+                DoelDetails(
+                    doelUuid = UUID.fromString(uuid),
+                    planUuid = planUuid,
+                    uitvoeringsStatus = UitvoeringsStatus.GESTART,
+                    sortering = HOOFDDOEL_SORTERING
+                )
+            )
+            uuid
         }
 
         // 4. Subdoelen (register driven: titel = name of the doeltype),
         //    linked to the hoofddoel.
         val doelUuidPerType = mutableMapOf<String, UUID>()
+        val doelDetailsPerUuid = mutableMapOf<UUID, DoelDetails>()
         request.doelen.forEachIndexed { index, doel ->
             val doeltype = doeltypePerNaam[doel.doelType] ?: throw ResponseStatusException(
                 HttpStatus.BAD_REQUEST, "Doel '${doel.doelType}' is onbekend in het doeltype-register"
             )
-            val status = doel.status?.takeIf { it.isNotBlank() } ?: "actief"
+            val intakeStatus = doelStatussen[index]
+            val status = intakeStatus.registerStatus
             val aangemaakt = postRegister(
                 "/plannen/api/v0/doel", buildMap {
                     put("plannenUuids", listOf(planUuid.toString()))
@@ -328,15 +353,11 @@ class IntakeService(
             )
             val doelUuid = UUID.fromString(aangemaakt["uuid"] as String)
             doelUuidPerType[doel.doelType] = doelUuid
-            doelDetailsRepository.save(
+            doelDetailsPerUuid[doelUuid] = doelDetailsRepository.save(
                 DoelDetails(
                     doelUuid = doelUuid,
                     planUuid = planUuid,
-                    uitvoeringsStatus = if (status == "actief" && (doel.voortgang ?: 0) > 0) {
-                        UitvoeringsStatus.GESTART
-                    } else {
-                        UitvoeringsStatus.GEPLAND
-                    },
+                    uitvoeringsStatus = intakeStatus.uitvoeringsStatus ?: UitvoeringsStatus.GEPLAND,
                     voortgangScore = doel.voortgang,
                     voortgangToelichting = doel.toelichting,
                     sortering = index
@@ -347,13 +368,14 @@ class IntakeService(
         // 5. Instrumenten, linked to their doel (reference = doeltype name).
         val instrumenttypeUuid = listRegister("/plannen/api/v0/instrumenttype").firstOrNull()?.get("uuid") as? String
         var instrumentCount = 0
-        request.instrumenten.forEach { instrument ->
+        request.instrumenten.forEachIndexed { index, instrument ->
             val doelUuid = instrument.doel?.let { doelUuidPerType[it] } ?: doelUuidPerType.values.firstOrNull()
             if (doelUuid == null) {
                 warnings += "Instrument '${instrument.titel}' overgeslagen: geen doel om aan te koppelen"
-                return@forEach
+                return@forEachIndexed
             }
-            val status = instrument.status?.takeIf { it.isNotBlank() } ?: "actief"
+            val intakeStatus = instrumentStatussen[index]
+            val status = intakeStatus.registerStatus
             val aangemaakt = postRegister(
                 "/plannen/api/v0/instrument", buildMap {
                     put("titel", instrument.titel)
@@ -372,15 +394,22 @@ class IntakeService(
                 }
             )
             val instrumentUuid = UUID.fromString(aangemaakt["uuid"] as String)
-            if (instrument.urenBesteed != null || instrument.effectiviteit != null) {
-                instrumentDetailsRepository.save(
-                    InstrumentDetails(
-                        instrumentUuid = instrumentUuid,
-                        planUuid = planUuid,
-                        urenBesteed = instrument.urenBesteed,
-                        effectiviteitScore = instrument.effectiviteit
-                    )
+            instrumentDetailsRepository.save(
+                InstrumentDetails(
+                    instrumentUuid = instrumentUuid,
+                    planUuid = planUuid,
+                    uitvoeringsStatus = intakeStatus.uitvoeringsStatus,
+                    urenBesteed = instrument.urenBesteed,
+                    effectiviteitScore = instrument.effectiviteit
                 )
+            )
+            // A subdoel with work under way has started.
+            if (intakeStatus != IntakeStatus.GEPLAND) {
+                doelDetailsPerUuid[doelUuid]?.takeIf { it.uitvoeringsStatus == UitvoeringsStatus.GEPLAND }?.let {
+                    it.uitvoeringsStatus = UitvoeringsStatus.GESTART
+                    it.updatedAt = java.time.LocalDateTime.now()
+                    doelDetailsPerUuid[doelUuid] = doelDetailsRepository.save(it)
+                }
             }
             instrumentCount++
         }
@@ -411,7 +440,7 @@ class IntakeService(
             )
         }
 
-        // 7. Betrokkenen (local contact cards).
+        // 7. Betrokkenen (local contact cards); only the first flagged one is the procesbegeleider.
         request.betrokkenen.forEach { b ->
             involvedPartyRepository.save(
                 InvolvedParty(
@@ -420,7 +449,7 @@ class IntakeService(
                     role = b.rol,
                     email = b.email,
                     organization = b.organisatie,
-                    isPrimary = b.hoofdverantwoordelijke
+                    isPrimary = b === procesbegeleider
                 )
             )
         }
@@ -428,7 +457,7 @@ class IntakeService(
         // 8. Plan = dossier (1:1): link to the current plan dossier, or
         // create the plan dossier (intake and standalone route) — always both.
         val planDossierId = linkDocumentId?.also { dossierLinkService.link(planUuid, it) }
-            ?: dossierLinkService.ensurePlanDossier(planUuid).first
+            ?: dossierLinkService.ensurePlanDossier(planUuid, request.subjectNaam).first
         log.info(
             "Plan $planUuid ($planCaseDefinitionKey) aangemaakt uit intake " +
                 "(taak-dossier ${request.documentId ?: "-"}, plan-dossier $planDossierId): " +
@@ -447,6 +476,34 @@ class IntakeService(
             warnings = warnings
         )
     }
+
+    /** Status of an intake doel or instrument: register status plus overlay uitvoeringsstatus. */
+    private enum class IntakeStatus(val registerStatus: String, val uitvoeringsStatus: UitvoeringsStatus?) {
+        GEPLAND("actief", UitvoeringsStatus.GEPLAND),
+        GESTART("actief", UitvoeringsStatus.GESTART),
+        AFGEROND("afgerond", null)
+    }
+
+    /** Legacy `actief` (also the default) counts as gestart once there is voortgang. */
+    private fun doelStatus(status: String?, voortgang: Int?): IntakeStatus =
+        when (val value = status?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "actief") {
+            "actief" -> if ((voortgang ?: 0) > 0) IntakeStatus.GESTART else IntakeStatus.GEPLAND
+            else -> intakeStatus("doel", value)
+        }
+
+    /** Legacy `actief` (also the default) means gestart. */
+    private fun instrumentStatus(status: String?): IntakeStatus =
+        when (val value = status?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "actief") {
+            "actief" -> IntakeStatus.GESTART
+            else -> intakeStatus("instrument", value)
+        }
+
+    private fun intakeStatus(kind: String, value: String): IntakeStatus =
+        IntakeStatus.entries.firstOrNull { it.name.lowercase() == value }
+            ?: throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Onbekende status '$value' voor een $kind (verwacht: gepland, gestart of afgerond)"
+            )
 
     /**
      * The plan this intake dossier already produced, as a response the task

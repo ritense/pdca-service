@@ -1,18 +1,8 @@
 /**
  * Labels for the Open Plan status domain (actief/afgerond/geannuleerd,
- * resultaat behaald/gefaald) plus the local PDCA actie workflow.
+ * resultaat behaald/gefaald), the local PDCA actie workflow and the other
+ * domain values the plan tabs show.
  */
-
-const STATUS_LABELS: Record<string, string> = {
-  // Open Plan statuses (plan / doel / instrument / contactmoment)
-  actief: 'Actief', afgerond: 'Afgerond', geannuleerd: 'Geannuleerd',
-  behaald: 'Behaald', gefaald: 'Niet behaald',
-  // PDCA uitvoeringsstatus (overlay, refinement of actief)
-  GEPLAND: 'Gepland', GESTART: 'Gestart',
-  // Local actie workflow
-  PLANNED: 'Gepland', IN_PROGRESS: 'In uitvoering', PENDING_REVIEW: 'Ter beoordeling',
-  COMPLETED: 'Afgerond', REJECTED: 'Afgekeurd',
-};
 
 const EVAL_TYPE_LABELS: Record<string, string> = {
   INTAKE: 'Intake', PROGRESS: 'Voortgang', EVALUATION: 'Evaluatie',
@@ -38,42 +28,140 @@ const DIENSTVERLENING_LABELS: Record<string, string> = {
   werk: 'Terug naar werk', pip: 'Inburgering (PIP)', inkomen: 'Inkomensondersteuning',
 };
 
-export function statusLabel(s: string): string { return STATUS_LABELS[s] || s; }
 export function evalTypeLabel(s: string): string { return EVAL_TYPE_LABELS[s] || s; }
 export function priorityLabel(s: string): string { return PRIORITY_LABELS[s] || s; }
 export function assigneeTypeLabel(s: string): string { return ASSIGNEE_TYPE_LABELS[s] || s; }
 export function doelgroepLabel(s: string): string { return DOELGROEP_LABELS[s] || s; }
 export function dienstverleningLabel(s: string): string { return DIENSTVERLENING_LABELS[s] || s; }
 
-/**
- * PDCA doel/instrument display status: Gepland, Gestart, Afgerond, Afgebroken.
- * The register only knows actief/afgerond/geannuleerd; the gepland/gestart
- * split comes from the overlay uitvoeringsstatus (doelen only).
- */
-export function doelStatusLabel(status: string, resultaat?: string | null, uitvoeringsStatus?: string): string {
-  if (status === 'geannuleerd') return 'Afgebroken';
-  if (status === 'afgerond') return resultaat === 'gefaald' ? 'Niet behaald' : 'Afgerond';
-  if (status === 'actief' && uitvoeringsStatus) return statusLabel(uitvoeringsStatus);
-  return statusLabel(status);
+/** Carbon tag colours (the `type` of a Carbon Tag). */
+export type TagKleur =
+  | 'red' | 'magenta' | 'purple' | 'blue' | 'cyan' | 'teal' | 'green'
+  | 'gray' | 'cool-gray' | 'warm-gray' | 'high-contrast' | 'outline';
+
+/** A status as shown in the tabs: its label and the colour of its tag. */
+export interface StatusWeergave {
+  label: string;
+  tag: TagKleur;
 }
 
-export function doelStatusTag(status: string, resultaat?: string | null, uitvoeringsStatus?: string): string {
-  if (status === 'geannuleerd') return 'red';
-  if (status === 'afgerond') return resultaat === 'gefaald' ? 'red' : 'green';
-  if (status === 'actief') return uitvoeringsStatus === 'GEPLAND' ? 'cool-gray' : 'blue';
-  return 'gray';
+const GEPLAND: StatusWeergave = { label: 'Gepland', tag: 'cool-gray' };
+const GESTART: StatusWeergave = { label: 'Gestart', tag: 'blue' };
+const AFGEROND: StatusWeergave = { label: 'Afgerond', tag: 'green' };
+const AFGEBROKEN: StatusWeergave = { label: 'Afgebroken', tag: 'red' };
+const NIET_BEHAALD: StatusWeergave = { label: 'Niet behaald', tag: 'red' };
+
+/**
+ * The lifecycle shared by hoofddoel, subdoel and instrument (an actie
+ * follows it too, see actieStatus): Gepland -> Gestart -> Afgerond |
+ * Afgebroken, and Niet behaald for afgerond with resultaat gefaald. The
+ * register knows only actief/afgerond/geannuleerd; for actief the caller
+ * decides between Gepland and Gestart.
+ */
+function levenscyclus(
+  item: { status: string; resultaat?: string | null }, gestart: boolean,
+): StatusWeergave {
+  if (item.status === 'geannuleerd') return AFGEBROKEN;
+  if (item.status === 'afgerond') return item.resultaat === 'gefaald' ? NIET_BEHAALD : AFGEROND;
+  return gestart ? GESTART : GEPLAND;
+}
+
+/**
+ * Status of a subdoel or the hoofddoel. An active subdoel is Gestart once
+ * its overlay uitvoeringsstatus says so and Gepland until then; an active
+ * hoofddoel is Gestart unless its overlay explicitly says Gepland.
+ */
+export function doelStatus(
+  doel: { status: string; resultaat?: string | null },
+  details?: { uitvoeringsStatus?: string | null } | null,
+  hoofddoel = false,
+): StatusWeergave {
+  const uitvoering = details?.uitvoeringsStatus;
+  return levenscyclus(doel, hoofddoel ? uitvoering !== 'GEPLAND' : uitvoering === 'GESTART');
+}
+
+/** Status of an instrument: an active one is Gestart unless its overlay says Gepland. */
+export function instrumentStatus(
+  instrument: { status: string; resultaat?: string | null },
+  details?: { uitvoeringsStatus?: string | null } | null,
+): StatusWeergave {
+  return levenscyclus(instrument, details?.uitvoeringsStatus !== 'GEPLAND');
+}
+
+const ACTIE_STATUSSEN: Record<string, StatusWeergave> = {
+  PLANNED: GEPLAND,
+  IN_PROGRESS: GESTART,
+  PENDING_REVIEW: { label: 'Ter beoordeling', tag: 'warm-gray' },
+  COMPLETED: AFGEROND,
+  REJECTED: { label: 'Afgekeurd', tag: 'red' },
+};
+
+/** Status of an actie in the local workflow (PLANNED -> IN_PROGRESS -> PENDING_REVIEW -> COMPLETED/REJECTED). */
+export function actieStatus(status: string): StatusWeergave {
+  return ACTIE_STATUSSEN[status] ?? { label: status, tag: 'gray' };
+}
+
+/**
+ * Status of a plan: while it runs (register actief) its configured
+ * weergavestatus (Concept, Vastgesteld, ...); a closed plan is Afgerond or
+ * Afgebroken (register geannuleerd).
+ */
+export function planStatus(status: string, weergaveStatus?: string | null): StatusWeergave {
+  if (status === 'afgerond') return AFGEROND;
+  if (status === 'geannuleerd') return AFGEBROKEN;
+  return { label: weergaveStatus || 'Concept', tag: 'blue' };
 }
 
 /**
  * Status of a contactmoment, read from its klantcontact in Open Klant: one
- * that took place has indicatieContactGelukt true, a planned one null.
+ * that took place has indicatieContactGelukt true, a planned one null. A
+ * planned one whose date has passed shows as Verlopen.
  */
-export function contactmomentStatusLabel(c: { indicatieContactGelukt: boolean | null }): string {
-  return c.indicatieContactGelukt === true ? 'Afgerond' : c.indicatieContactGelukt === false ? 'Niet gelukt' : 'Gepland';
+export function contactmomentStatus(
+  c: { indicatieContactGelukt: boolean | null }, geplandeDatum?: string | null,
+): StatusWeergave {
+  if (c.indicatieContactGelukt === true) return AFGEROND;
+  if (c.indicatieContactGelukt === false) return { label: 'Niet gelukt', tag: 'red' };
+  return isVerlopen(geplandeDatum) ? { label: 'Verlopen', tag: 'red' } : GEPLAND;
 }
 
-export function contactmomentStatusTag(c: { indicatieContactGelukt: boolean | null }): string {
-  return c.indicatieContactGelukt === true ? 'green' : c.indicatieContactGelukt === false ? 'red' : 'warm-gray';
+/**
+ * Date of a contactmoment: for a planned one the planned date from the
+ * overlay (its plaatsgevondenOp holds the same planned moment), otherwise
+ * the moment it took place.
+ */
+export function contactmomentDatum(
+  c: { indicatieContactGelukt: boolean | null; plaatsgevondenOp: string },
+  details?: { geplandeDatum?: string | null } | null,
+): string {
+  return (c.indicatieContactGelukt == null && details?.geplandeDatum) || c.plaatsgevondenOp;
+}
+
+/** "1 actie", "3 acties". */
+export function aantal(n: number, enkelvoud: string, meervoud: string): string {
+  return `${n} ${n === 1 ? enkelvoud : meervoud}`;
+}
+
+/** Today as a plain date (yyyy-mm-dd) in local time. */
+export function vandaag(): string {
+  return isoDatum(new Date());
+}
+
+/** A plain date (yyyy-mm-dd) the given number of weeks from today. */
+export function overWeken(weken: number): string {
+  const datum = new Date();
+  datum.setDate(datum.getDate() + weken * 7);
+  return isoDatum(datum);
+}
+
+function isoDatum(datum: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${datum.getFullYear()}-${pad(datum.getMonth() + 1)}-${pad(datum.getDate())}`;
+}
+
+/** Whether a date (plain or ISO datetime) lies before today. */
+export function isVerlopen(datum: string | null | undefined): boolean {
+  return !!datum && datum.split('T')[0] < vandaag();
 }
 
 /** Formats register ISO datetimes and plain dates as dd-mm-yyyy. */
@@ -188,7 +276,7 @@ const VOORTGANG_STATUS_LABELS: Record<string, string> = {
   OP_KOERS: 'Op koers', AANDACHT_NODIG: 'Aandacht nodig', LOOPT_ACHTER: 'Loopt achter',
 };
 
-const VOORTGANG_STATUS_TAGS: Record<string, string> = {
+const VOORTGANG_STATUS_TAGS: Record<string, TagKleur> = {
   OP_KOERS: 'green', AANDACHT_NODIG: 'magenta', LOOPT_ACHTER: 'red',
 };
 
@@ -196,7 +284,7 @@ export function voortgangStatusLabel(s: string | null | undefined): string {
   return s ? VOORTGANG_STATUS_LABELS[s] || s : 'Geen status';
 }
 
-export function voortgangStatusTag(s: string | null | undefined): string {
+export function voortgangStatusTag(s: string | null | undefined): TagKleur {
   return (s && VOORTGANG_STATUS_TAGS[s]) || 'gray';
 }
 
@@ -215,6 +303,7 @@ const WIJZIGING_LABELS: Record<string, string> = {
   INTERNE_NOTITIE: 'Interne notitie',
   EXTERNE_NOTITIE: 'Externe notitie',
   INSTRUMENT_TOEGEVOEGD: 'Instrument toegevoegd',
+  INSTRUMENT_GESTART: 'Instrument gestart',
   INSTRUMENT_AFGEROND: 'Instrument afgerond',
   INSTRUMENT_AFGEBROKEN: 'Instrument afgebroken',
   INSTRUMENT_REGISTRATIE: 'Uren/effectiviteit',

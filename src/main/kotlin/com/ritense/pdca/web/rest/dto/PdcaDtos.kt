@@ -61,6 +61,11 @@ data class ContactmomentRequest(
     val actiepunten: String? = null
 )
 
+/** Reschedules a planned contactmoment to [datum]. */
+data class ContactmomentDatumRequest(
+    val datum: LocalDate
+)
+
 data class ContactmomentDetailsRequest(
     val planUuid: UUID? = null,
     val evaluatieType: String? = null,
@@ -72,6 +77,7 @@ data class ContactmomentDetailsRequest(
 
 data class InstrumentDetailsRequest(
     val planUuid: UUID? = null,
+    val uitvoeringsStatus: UitvoeringsStatus? = null,
     val urenBesteed: Int? = null,
     @field:Min(1)
     @field:Max(5)

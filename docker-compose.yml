@@ -25,7 +25,10 @@
 # the defaults in src/main/resources/application.yml — no manual setup needed.
 #
 # Admin UIs: http://localhost:7501/admin/, http://localhost:7502/admin/ and
-# http://localhost:7504/admin/ (admin/admin)
+# http://localhost:7504/admin/ (admin/admin). The registers run with the dev
+# settings in docker/register-dev/pdca_dev.py: a CSRF cookie per register,
+# DISABLE_2FA honoured, and every admin visitor logged in as `admin` unless
+# PDCA_ADMIN_AUTOLOGIN=false.
 
 services:
   # The app itself, opt-in via `--profile app` so the default `up -d` (used by
@@ -95,7 +98,8 @@ services:
       context: https://github.com/maykinmedia/open-plan.git#b1f945de592a5e5e0f1a6c993d30138db36eaa59
     image: pdca/openplan:local
     environment: &openplan-env
-      DJANGO_SETTINGS_MODULE: openplan.conf.docker
+      DJANGO_SETTINGS_MODULE: openplan.conf.pdca_dev
+      PDCA_ADMIN_AUTOLOGIN: ${PDCA_ADMIN_AUTOLOGIN:-true}
       SECRET_KEY: pdca-dev-only-openplan-secret
       DB_NAME: openplan
       DB_USER: openplan
@@ -108,6 +112,7 @@ services:
       PGHOST: openplan-db
       PGPORT: "5432"
     volumes:
+      - ./docker/register-dev/pdca_dev.py:/app/src/openplan/conf/pdca_dev.py:ro
       - ./docker/openplan/init.py:/init/init.py:ro
       - ./docker/openplan/reference_data.py:/init/reference_data.py:ro
     command:
@@ -127,6 +132,8 @@ services:
       context: https://github.com/maykinmedia/open-plan.git#b1f945de592a5e5e0f1a6c993d30138db36eaa59
     image: pdca/openplan:local
     environment: *openplan-env
+    volumes:
+      - ./docker/register-dev/pdca_dev.py:/app/src/openplan/conf/pdca_dev.py:ro
     ports:
       - "7501:8000"
     healthcheck:
@@ -159,7 +166,8 @@ services:
   openproduct-init:
     image: maykinmedia/open-product:1.8.0
     environment: &openproduct-env
-      DJANGO_SETTINGS_MODULE: openproduct.conf.docker
+      DJANGO_SETTINGS_MODULE: openproduct.conf.pdca_dev
+      PDCA_ADMIN_AUTOLOGIN: ${PDCA_ADMIN_AUTOLOGIN:-true}
       SECRET_KEY: pdca-dev-only-openproduct-secret
       DB_NAME: openproduct
       DB_USER: openproduct
@@ -174,6 +182,7 @@ services:
       PGHOST: openproduct-db
       PGPORT: "5432"
     volumes:
+      - ./docker/register-dev/pdca_dev.py:/app/src/openproduct/conf/pdca_dev.py:ro
       - ./docker/openproduct/init.py:/init/init.py:ro
       - ./docker/openproduct/reference_data.py:/init/reference_data.py:ro
     command:
@@ -191,6 +200,8 @@ services:
   openproduct:
     image: maykinmedia/open-product:1.8.0
     environment: *openproduct-env
+    volumes:
+      - ./docker/register-dev/pdca_dev.py:/app/src/openproduct/conf/pdca_dev.py:ro
     ports:
       - "7502:8000"
     healthcheck:
@@ -225,7 +236,8 @@ services:
     image: maykinmedia/open-klant:2.19.1
     platform: linux/amd64
     environment: &openklant-env
-      DJANGO_SETTINGS_MODULE: openklant.conf.docker
+      DJANGO_SETTINGS_MODULE: openklant.conf.pdca_dev
+      PDCA_ADMIN_AUTOLOGIN: ${PDCA_ADMIN_AUTOLOGIN:-true}
       SECRET_KEY: pdca-dev-only-openklant-secret
       DB_NAME: openklant
       DB_USER: openklant
@@ -241,6 +253,7 @@ services:
       PGHOST: openklant-db
       PGPORT: "5432"
     volumes:
+      - ./docker/register-dev/pdca_dev.py:/app/src/openklant/conf/pdca_dev.py:ro
       - ./docker/openklant/init.py:/init/init.py:ro
     command:
       - sh
@@ -257,6 +270,8 @@ services:
     image: maykinmedia/open-klant:2.19.1
     platform: linux/amd64
     environment: *openklant-env
+    volumes:
+      - ./docker/register-dev/pdca_dev.py:/app/src/openklant/conf/pdca_dev.py:ro
     ports:
       - "7504:8000"
     healthcheck:

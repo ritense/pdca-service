@@ -16,6 +16,8 @@
 
 package com.ritense.pdca.web.rest.dto
 
+import com.fasterxml.jackson.annotation.JsonAlias
+
 /**
  * Prefill for the create-plan task form, built from the dossier content
  * through the case type's prefill mapping (PhaseConfig.prefillMapping or the
@@ -49,6 +51,11 @@ data class PlanIntakeRequest(
     val caseDefinitionKey: String,
     val subjectType: String,
     val subjectId: String,
+    /**
+     * Display name of the subject (inwoner or object) as the intake knows it;
+     * becomes the plan dossier's onderwerp when the register has no name.
+     */
+    val subjectNaam: String? = null,
     val titel: String,
     val notitie: String? = null,
     val dienstverlening: String? = null,
@@ -64,6 +71,7 @@ data class PlanIntakeRequest(
     val betrokkenen: List<IntakeBetrokkene> = emptyList()
 )
 
+/** [status]: gepland, gestart or afgerond (legacy `actief`: gestart when voortgang > 0, otherwise gepland). */
 data class IntakeDoel(
     val doelType: String,
     val beschrijving: String? = null,
@@ -73,6 +81,7 @@ data class IntakeDoel(
     val toelichting: String? = null
 )
 
+/** [status]: gepland, gestart or afgerond (legacy `actief` = gestart). */
 data class IntakeInstrument(
     val titel: String,
     val product: String? = null,
@@ -92,12 +101,18 @@ data class IntakeContactmoment(
     val actiepunten: List<String>? = null
 )
 
+/**
+ * [procesbegeleider] marks the plan's procesbegeleider; only the first
+ * flagged betrokkene becomes it. Older intake documents call the flag
+ * `hoofdverantwoordelijke`.
+ */
 data class IntakeBetrokkene(
     val naam: String,
     val rol: String,
     val email: String? = null,
     val organisatie: String? = null,
-    val hoofdverantwoordelijke: Boolean = false
+    @JsonAlias("hoofdverantwoordelijke")
+    val procesbegeleider: Boolean = false
 )
 
 data class PlanIntakeResponse(

@@ -2,12 +2,12 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Theme, Layer, Button, Tag, Loading, InlineNotification, Select, SelectItem, TextInput, TextArea } from '@carbon/react';
 import { Checkmark } from '@carbon/react/icons';
 import { onInit, getInitContext, withdrawPanel, getHostTheme, onHostThemeChanged, HostTheme } from '../shared/bridge';
-import { pdca } from '../shared/api';
-import { evalTypeLabel, formatDate } from '../shared/labels';
+import { openklant, pdca } from '../shared/api';
+import { evalTypeLabel, formatDate, overWeken, vandaag } from '../shared/labels';
 import {
   EVALUATION_PANEL_BUNDLE_KEY, EvaluationSession, EvaluationChange,
-  currentEvaluationSession, completeEvaluationSession, updateEvaluationDraft, listEvaluationChanges,
-  updateChangeToelichting, planTitle, EVALUATION_POLL_MS,
+  currentEvaluationSession, completeEvaluationSession, cancelEvaluationSession, updateEvaluationDraft,
+  listEvaluationChanges, updateChangeToelichting, planTitle, EVALUATION_POLL_MS,
 } from '../shared/evaluationSession';
 import { WijzigingenLijst } from '../shared/WijzigingenLijst';
 
@@ -17,12 +17,18 @@ const formatTime = (iso: string) => iso.split('T')[1]?.slice(0, 5) ?? '';
 const SAVE_DELAY_MS = 700;
 /** The verslag becomes the klantcontact's inhoud in Open Klant, which holds at most 1000 characters. */
 const VERSLAG_MAX_LENGTH = 1000;
+/** Default interval to the next evaluation offered after completing one. */
+const VOLGENDE_EVALUATIE_WEKEN = 6;
+const DEFAULT_EVALUATIE_TYPE = 'EVALUATION';
 
 /**
  * Side-panel content of a running evaluation. Stays open while the user moves
  * through GZAC. The plan itself is changed in the plan tabs; the panel polls
  * those changes and holds the contactmoment fields (type, deelnemers,
- * gespreksverslag). Only completing ends the evaluation — there is no cancel.
+ * gespreksverslag). The evaluation ends explicitly: completing records it as
+ * a contactmoment (the planned one it carries out, if any), after which the
+ * next evaluation can be planned; cancelling records nothing and leaves the
+ * plan changes made during it in place.
  */
 export function EvaluationPanel() {
   const [loading, setLoading] = useState(true);
@@ -31,17 +37,22 @@ export function EvaluationPanel() {
   const [titel, setTitel] = useState('');
   const [evalTypes, setEvalTypes] = useState<string[]>([]);
   const [draft, setDraft] = useState<Draft>({ evaluatieType: '', deelnemers: '', verslag: '' });
-  const [saving, setSaving] = useState<'idle' | 'pending' | 'saved'>('idle');
+  const [saving, setSaving] = useState<'idle' | 'pending' | 'saved' | 'failed'>('idle');
   const [wijzigingen, setWijzigingen] = useState<EvaluationChange[]>([]);
   const [ended, setEnded] = useState(false);
   const [completed, setCompleted] = useState(false);
-  const [confirmComplete, setConfirmComplete] = useState(false);
+  const [cancelled, setCancelled] = useState(false);
+  const [confirm, setConfirm] = useState<'complete' | 'cancel' | null>(null);
   const [busy, setBusy] = useState(false);
-  /** Why completing failed, shown next to the buttons (the general error sits at the top of the panel). */
-  const [completeError, setCompleteError] = useState<string | null>(null);
+  /** Why completing or cancelling failed, shown next to the buttons (the general error sits at the top of the panel). */
+  const [endError, setEndError] = useState<string | null>(null);
+  /** Date of the planned contactmoment this evaluation carries out. */
+  const [geplandOp, setGeplandOp] = useState<string | null>(null);
   const [theme, setTheme] = useState<HostTheme>(getHostTheme());
   const pendingDraft = useRef<Partial<Draft> | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** The autosave under way, so completing waits for it and sends whatever it left behind. */
+  const savingDraft = useRef<Promise<boolean> | null>(null);
 
   useEffect(() => { onInit(() => { setTheme(getHostTheme()); load(); }); }, []);
   useEffect(() => onHostThemeChanged(setTheme), []);
@@ -54,10 +65,10 @@ export function EvaluationPanel() {
 
   // The tabs record changes in the backend and cannot message the panel, so the panel polls.
   useEffect(() => {
-    if (!session || completed) return;
+    if (!session || completed || cancelled) return;
     const timer = setInterval(loadWijzigingen, EVALUATION_POLL_MS);
     return () => clearInterval(timer);
-  }, [session, completed, loadWijzigingen]);
+  }, [session, completed, cancelled, loadWijzigingen]);
 
   const load = async () => {
     try {
@@ -72,15 +83,21 @@ export function EvaluationPanel() {
         deelnemers: current.deelnemers ?? '',
         verslag: current.verslag ?? '',
       });
-      const [planTitel, types] = await Promise.all([
+      const [planTitel, types, gepland] = await Promise.all([
         planTitle(current),
         current.caseDefinitionKey
           ? pdca.phaseConfigs.get(current.caseDefinitionKey)
               .then(cfg => JSON.parse(cfg.evaluationTypes) as string[]).catch(() => [])
           : Promise.resolve([] as string[]),
+        current.geplandContactmomentUuid
+          ? openklant.klantcontacten.listByPlan(current.planUuid)
+              .then(cms => cms.find(cm => cm.uuid === current.geplandContactmomentUuid)?.plaatsgevondenOp ?? null)
+              .catch(() => null)
+          : Promise.resolve(null),
       ]);
       setTitel(planTitel);
       setEvalTypes(types);
+      setGeplandOp(gepland);
       await loadWijzigingen();
     } catch (e: any) {
       setError(e.message);
@@ -89,19 +106,33 @@ export function EvaluationPanel() {
     }
   };
 
-  /** Writes the queued field changes; also called right before completing. */
-  const flushDraft = useCallback(async () => {
+  /**
+   * Writes the queued field changes; also called right before completing.
+   * A failed save puts its fields back in the queue (behind newer edits) and
+   * resolves false, so completing never goes ahead with an older verslag.
+   */
+  const flushDraft = useCallback(async (): Promise<boolean> => {
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+    if (savingDraft.current) await savingDraft.current;
     const changes = pendingDraft.current;
-    if (!changes) return;
+    if (!changes) return true;
     pendingDraft.current = null;
-    try {
-      await updateEvaluationDraft(changes);
-      setSaving('saved');
-    } catch (e: any) {
-      setError('Opslaan mislukt: ' + e.message);
-      setSaving('idle');
-    }
+    const save = updateEvaluationDraft(changes).then(
+      () => {
+        setSaving(pendingDraft.current ? 'pending' : 'saved');
+        return true;
+      },
+      (e: any) => {
+        pendingDraft.current = { ...changes, ...pendingDraft.current };
+        setError('Opslaan mislukt: ' + e.message);
+        setSaving('failed');
+        return false;
+      },
+    );
+    savingDraft.current = save;
+    const ok = await save;
+    if (savingDraft.current === save) savingDraft.current = null;
+    return ok;
   }, []);
 
   const updateField = (field: keyof Draft, value: string) => {
@@ -121,16 +152,37 @@ export function EvaluationPanel() {
 
   const handleComplete = async () => {
     setBusy(true);
-    setCompleteError(null);
+    setEndError(null);
     try {
-      await flushDraft();
+      if (!(await flushDraft())) {
+        setEndError('Het verslag is nog niet opgeslagen. Probeer het opnieuw.');
+        return;
+      }
       await completeEvaluationSession();
       setCompleted(true);
     } catch (e: any) {
-      setCompleteError(e.message);
+      setEndError(e.message);
     } finally {
       setBusy(false);
-      setConfirmComplete(false);
+      setConfirm(null);
+    }
+  };
+
+  // Cancelling discards the contactmoment fields: queued edits are dropped instead of saved.
+  const handleCancel = async () => {
+    setBusy(true);
+    setEndError(null);
+    try {
+      if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+      if (savingDraft.current) await savingDraft.current;
+      await cancelEvaluationSession();
+      pendingDraft.current = null;
+      setCancelled(true);
+    } catch (e: any) {
+      setEndError(e.message);
+    } finally {
+      setBusy(false);
+      setConfirm(null);
     }
   };
 
@@ -146,10 +198,20 @@ export function EvaluationPanel() {
 
   if (loading) return shell(<Loading withOverlay={false} small />);
 
-  if (completed) {
+  if (completed && session) {
     return shell(<>
       <InlineNotification kind="success" title="Evaluatie afgerond" lowContrast hideCloseButton
         subtitle="Het verslag en de wijzigingen staan nu bij de evaluaties van het plan." />
+      <VolgendeEvaluatie planUuid={session.planUuid} evalTypes={evalTypes}
+        defaultType={draft.evaluatieType || DEFAULT_EVALUATIE_TYPE} />
+      <Button size="sm" kind="secondary" onClick={closePanel}>Paneel sluiten</Button>
+    </>);
+  }
+
+  if (cancelled) {
+    return shell(<>
+      <InlineNotification kind="info" title="Evaluatie geannuleerd" lowContrast hideCloseButton
+        subtitle="Er is geen contactmoment vastgelegd." />
       <Button size="sm" kind="secondary" onClick={closePanel}>Paneel sluiten</Button>
     </>);
   }
@@ -170,7 +232,7 @@ export function EvaluationPanel() {
       <div className="pdca-panel-head">
         <Tag type="green">Evaluatie loopt</Tag>
         <span className="pdca-panel-save">
-          {saving === 'pending' ? 'Opslaan…' : saving === 'saved' ? 'Opgeslagen' : ''}
+          {saving === 'pending' ? 'Opslaan…' : saving === 'saved' ? 'Opgeslagen' : saving === 'failed' ? 'Niet opgeslagen' : ''}
         </span>
       </div>
 
@@ -182,6 +244,14 @@ export function EvaluationPanel() {
         <div className="pdca-info-label">Gestart</div>
         <div className="pdca-info-value">{formatDate(session.startedAt)} {formatTime(session.startedAt)}</div>
       </div>
+      {session.geplandContactmomentUuid && (
+        <div className="pdca-info-block">
+          <div className="pdca-info-label">Planning</div>
+          <div className="pdca-info-value">
+            {geplandOp ? `Geplande evaluatie van ${formatDate(geplandOp)}` : 'Geplande evaluatie'}
+          </div>
+        </div>
+      )}
 
       {evalTypes.length > 0 && (
         <Select id="eval-type" size="sm" labelText="Type contactmoment" value={draft.evaluatieType}
@@ -206,30 +276,99 @@ export function EvaluationPanel() {
       </div>
 
       <p className="pdca-panel-hint">
-        Je kunt vrij door GZAC navigeren; sluiten verbergt het paneel alleen. De evaluatie loopt tot je hem afrondt.
+        Je kunt vrij door GZAC navigeren; sluiten verbergt het paneel alleen. De evaluatie loopt tot je hem afrondt
+        of annuleert.
       </p>
 
       {/* A Carbon InlineNotification throws when it contains interactive
           content, so the confirm buttons sit below it. */}
-      {confirmComplete ? <>
+      {confirm === 'complete' && <>
         <InlineNotification kind="warning" title="Evaluatie afronden?" lowContrast hideCloseButton
           subtitle={`Het verslag en ${wijzigingen.length} wijziging${wijzigingen.length === 1 ? '' : 'en'} worden vastgelegd als contactmoment. Daarna is de evaluatie zichtbaar voor collega's en kun je hem niet meer aanpassen.`} />
         <div className="pdca-panel-actions">
           <Button size="sm" renderIcon={Checkmark} disabled={busy} onClick={handleComplete}>
             {busy ? 'Afronden…' : 'Afronden'}
           </Button>
-          <Button size="sm" kind="ghost" disabled={busy} onClick={() => setConfirmComplete(false)}>Terug</Button>
+          <Button size="sm" kind="ghost" disabled={busy} onClick={() => setConfirm(null)}>Terug</Button>
         </div>
-      </> : <>
-        {completeError && (
-          <InlineNotification kind="error" title="Afronden mislukt" subtitle={completeError} lowContrast
-            onCloseButtonClick={() => setCompleteError(null)} />
+      </>}
+      {confirm === 'cancel' && <>
+        <InlineNotification kind="warning" title="Evaluatie annuleren?" lowContrast hideCloseButton
+          subtitle="De evaluatie wordt geannuleerd; er wordt geen contactmoment vastgelegd. Wijzigingen die je in het plan hebt gedaan blijven staan." />
+        <div className="pdca-panel-actions">
+          <Button size="sm" kind="danger" disabled={busy} onClick={handleCancel}>
+            {busy ? 'Annuleren…' : 'Evaluatie annuleren'}
+          </Button>
+          <Button size="sm" kind="ghost" disabled={busy} onClick={() => setConfirm(null)}>Terug</Button>
+        </div>
+      </>}
+      {!confirm && <>
+        {endError && (
+          <InlineNotification kind="error" title="Dat is niet gelukt" subtitle={endError} lowContrast
+            onCloseButtonClick={() => setEndError(null)} />
         )}
         <div className="pdca-panel-actions">
-          <Button size="sm" disabled={busy || verslagLeeg} onClick={() => setConfirmComplete(true)}>Evaluatie afronden</Button>
-          {verslagLeeg && <span className="pdca-panel-hint">Vul het gespreksverslag in om af te ronden.</span>}
+          <Button size="sm" disabled={busy || verslagLeeg} onClick={() => setConfirm('complete')}>Evaluatie afronden</Button>
+          <Button size="sm" kind="danger--ghost" disabled={busy} onClick={() => setConfirm('cancel')}>Evaluatie annuleren</Button>
         </div>
+        {verslagLeeg && <p className="pdca-panel-hint">Vul het gespreksverslag in om af te ronden.</p>}
       </>}
     </>}
   </>);
+}
+
+/**
+ * After completing: plan the next evaluation of the plan as a planned
+ * contactmoment (default six weeks from today, the type of the evaluation
+ * just completed).
+ */
+function VolgendeEvaluatie({ planUuid, evalTypes, defaultType }: {
+  planUuid: string; evalTypes: string[]; defaultType: string;
+}) {
+  const types = evalTypes.length > 0 ? evalTypes : [DEFAULT_EVALUATIE_TYPE];
+  const [datum, setDatum] = useState(overWeken(VOLGENDE_EVALUATIE_WEKEN));
+  const [type, setType] = useState(types.includes(defaultType) ? defaultType : types[0]);
+  const [busy, setBusy] = useState(false);
+  const [fout, setFout] = useState<string | null>(null);
+  const [gepland, setGepland] = useState<string | null>(null);
+
+  const plannen = async () => {
+    setBusy(true);
+    setFout(null);
+    try {
+      await pdca.contactmomenten.create({ planUuid, datum, evaluatieType: type, afgerond: false });
+      setGepland(datum);
+    } catch (e: any) {
+      setFout(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (gepland) {
+    return <InlineNotification kind="success" title="Volgende evaluatie gepland" lowContrast hideCloseButton
+      subtitle={`Gepland op ${formatDate(gepland)}.`} />;
+  }
+
+  return (
+    <div className="pdca-section-block">
+      <div className="pdca-section-title"><span>Volgende evaluatie plannen</span></div>
+      <div className="pdca-panel-form">
+        <TextInput id="volgende-datum" size="sm" type="date" labelText="Datum" min={vandaag()}
+          value={datum} onChange={(e: any) => setDatum(e.target.value)} />
+        {evalTypes.length > 0 && (
+          <Select id="volgende-type" size="sm" labelText="Type" value={type} onChange={(e: any) => setType(e.target.value)}>
+            {evalTypes.map(t => <SelectItem key={t} value={t} text={evalTypeLabel(t)} />)}
+          </Select>
+        )}
+        {fout && <InlineNotification kind="error" title="Plannen mislukt" subtitle={fout} lowContrast
+          onCloseButtonClick={() => setFout(null)} />}
+        <div className="pdca-panel-actions">
+          <Button size="sm" kind="tertiary" disabled={busy || !datum} onClick={plannen}>
+            {busy ? 'Plannen…' : 'Plannen'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
 }

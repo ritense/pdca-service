@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_binnenhof_renovatie"
+                  targetNamespace="http://bpmn.io/schema/bpmn"
+                  exporter="pdca-app" exporterVersion="0.1.0">
+    <bpmn:process camunda:versionTag="CD:binnenhof-renovatie:1.5.0" id="binnenhof-renovatie" isExecutable="true"
+                  name="Binnenhof-renovatie (PDCA)">
+        <bpmn:documentation>Het plandossier ontstaat vanuit een renovatie-intake: het taakformulier "Brandveiligheidsplan
+            aanmaken (PDCA)" maakt het plan aan in Open Plan en start dit proces met de dossiergegevens. Het plan
+            wordt daarna bijgehouden via de PDCA-tabbladen en acties lopen via bouwblokken; dit proces heeft
+            zelf geen taken.
+        </bpmn:documentation>
+        <bpmn:startEvent id="start-event" name="Plan aangemaakt vanuit intake">
+            <bpmn:outgoing>flow-start-einde</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:endEvent id="einde" name="Plandossier aangemaakt">
+            <bpmn:incoming>flow-start-einde</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="flow-start-einde" sourceRef="start-event" targetRef="einde"/>
+    </bpmn:process>
+    <bpmndi:BPMNDiagram id="BPMNDiagram_binnenhof_renovatie">
+        <bpmndi:BPMNPlane bpmnElement="binnenhof-renovatie" id="BPMNPlane_binnenhof_renovatie">
+            <bpmndi:BPMNShape bpmnElement="start-event" id="Shape_start-event">
+                <dc:Bounds height="36" width="36" x="152" y="152"/>
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds height="40" width="100" x="120" y="195"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="einde" id="Shape_einde">
+                <dc:Bounds height="36" width="36" x="312" y="152"/>
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds height="40" width="100" x="280" y="195"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNEdge bpmnElement="flow-start-einde" id="Edge_flow-start-einde">
+                <di:waypoint x="188" y="170"/>
+                <di:waypoint x="312" y="170"/>
+            </bpmndi:BPMNEdge>
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+</bpmn:definitions>

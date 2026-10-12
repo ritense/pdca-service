@@ -7,9 +7,9 @@
  *   behaald/gefaald, ISO datetimes, paginated {count, results}.
  * - Open Product (producttypen) likewise via /openproduct/... (snake_case).
  * - Open Klant (klantcontacten = the plan's contactmomenten) is read via
- *   /openklant/...; creating and deleting a contactmoment goes through the
- *   overlay API, which writes the klantcontact with its betrokkene and
- *   onderwerpobject.
+ *   /openklant/...; creating (also planning) and rescheduling a
+ *   contactmoment goes through the overlay API, which writes the
+ *   klantcontact with its betrokkene and onderwerpobject.
  * - The PDCA overlay (/api/v1/pdca) stores only what the registers don't
  *   model: fase/voortgang/notities per doel and instrument,
  *   evaluatietype/actiepunten per contactmoment, completed evaluations with
@@ -156,9 +156,17 @@ export const pdca = {
     upsert: (contactmomentUuid: string, data: Partial<ContactmomentDetails>) =>
       request<ContactmomentDetails>(`${PDCA}/contactmomentdetails/${contactmomentUuid}`, { method: 'PUT', body: JSON.stringify(data) }),
   },
-  /** Creating/deleting a contactmoment: the klantcontact in Open Klant plus its overlay row. */
+  /**
+   * A contactmoment: the klantcontact in Open Klant plus its overlay row.
+   * With afgerond false it is planned (indicatieContactGelukt null, the
+   * datum as its planned moment). Contactmomenten are never deleted.
+   */
   contactmomenten: {
-    delete: (contactmomentUuid: string) => request<void>(`${PDCA}/contactmomenten/${contactmomentUuid}`, { method: 'DELETE' }),
+    create: (data: NewContactmoment) =>
+      request<ContactmomentDetails>(`${PDCA}/contactmomenten`, { method: 'POST', body: JSON.stringify(data) }),
+    /** Moves a planned contactmoment to another date; 409 once it took place. */
+    reschedule: (contactmomentUuid: string, datum: string) =>
+      request<ContactmomentDetails>(`${PDCA}/contactmomenten/${contactmomentUuid}`, { method: 'PATCH', body: JSON.stringify({ datum }) }),
   },
   instrumentdetails: {
     listByPlan: (planUuid: string) => request<InstrumentDetails[]>(`${PDCA}/instrumentdetails?planUuid=${planUuid}`),
@@ -185,6 +193,9 @@ export const pdca = {
     listByPlan: (planUuid: string) => request<Betrokkene[]>(`${PDCA}/betrokkenen?planUuid=${planUuid}`),
     create: (data: Partial<Betrokkene> & { planUuid: string; name: string; role: string }) =>
       request<Betrokkene>(`${PDCA}/betrokkenen`, { method: 'POST', body: JSON.stringify(data) }),
+    /** Makes this betrokkene the plan's procesbegeleider; returns the plan's betrokkenen. */
+    setProcesbegeleider: (id: string) =>
+      request<Betrokkene[]>(`${PDCA}/betrokkenen/${id}/procesbegeleider`, { method: 'PUT' }),
     delete: (id: string) => request<void>(`${PDCA}/betrokkenen/${id}`, { method: 'DELETE' }),
   },
   dossiers: {
@@ -277,7 +288,7 @@ export async function planVoorDossier(
     return {
       plan: null,
       details: null,
-      fout: resolveFout ?? 'Geen plan voor dit dossier. Maak eerst een plan aan via de taak "Plan aanmaken".',
+      fout: resolveFout ?? 'Bij dit dossier hoort (nog) geen plan. Een plan ontstaat uit een intake.',
     };
   }
   const plan = await openplan.plannen.get(details.planUuid);
@@ -515,12 +526,25 @@ export interface DoelDetails {
 export interface InstrumentDetails {
   instrumentUuid: string;
   planUuid: string;
+  /** Refinement of register status actief: gepland or gestart; null on an active instrument means gestart. */
+  uitvoeringsStatus?: UitvoeringsStatus | null;
   urenBesteed?: number;
   effectiviteitScore?: number;
   effectiviteitToelichting?: string;
   afbreekReden?: string;
   interneNotitie?: string;
   externeNotitie?: string;
+}
+
+/** A contactmoment to record or plan (`afgerond` false: planned on `datum`). */
+export interface NewContactmoment {
+  planUuid: string;
+  /** Plain date, yyyy-mm-dd. */
+  datum: string;
+  evaluatieType: string;
+  afgerond: boolean;
+  /** Verslag, or the agenda/notitie of a planned contactmoment (at most 1000 characters). */
+  verslag?: string;
 }
 
 export interface ContactmomentDetails {
@@ -623,6 +647,7 @@ export interface Betrokkene {
   email?: string;
   phone?: string;
   organization?: string;
+  /** The plan's procesbegeleider (at most one per plan). */
   isPrimary: boolean;
 }
 

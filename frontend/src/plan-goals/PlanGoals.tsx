@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Theme, Layer, Button, Tag, Modal, TextInput, TextArea, Select, SelectItem, Checkbox,
-  Loading, InlineNotification,
+  Loading, InlineNotification, OverflowMenu, OverflowMenuItem,
 } from '@carbon/react';
-import { Add, Edit, TrashCan, ChevronRight, ChevronDown, Checkmark, Close, StopOutline, Launch } from '@carbon/react/icons';
+import { Add, ChevronRight, ChevronDown, Checkmark, Close, Launch } from '@carbon/react/icons';
 import { onInit, resizeIframe, navigateHost } from '../shared/bridge';
 import {
   EvaluationSession, EvaluationChangeInput, syncEvaluationPanel, recordEvaluationChange, onEvaluationEvent,
 } from '../shared/evaluationSession';
 import { EvaluatieBanner } from '../shared/EvaluatieBanner';
+import { useSubmit } from '../shared/useSubmit';
 import {
   openplan, openproduct, pdca, planVoorDossier, urn, deleteDoelCascade, afbreekDoelCascade, afbreekInstrument, productTypeByUrn,
   parseDossierUrn,
@@ -16,12 +17,17 @@ import {
   ActieBouwblokKoppeling, PhaseConfig, VoortgangStatus,
 } from '../shared/api';
 import {
-  statusLabel, doelStatusLabel, doelStatusTag, doelTypeNaam, subdoelTypen, subdoelTypenVoorHoofddoel, isHoofddoelType,
+  aantal, doelStatus, instrumentStatus, actieStatus, doelTypeNaam, subdoelTypen, subdoelTypenVoorHoofddoel, isHoofddoelType,
   doelTypeThemas, producttypenVoorDoel, doelgroepVoorSubject,
   priorityLabel, formatDate, voortgangStatusLabel, voortgangStatusTag, VOORTGANG_STATUSSEN,
 } from '../shared/labels';
 
 type AfbreekTarget = { kind: 'doel' | 'instrument'; uuid: string; titel: string } | null;
+/** Subdoel awaiting confirmation of its removal, with what goes with it. */
+type VerwijderTarget = { uuid: string; titel: string; instrumenten: number; acties: number } | null;
+type Notities = { interneNotitie: string; externeNotitie: string };
+type VoortgangInvoer = { status: VoortgangStatus; toelichting: string };
+type RegistratieInvoer = { uren: number | null; score: number | null; toelichting: string };
 
 export function PlanGoals() {
   const [loading, setLoading] = useState(true);
@@ -50,14 +56,20 @@ export function PlanGoals() {
   const [instrumenttypen, setInstrumenttypen] = useState<InstrumentType[]>([]);
   const [producttypen, setProducttypen] = useState<ProductType[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  /** Instruments whose "Voortgang & notities" panel is open. */
   const [voortgangOpen, setVoortgangOpen] = useState<Set<string>>(new Set());
+  /** Doelen and instruments whose voortgang and notes are being edited. */
+  const [bewerken, setBewerken] = useState<Set<string>>(new Set());
   const [goalModal, setGoalModal] = useState(false);
   /** Context of the "Actie toevoegen" modal: the doel and optionally the instrument it supports. */
   const [actionModal, setActionModal] = useState<{ doelUuid: string; instrumentUuid?: string } | null>(null);
   const [instrumentModal, setInstrumentModal] = useState<string | null>(null);
   const [afbreekTarget, setAfbreekTarget] = useState<AfbreekTarget>(null);
+  const [verwijderTarget, setVerwijderTarget] = useState<VerwijderTarget>(null);
   const [editDoel, setEditDoel] = useState<Doel | null>(null);
   const [hoofddoelOpen, setHoofddoelOpen] = useState(false);
+  /** Key of the state action (starten, afronden, actiestatus) under way; one at a time. */
+  const [busy, setBusy] = useState<string | null>(null);
   /** The user's running evaluation; while it is on this plan, every change here is recorded in it. */
   const [session, setSession] = useState<EvaluationSession | null>(null);
   const docRef = useRef<string | null>(null);
@@ -72,10 +84,10 @@ export function PlanGoals() {
 
   useEffect(() => onEvaluationEvent(event => {
     if (event.type === 'started') setSession(event.session);
-    if (event.type === 'completed') setSession(null);
+    if (event.type === 'ended') setSession(null);
   }), []);
 
-  useEffect(() => { resizeIframe(); }, [loading, doelen, expanded, voortgangOpen, hoofddoelOpen, session]);
+  useEffect(() => { resizeIframe(); }, [loading, doelen, expanded, voortgangOpen, bewerken, hoofddoelOpen, session, error]);
 
   const loadData = useCallback(async () => {
     try {
@@ -149,9 +161,13 @@ export function PlanGoals() {
     next.has(id) ? next.delete(id) : next.add(id);
     return next;
   });
+  const setBewerkt = (id: string, open: boolean) => setBewerken(prev => {
+    const next = new Set(prev);
+    open ? next.add(id) : next.delete(id);
+    return next;
+  });
 
   const doelTitel = (uuid: string) => doelen.find(d => d.uuid === uuid)?.titel ?? null;
-  const instrumentTitel = (uuid: string) => instrumenten.find(i => i.uuid === uuid)?.titel ?? null;
 
   // A doel carries only uuid + name of its doeltype; the register type (with
   // the categorieen that mark hoofddoelen and scope the products) comes from
@@ -196,6 +212,7 @@ export function PlanGoals() {
   // Instrument-bound acties (W&P: instrument -> 0..n taken) render in the
   // instrument block; the doel's actie list keeps only the unbound ones.
   const actiesFor = (doelUuid: string) => acties.filter(a => a.doelUuid === doelUuid && !a.instrumentUuid);
+  const alleActiesFor = (doelUuid: string) => acties.filter(a => a.doelUuid === doelUuid);
   const actiesForInstrument = (instrumentUuid: string) => acties.filter(a => a.instrumentUuid === instrumentUuid);
   const instrumentenFor = (doelUuid: string) => instrumenten.filter(i => i.doelen.some(d => d.uuid === doelUuid));
 
@@ -255,184 +272,229 @@ export function PlanGoals() {
   const openDossier = (caseDefinitionKey: string, documentId: string) =>
     navigateHost(`/cases/${caseDefinitionKey}/document/${documentId}`);
 
+  /** Runs a state action from a button, one at a time; a failure shows as the page error. */
+  const run = async (key: string, foutmelding: string, action: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(key);
+    try {
+      await action();
+    } catch (e: any) {
+      setError(`${foutmelding}: ${e.message}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   // Doelen come from the doeltype register: the title is the register name
   // of the chosen doeltype; free text only as explanation for the inwoner.
+  // Modal saves throw, so the modal keeps the error and stays open.
   const handleSaveDoel = async (data: { titel: string; toelichting: string; doeltypeUuid: string }) => {
-    try {
-      if (editDoel) {
-        await openplan.doelen.update(editDoel.uuid, {
-          titel: data.titel,
-          beschrijving: data.toelichting,
-          doeltypeUuid: data.doeltypeUuid,
+    if (editDoel) {
+      await openplan.doelen.update(editDoel.uuid, {
+        titel: data.titel,
+        beschrijving: data.toelichting,
+        doeltypeUuid: data.doeltypeUuid,
+      });
+      const titelGewijzigd = editDoel.titel !== data.titel;
+      if (titelGewijzigd || (editDoel.beschrijving || '') !== data.toelichting) {
+        rec({
+          subjectType: 'SUBDOEL', subjectUuid: editDoel.uuid, subjectTitel: data.titel, soort: 'SUBDOEL_BEWERKT',
+          vanWaarde: titelGewijzigd ? editDoel.titel : null,
+          naarWaarde: titelGewijzigd ? data.titel : 'toelichting aangepast',
         });
-        const titelGewijzigd = editDoel.titel !== data.titel;
-        if (titelGewijzigd || (editDoel.beschrijving || '') !== data.toelichting) {
-          rec({
-            subjectType: 'SUBDOEL', subjectUuid: editDoel.uuid, subjectTitel: data.titel, soort: 'SUBDOEL_BEWERKT',
-            vanWaarde: titelGewijzigd ? editDoel.titel : null,
-            naarWaarde: titelGewijzigd ? data.titel : 'toelichting aangepast',
-          });
-        }
-      } else if (plan && details) {
-        const doel = await openplan.doelen.create({
-          plannenUuids: [plan.uuid],
-          persoonUuid: details.persoonUuid,
-          doeltypeUuid: data.doeltypeUuid,
-          titel: data.titel,
-          beschrijving: data.toelichting,
-          startdatum: new Date().toISOString(),
-          // New subdoelen hang under the plan's active hoofddoel (W&P hierarchy).
-          ...(actiefHoofddoel ? { hoofdDoel: actiefHoofddoel.uuid } : {}),
-        });
-        await pdca.doeldetails.upsert(doel.uuid, { planUuid: plan.uuid, uitvoeringsStatus: 'GEPLAND' });
-        rec({ subjectType: 'SUBDOEL', subjectUuid: doel.uuid, subjectTitel: doel.titel, soort: 'SUBDOEL_TOEGEVOEGD' });
       }
-      setGoalModal(false); setEditDoel(null); await reload();
-    } catch (e: any) { setError('Doel opslaan mislukt: ' + e.message); }
-  };
-
-  const handleDeleteDoel = async (uuid: string) => {
-    if (!confirm('Doel verwijderen (inclusief instrumenten en acties)?')) return;
-    try {
-      const titel = doelTitel(uuid);
-      await deleteDoelCascade(uuid);
-      rec({ subjectType: 'SUBDOEL', subjectUuid: uuid, subjectTitel: titel, soort: 'SUBDOEL_VERWIJDERD' });
-      await reload();
+    } else if (plan && details) {
+      const doel = await openplan.doelen.create({
+        plannenUuids: [plan.uuid],
+        persoonUuid: details.persoonUuid,
+        doeltypeUuid: data.doeltypeUuid,
+        titel: data.titel,
+        beschrijving: data.toelichting,
+        startdatum: new Date().toISOString(),
+        // New subdoelen hang under the plan's active hoofddoel (W&P hierarchy).
+        ...(actiefHoofddoel ? { hoofdDoel: actiefHoofddoel.uuid } : {}),
+      });
+      await pdca.doeldetails.upsert(doel.uuid, { planUuid: plan.uuid, uitvoeringsStatus: 'GEPLAND' });
+      rec({ subjectType: 'SUBDOEL', subjectUuid: doel.uuid, subjectTitel: doel.titel, soort: 'SUBDOEL_TOEGEVOEGD' });
     }
-    catch (e: any) { setError('Verwijderen mislukt: ' + e.message); }
+    setGoalModal(false); setEditDoel(null); await reload();
   };
 
-  const handleStartDoel = async (uuid: string) => {
+  const askDeleteDoel = (doel: Doel) => setVerwijderTarget({
+    uuid: doel.uuid,
+    titel: doel.titel,
+    // deleteDoelCascade removes only the instruments that belong to this doel alone.
+    instrumenten: instrumentenFor(doel.uuid).filter(i => i.doelen.every(d => d.uuid === doel.uuid)).length,
+    acties: alleActiesFor(doel.uuid).length,
+  });
+
+  const handleDeleteDoel = async () => {
+    if (!verwijderTarget) return;
+    await deleteDoelCascade(verwijderTarget.uuid);
+    rec({ subjectType: 'SUBDOEL', subjectUuid: verwijderTarget.uuid, subjectTitel: verwijderTarget.titel, soort: 'SUBDOEL_VERWIJDERD' });
+    setVerwijderTarget(null);
+    await reload();
+  };
+
+  /** Writes subdoel status GESTART; the caller reloads. */
+  const startSubdoel = async (doel: Doel) => {
     if (!plan) return;
-    await pdca.doeldetails.upsert(uuid, { planUuid: plan.uuid, uitvoeringsStatus: 'GESTART' });
-    rec({ subjectType: 'SUBDOEL', subjectUuid: uuid, subjectTitel: doelTitel(uuid), soort: 'SUBDOEL_GESTART' });
-    await reload();
+    await pdca.doeldetails.upsert(doel.uuid, { planUuid: plan.uuid, uitvoeringsStatus: 'GESTART' });
+    rec({ subjectType: 'SUBDOEL', subjectUuid: doel.uuid, subjectTitel: doel.titel, soort: 'SUBDOEL_GESTART' });
   };
 
-  const handleAfrondenDoel = async (uuid: string) => {
-    await openplan.doelen.update(uuid, { status: 'afgerond', resultaat: 'behaald', einddatum: new Date().toISOString() });
-    rec({ subjectType: 'SUBDOEL', subjectUuid: uuid, subjectTitel: doelTitel(uuid), soort: 'SUBDOEL_AFGEROND' });
-    await reload();
+  /** Work on an instrument means its subdoel is under way: a Gepland subdoel starts along with it. */
+  const startSubdoelAlsGepland = async (doel: Doel) => {
+    if (doel.status === 'actief' && detailsByDoel.get(doel.uuid)?.uitvoeringsStatus !== 'GESTART') await startSubdoel(doel);
   };
+
+  const handleStartDoel = (doel: Doel) => run(`doel-${doel.uuid}`, 'Subdoel starten mislukt', async () => {
+    await startSubdoel(doel);
+    await reload();
+  });
+
+  const handleAfrondenDoel = (doel: Doel) => run(`doel-${doel.uuid}`, 'Subdoel afronden mislukt', async () => {
+    await openplan.doelen.update(doel.uuid, { status: 'afgerond', resultaat: 'behaald', einddatum: new Date().toISOString() });
+    rec({ subjectType: 'SUBDOEL', subjectUuid: doel.uuid, subjectTitel: doel.titel, soort: 'SUBDOEL_AFGEROND' });
+    await reload();
+  });
 
   // Aborting requires a reason; for a doel, linked active voorzieningen are
   // aborted along with it.
   const handleAfbreken = async (reden: string) => {
     if (!afbreekTarget || !plan) return;
-    try {
-      if (afbreekTarget.kind === 'doel') {
-        await afbreekDoelCascade(afbreekTarget.uuid, plan.uuid, reden);
-        rec({ subjectType: 'SUBDOEL', subjectUuid: afbreekTarget.uuid, subjectTitel: afbreekTarget.titel, soort: 'SUBDOEL_AFGEBROKEN', naarWaarde: reden });
-      } else {
-        await afbreekInstrument(afbreekTarget.uuid, plan.uuid, reden);
-        rec({ subjectType: 'INSTRUMENT', subjectUuid: afbreekTarget.uuid, subjectTitel: afbreekTarget.titel, soort: 'INSTRUMENT_AFGEBROKEN', naarWaarde: reden });
-      }
-      setAfbreekTarget(null);
-      await reload();
-    } catch (e: any) { setError('Afbreken mislukt: ' + e.message); }
+    if (afbreekTarget.kind === 'doel') {
+      await afbreekDoelCascade(afbreekTarget.uuid, plan.uuid, reden);
+      rec({ subjectType: 'SUBDOEL', subjectUuid: afbreekTarget.uuid, subjectTitel: afbreekTarget.titel, soort: 'SUBDOEL_AFGEBROKEN', naarWaarde: reden });
+    } else {
+      await afbreekInstrument(afbreekTarget.uuid, plan.uuid, reden);
+      rec({ subjectType: 'INSTRUMENT', subjectUuid: afbreekTarget.uuid, subjectTitel: afbreekTarget.titel, soort: 'INSTRUMENT_AFGEBROKEN', naarWaarde: reden });
+    }
+    setAfbreekTarget(null);
+    await reload();
   };
 
-  const handleSaveActie = async (ctx: { doelUuid: string; instrumentUuid?: string }, data: any) => {
+  const handleSaveActie = async (ctx: { doelUuid: string; instrumentUuid?: string }, data: Partial<Actie> & { title: string }) => {
     const actie = await pdca.acties.create({ doelUuid: ctx.doelUuid, instrumentUuid: ctx.instrumentUuid, ...data });
     rec({ subjectType: 'ACTIE', subjectUuid: actie.id, subjectTitel: actie.title, soort: 'ACTIE_TOEGEVOEGD' });
     setActionModal(null); await reload();
   };
 
-  const handleActieStatus = async (id: string, action: string) => {
+  const handleActieStatus = (id: string, action: string) => run(`actie-${id}`, 'Actiestatus wijzigen mislukt', async () => {
     const voor = acties.find(a => a.id === id);
     const actie = action === 'approve' ? await pdca.acties.approve(id)
       : action === 'reject' ? await pdca.acties.reject(id)
       : await pdca.acties.update(id, { status: action });
     rec({
       subjectType: 'ACTIE', subjectUuid: id, subjectTitel: actie.title, soort: 'ACTIE_STATUS', samenvoegen: true,
-      vanWaarde: voor ? statusLabel(voor.status) : null, naarWaarde: statusLabel(actie.status),
+      vanWaarde: voor ? actieStatus(voor.status).label : null, naarWaarde: actieStatus(actie.status).label,
     });
     await reload();
-  };
+  });
 
+  // A manually added instrument starts as Gepland; "Starten" moves it on.
   const handleSaveInstrument = async (doelUuid: string, data: { titel: string; producttype?: ProductType }) => {
-    try {
-      const instrument = await openplan.instrumenten.create({
-        titel: data.titel,
-        startdatum: new Date().toISOString(),
-        doelenUuids: [doelUuid],
-        ontwikkelwensenUuids: [],
-        instrumenttypeUuid: instrumenttypen[0]?.uuid,
-        ...(data.producttype ? { product: urn('openproduct', 'producttype', data.producttype.code) } : {}),
-      });
-      rec({ subjectType: 'INSTRUMENT', subjectUuid: instrument.uuid, subjectTitel: instrument.titel, soort: 'INSTRUMENT_TOEGEVOEGD' });
-      setInstrumentModal(null); await reload();
-    } catch (e: any) { setError('Instrument opslaan mislukt: ' + e.message); }
+    if (!plan) return;
+    const instrument = await openplan.instrumenten.create({
+      titel: data.titel,
+      startdatum: new Date().toISOString(),
+      doelenUuids: [doelUuid],
+      ontwikkelwensenUuids: [],
+      instrumenttypeUuid: instrumenttypen[0]?.uuid,
+      ...(data.producttype ? { product: urn('openproduct', 'producttype', data.producttype.code) } : {}),
+    });
+    await pdca.instrumentdetails.upsert(instrument.uuid, { planUuid: plan.uuid, uitvoeringsStatus: 'GEPLAND' });
+    rec({ subjectType: 'INSTRUMENT', subjectUuid: instrument.uuid, subjectTitel: instrument.titel, soort: 'INSTRUMENT_TOEGEVOEGD' });
+    setInstrumentModal(null); await reload();
   };
 
-  const handleInstrumentAfronden = async (uuid: string) => {
-    await openplan.instrumenten.update(uuid, { status: 'afgerond', resultaat: 'behaald', einddatum: new Date().toISOString() });
-    rec({ subjectType: 'INSTRUMENT', subjectUuid: uuid, subjectTitel: instrumentTitel(uuid), soort: 'INSTRUMENT_AFGEROND' });
+  const handleInstrumentStarten = (inst: Instrument, doel: Doel) => run(`instrument-${inst.uuid}`, 'Instrument starten mislukt', async () => {
+    if (!plan) return;
+    await pdca.instrumentdetails.upsert(inst.uuid, { planUuid: plan.uuid, uitvoeringsStatus: 'GESTART' });
+    rec({ subjectType: 'INSTRUMENT', subjectUuid: inst.uuid, subjectTitel: inst.titel, soort: 'INSTRUMENT_GESTART' });
+    await startSubdoelAlsGepland(doel);
     await reload();
+  });
+
+  const handleInstrumentAfronden = (inst: Instrument, doel: Doel) => run(`instrument-${inst.uuid}`, 'Instrument afronden mislukt', async () => {
+    await openplan.instrumenten.update(inst.uuid, { status: 'afgerond', resultaat: 'behaald', einddatum: new Date().toISOString() });
+    rec({ subjectType: 'INSTRUMENT', subjectUuid: inst.uuid, subjectTitel: inst.titel, soort: 'INSTRUMENT_AFGEROND' });
+    await startSubdoelAlsGepland(doel);
+    await reload();
+  });
+
+  // Voortgang and notes are edited together in the card; each changed part
+  // is written and recorded on its own. The explanation entered with a
+  // voortgang becomes the reason of the change recorded in the evaluation
+  // (only when it was changed itself).
+  const saveVoortgangStatus = async (kind: 'SUBDOEL' | 'HOOFDDOEL', doel: Doel, invoer: VoortgangInvoer) => {
+    if (!plan) return;
+    const voor = detailsByDoel.get(doel.uuid);
+    await pdca.doeldetails.upsert(doel.uuid, {
+      planUuid: plan.uuid, voortgangStatus: invoer.status, voortgangToelichting: invoer.toelichting,
+    });
+    rec({
+      subjectType: kind, subjectUuid: doel.uuid, subjectTitel: doel.titel, soort: 'VOORTGANG', samenvoegen: true,
+      vanWaarde: voor?.voortgangStatus ? voortgangStatusLabel(voor.voortgangStatus) : null,
+      naarWaarde: voortgangStatusLabel(invoer.status),
+      toelichting: invoer.toelichting !== (voor?.voortgangToelichting ?? '') ? invoer.toelichting : undefined,
+    });
   };
 
-  // The explanation entered with a voortgang becomes the reason of the
-  // change recorded in the evaluation (only when it was changed itself).
-  const handleVoortgangSave = async (instrumentUuid: string, uren: number | null, score: number | null, toelichting: string) => {
+  const saveRegistratie = async (inst: Instrument, invoer: RegistratieInvoer) => {
     if (!plan) return;
-    try {
-      const voor = detailsByInstrument.get(instrumentUuid);
-      const na = await pdca.instrumentdetails.upsert(instrumentUuid, {
-        planUuid: plan.uuid,
-        urenBesteed: uren ?? undefined,
-        effectiviteitScore: score ?? undefined,
-        effectiviteitToelichting: toelichting,
-      });
-      rec({
-        subjectType: 'INSTRUMENT', subjectUuid: instrumentUuid, subjectTitel: instrumentTitel(instrumentUuid),
-        soort: 'INSTRUMENT_REGISTRATIE', samenvoegen: true,
-        vanWaarde: registratieSamenvatting(voor), naarWaarde: registratieSamenvatting(na),
-        toelichting: toelichting !== (voor?.effectiviteitToelichting ?? '') ? toelichting : undefined,
-      });
-      await reload();
-    } catch (e: any) { setError('Voortgang opslaan mislukt: ' + e.message); }
-  };
-
-  const handleVoortgangStatus = async (
-    kind: 'SUBDOEL' | 'HOOFDDOEL', doel: Doel, status: VoortgangStatus, toelichting: string,
-  ) => {
-    if (!plan) return;
-    try {
-      const voor = detailsByDoel.get(doel.uuid);
-      await pdca.doeldetails.upsert(doel.uuid, { planUuid: plan.uuid, voortgangStatus: status, voortgangToelichting: toelichting });
-      rec({
-        subjectType: kind, subjectUuid: doel.uuid, subjectTitel: doel.titel, soort: 'VOORTGANG', samenvoegen: true,
-        vanWaarde: voor?.voortgangStatus ? voortgangStatusLabel(voor.voortgangStatus) : null,
-        naarWaarde: voortgangStatusLabel(status),
-        toelichting: toelichting !== (voor?.voortgangToelichting ?? '') ? toelichting : undefined,
-      });
-      await reload();
-    } catch (e: any) { setError('Voortgang opslaan mislukt: ' + e.message); }
+    const voor = detailsByInstrument.get(inst.uuid);
+    const na = await pdca.instrumentdetails.upsert(inst.uuid, {
+      planUuid: plan.uuid,
+      urenBesteed: invoer.uren ?? undefined,
+      effectiviteitScore: invoer.score ?? undefined,
+      effectiviteitToelichting: invoer.toelichting,
+    });
+    rec({
+      subjectType: 'INSTRUMENT', subjectUuid: inst.uuid, subjectTitel: inst.titel,
+      soort: 'INSTRUMENT_REGISTRATIE', samenvoegen: true,
+      vanWaarde: registratieSamenvatting(voor), naarWaarde: registratieSamenvatting(na),
+      toelichting: invoer.toelichting !== (voor?.effectiviteitToelichting ?? '') ? invoer.toelichting : undefined,
+    });
   };
 
   /** Internal and external note of a doel (subdoel or hoofddoel) or an instrument. */
-  const handleNotities = async (
+  const saveNotities = async (
     target: { kind: 'SUBDOEL' | 'HOOFDDOEL' | 'INSTRUMENT'; uuid: string; titel: string },
-    voor: { interneNotitie?: string; externeNotitie?: string } | undefined,
-    interneNotitie: string, externeNotitie: string,
+    voor: Partial<Notities> | undefined,
+    notities: Notities,
   ) => {
     if (!plan) return;
-    try {
-      if (target.kind === 'INSTRUMENT') {
-        await pdca.instrumentdetails.upsert(target.uuid, { planUuid: plan.uuid, interneNotitie, externeNotitie });
-      } else {
-        await pdca.doeldetails.upsert(target.uuid, { planUuid: plan.uuid, interneNotitie, externeNotitie });
+    if (target.kind === 'INSTRUMENT') {
+      await pdca.instrumentdetails.upsert(target.uuid, { planUuid: plan.uuid, ...notities });
+    } else {
+      await pdca.doeldetails.upsert(target.uuid, { planUuid: plan.uuid, ...notities });
+    }
+    const notitieWijziging = (soort: string, van: string | undefined, naar: string) => {
+      if ((van || '') !== naar) {
+        rec({ subjectType: target.kind, subjectUuid: target.uuid, subjectTitel: target.titel, soort, samenvoegen: true, vanWaarde: van, naarWaarde: naar });
       }
-      const notitieWijziging = (soort: string, van: string | undefined, naar: string) => {
-        if ((van || '') !== naar) {
-          rec({ subjectType: target.kind, subjectUuid: target.uuid, subjectTitel: target.titel, soort, samenvoegen: true, vanWaarde: van, naarWaarde: naar });
-        }
-      };
-      notitieWijziging('INTERNE_NOTITIE', voor?.interneNotitie, interneNotitie);
-      notitieWijziging('EXTERNE_NOTITIE', voor?.externeNotitie, externeNotitie);
-      await reload();
-    } catch (e: any) { setError('Notities opslaan mislukt: ' + e.message); }
+    };
+    notitieWijziging('INTERNE_NOTITIE', voor?.interneNotitie, notities.interneNotitie);
+    notitieWijziging('EXTERNE_NOTITIE', voor?.externeNotitie, notities.externeNotitie);
   };
+
+  /** Saves the edited voortgang and notes of a subdoel or the hoofddoel, then closes the editor. */
+  const saveDoelBijwerken = (kind: 'SUBDOEL' | 'HOOFDDOEL', doel: Doel) =>
+    async (voortgang: VoortgangInvoer | null, notities: Notities | null) => {
+      if (voortgang) await saveVoortgangStatus(kind, doel, voortgang);
+      if (notities) await saveNotities({ kind, uuid: doel.uuid, titel: doel.titel }, detailsByDoel.get(doel.uuid), notities);
+      await reload();
+      setBewerkt(doel.uuid, false);
+    };
+
+  const saveInstrumentBijwerken = (inst: Instrument) =>
+    async (registratie: RegistratieInvoer | null, notities: Notities | null) => {
+      if (registratie) await saveRegistratie(inst, registratie);
+      if (notities) await saveNotities({ kind: 'INSTRUMENT', uuid: inst.uuid, titel: inst.titel }, detailsByInstrument.get(inst.uuid), notities);
+      await reload();
+      setBewerkt(inst.uuid, false);
+    };
 
   if (loading) return <Theme theme="g10"><div className="pdca-container"><Loading withOverlay={false} /></div></Theme>;
   if (error && !plan) return <Theme theme="g10"><div className="pdca-container"><InlineNotification kind="error" title={error} /></div></Theme>;
@@ -460,6 +522,7 @@ export function PlanGoals() {
             Cards are a layer of their own, so their fields stand out (Carbon Layer). */}
         {actiefHoofddoel && (() => {
           const hd = detailsByDoel.get(actiefHoofddoel.uuid);
+          const status = doelStatus(actiefHoofddoel, hd, true);
           return (
             <Layer className="pdca-goal-card" style={{marginBottom: '1rem'}}>
               <div className="pdca-goal-header" onClick={() => setHoofddoelOpen(open => !open)}>
@@ -475,37 +538,36 @@ export function PlanGoals() {
                 </div>
                 <div className="pdca-row-actions">
                   {hd?.voortgangStatus && (
-                    <Tag size="sm" type={voortgangStatusTag(hd.voortgangStatus) as any}>{voortgangStatusLabel(hd.voortgangStatus)}</Tag>
+                    <Tag size="sm" type={voortgangStatusTag(hd.voortgangStatus)}>{voortgangStatusLabel(hd.voortgangStatus)}</Tag>
                   )}
-                  <Tag size="sm" type={doelStatusTag(actiefHoofddoel.status, actiefHoofddoel.resultaat) as any}>
-                    {doelStatusLabel(actiefHoofddoel.status, actiefHoofddoel.resultaat)}
-                  </Tag>
+                  <Tag size="sm" type={status.tag}>{status.label}</Tag>
                 </div>
               </div>
               {hoofddoelOpen && (
                 <div className="pdca-goal-body">
-                  <div className="pdca-section-block">
-                    <div className="pdca-section-title"><span>Voortgang</span></div>
-                    <VoortgangStatusBlok id={actiefHoofddoel.uuid} details={hd}
-                      onSave={(status, toelichting) => handleVoortgangStatus('HOOFDDOEL', actiefHoofddoel, status, toelichting)} />
-                  </div>
-                  <div className="pdca-section-block">
-                    <div className="pdca-section-title"><span>Notities</span></div>
-                    <NotitiesBlok id={actiefHoofddoel.uuid} details={hd}
-                      onSave={(intern, extern) => handleNotities(
-                        { kind: 'HOOFDDOEL', uuid: actiefHoofddoel.uuid, titel: actiefHoofddoel.titel }, hd, intern, extern)} />
-                  </div>
+                  <VoortgangNotitiesSectie
+                    bewerken={bewerken.has(actiefHoofddoel.uuid)}
+                    onBewerken={() => setBewerkt(actiefHoofddoel.uuid, true)}
+                    samenvatting={<DoelSamenvatting details={hd} />}
+                    formulier={
+                      <DoelBijwerken id={actiefHoofddoel.uuid} details={hd} metVoortgang
+                        onSave={saveDoelBijwerken('HOOFDDOEL', actiefHoofddoel)}
+                        onCancel={() => setBewerkt(actiefHoofddoel.uuid, false)} />
+                    } />
                 </div>
               )}
             </Layer>
           );
         })()}
-        {eerdereHoofddoelen.map(d => (
-          <div key={d.uuid} className="pdca-tags" style={{alignItems: 'center', margin: '0 0 8px 4px', fontSize: 12, color: 'var(--cds-text-secondary)'}}>
-            <span className="pdca-text-wrap">Eerder hoofddoel: {d.titel}</span>
-            <Tag size="sm" type={doelStatusTag(d.status, d.resultaat) as any}>{doelStatusLabel(d.status, d.resultaat)}</Tag>
-          </div>
-        ))}
+        {eerdereHoofddoelen.map(d => {
+          const status = doelStatus(d, detailsByDoel.get(d.uuid), true);
+          return (
+            <div key={d.uuid} className="pdca-tags" style={{alignItems: 'center', margin: '0 0 8px 4px', fontSize: 12, color: 'var(--cds-text-secondary)'}}>
+              <span className="pdca-text-wrap">Eerder hoofddoel: {d.titel}</span>
+              <Tag size="sm" type={status.tag}>{status.label}</Tag>
+            </div>
+          );
+        })}
 
         <div className="pdca-phase-bar">
           <div style={{flex: 1}} />
@@ -519,7 +581,12 @@ export function PlanGoals() {
           const da = actiesFor(doel.uuid);
           const di = instrumentenFor(doel.uuid);
           const isOpen = expanded.has(doel.uuid);
-          const uitvoeringsStatus = dd?.uitvoeringsStatus;
+          const status = doelStatus(doel, dd);
+          const actief = doel.status === 'actief';
+          const gestart = dd?.uitvoeringsStatus === 'GESTART';
+          const aantalActies = alleActiesFor(doel.uuid).length;
+          const actieKoppelingen = actieBouwblokkenFor(doel);
+          const productKoppelingen = productBouwblokkenFor(doel);
           return (
             <Layer key={doel.uuid} className={`pdca-goal-card status-${doel.status}`}>
               <div className="pdca-goal-header" onClick={() => toggle(doel.uuid, setExpanded)}>
@@ -528,12 +595,15 @@ export function PlanGoals() {
                   <span className="pdca-text-wrap" style={{fontWeight: 500}}>{doel.titel}</span>
                 </div>
                 <div className="pdca-row-actions">
-                  {doel.status === 'actief' && dd?.voortgangStatus && (
-                    <Tag size="sm" type={voortgangStatusTag(dd.voortgangStatus) as any}>{voortgangStatusLabel(dd.voortgangStatus)}</Tag>
+                  {(aantalActies > 0 || di.length > 0) && (
+                    <span className="pdca-muted-count">
+                      {aantal(aantalActies, 'actie', 'acties')} · {aantal(di.length, 'instrument', 'instrumenten')}
+                    </span>
                   )}
-                  <Tag size="sm" type={doelStatusTag(doel.status, doel.resultaat, uitvoeringsStatus) as any}>
-                    {doelStatusLabel(doel.status, doel.resultaat, uitvoeringsStatus)}
-                  </Tag>
+                  {actief && dd?.voortgangStatus && (
+                    <Tag size="sm" type={voortgangStatusTag(dd.voortgangStatus)}>{voortgangStatusLabel(dd.voortgangStatus)}</Tag>
+                  )}
+                  <Tag size="sm" type={status.tag}>{status.label}</Tag>
                 </div>
               </div>
               {isOpen && (
@@ -543,35 +613,22 @@ export function PlanGoals() {
                     <InlineNotification kind="warning" title="Afgebroken" subtitle={doel.toelichtingResultaat} lowContrast hideCloseButton style={{marginBottom: 16}} />
                   )}
 
-                  <div style={{display: 'flex', gap: 6, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center'}}>
-                    {doel.status === 'actief' && uitvoeringsStatus !== 'GESTART' && (
-                      <Button size="sm" kind="primary" onClick={() => handleStartDoel(doel.uuid)}>Starten</Button>
+                  <div className="pdca-goal-actions">
+                    {actief && !gestart && (
+                      <Button size="sm" kind="primary" disabled={!!busy} onClick={() => handleStartDoel(doel)}>Starten</Button>
                     )}
-                    {doel.status === 'actief' && uitvoeringsStatus === 'GESTART' && (
-                      <Button size="sm" kind="primary" renderIcon={Checkmark} onClick={() => handleAfrondenDoel(doel.uuid)}>Afronden</Button>
+                    {actief && gestart && (
+                      <Button size="sm" kind="primary" renderIcon={Checkmark} disabled={!!busy}
+                        onClick={() => handleAfrondenDoel(doel)}>Afronden</Button>
                     )}
-                    {doel.status === 'actief' && (
-                      <Button size="sm" kind="danger--tertiary" renderIcon={StopOutline}
-                        onClick={() => setAfbreekTarget({ kind: 'doel', uuid: doel.uuid, titel: doel.titel })}>Afbreken</Button>
-                    )}
-                    <Button size="sm" kind="ghost" renderIcon={Edit} onClick={() => { setEditDoel(doel); setGoalModal(true); }}>Bewerken</Button>
-                    <Button size="sm" kind="danger--ghost" renderIcon={TrashCan} onClick={() => handleDeleteDoel(doel.uuid)}>Verwijderen</Button>
-                  </div>
-
-                  <div className="pdca-section-block">
-                    <div className="pdca-section-title"><span>Voortgang</span></div>
-                    {doel.status === 'actief'
-                      ? <VoortgangStatusBlok id={doel.uuid} details={dd}
-                          onSave={(status, toelichting) => handleVoortgangStatus('SUBDOEL', doel, status, toelichting)} />
-                      : <p className={`pdca-info-value${dd?.voortgangToelichting ? '' : ' empty'}`}>
-                          {dd?.voortgangToelichting || 'Geen toelichting'}
-                        </p>}
-                  </div>
-
-                  <div className="pdca-section-block">
-                    <div className="pdca-section-title"><span>Notities</span></div>
-                    <NotitiesBlok id={doel.uuid} details={dd}
-                      onSave={(intern, extern) => handleNotities({ kind: 'SUBDOEL', uuid: doel.uuid, titel: doel.titel }, dd, intern, extern)} />
+                    <OverflowMenu size="sm" aria-label={`Meer acties voor ${doel.titel}`} iconDescription="Meer acties">
+                      <OverflowMenuItem itemText="Bewerken" onClick={() => { setEditDoel(doel); setGoalModal(true); }} />
+                      {actief && (
+                        <OverflowMenuItem itemText="Afbreken" isDelete hasDivider
+                          onClick={() => setAfbreekTarget({ kind: 'doel', uuid: doel.uuid, titel: doel.titel })} />
+                      )}
+                      <OverflowMenuItem itemText="Verwijderen" isDelete hasDivider={!actief} onClick={() => askDeleteDoel(doel)} />
+                    </OverflowMenu>
                   </div>
 
                   <div className="pdca-section-block">
@@ -581,96 +638,45 @@ export function PlanGoals() {
                         <Button size="sm" kind="ghost" renderIcon={Add} onClick={() => setActionModal({ doelUuid: doel.uuid })}>Handmatige actie</Button>
                         {/* Actie building blocks (PDCA Beheer) with a matching doeltype:
                             choosing one creates the action and starts the building block
-                            process on the dossier. No matching blocks -> button greyed out. */}
-                        {(() => {
-                          const available = actieBouwblokkenFor(doel);
-                          const open = actieMenuOpen === doel.uuid;
-                          const unavailable = available.length === 0 || doel.status !== 'actief';
-                          return (
-                            <div style={{position: 'relative'}}>
-                              <Button size="sm" kind="tertiary" renderIcon={ChevronDown}
-                                disabled={unavailable}
-                                title={available.length === 0
-                                  ? 'Geen bouwblok-acties beschikbaar voor dit doeltype'
-                                  : doel.status !== 'actief' ? 'Alleen bij een actief doel' : undefined}
-                                onClick={() => setActieMenuOpen(open ? null : doel.uuid)}>
-                                Actie kiezen
-                              </Button>
-                              {open && !unavailable && (
-                                <div className="pdca-menu">
-                                  {available.map(k => (
-                                    <button key={k.id} type="button"
-                                      disabled={startingBouwblok === k.id + doel.uuid}
-                                      onClick={() => handleStartBouwblok(k, doel.uuid)}
-                                      className="pdca-menu-item">
-                                      <span style={{fontSize: 13, fontWeight: 500}}>
-                                        {startingBouwblok === k.id + doel.uuid ? 'Starten…' : k.naam}
-                                      </span>
-                                      {k.omschrijving && (
-                                        <span style={{display: 'block', fontSize: 11, color: 'var(--cds-text-secondary)'}}>{k.omschrijving}</span>
-                                      )}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
+                            process on the dossier. Without matching blocks there is no picker. */}
+                        {actieKoppelingen.length > 0 && (
+                          <KoppelingMenu label="Actie kiezen" koppelingen={actieKoppelingen} disabled={!actief}
+                            open={actieMenuOpen === doel.uuid}
+                            onToggle={() => setActieMenuOpen(actieMenuOpen === doel.uuid ? null : doel.uuid)}
+                            startingKey={startingBouwblok} doelUuid={doel.uuid}
+                            onKies={k => handleStartBouwblok(k, doel.uuid)} />
+                        )}
                       </div>
                     </div>
-                    {da.map(actie => <ActieRow key={actie.id} actie={actie} onStatus={handleActieStatus} />)}
-                    {da.length === 0 && <p style={{fontSize: 12, color: 'var(--cds-text-helper)', fontStyle: 'italic'}}>Geen acties</p>}
+                    {da.map(actie => <ActieRow key={actie.id} actie={actie} busy={!!busy} onStatus={handleActieStatus} />)}
+                    {da.length === 0 && <p className="pdca-empty-inline">Geen acties</p>}
                   </div>
 
                   <div className="pdca-section-block">
                     <div className="pdca-section-title">
                       <span>Instrumenten / voorzieningen ({di.length})</span>
                       <div className="pdca-row-actions">
-                        <Button size="sm" kind="ghost" renderIcon={Add} onClick={() => setInstrumentModal(doel.uuid)}>Handmatig product</Button>
+                        <Button size="sm" kind="ghost" renderIcon={Add} onClick={() => setInstrumentModal(doel.uuid)}>Instrument toevoegen</Button>
                         {/* Product building blocks (PDCA Beheer) with a matching doeltype:
                             choosing one starts the request building block on the dossier.
                             The instrument only appears in the plan once the request is
                             granted in the dossier's task list — the block manages it. */}
-                        {(() => {
-                          const available = productBouwblokkenFor(doel);
-                          const open = productMenuOpen === doel.uuid;
-                          const unavailable = available.length === 0 || doel.status !== 'actief';
-                          return (
-                            <div style={{position: 'relative'}}>
-                              <Button size="sm" kind="tertiary" renderIcon={ChevronDown}
-                                disabled={unavailable}
-                                title={available.length === 0
-                                  ? 'Geen product-bouwblokken beschikbaar voor dit doeltype'
-                                  : doel.status !== 'actief' ? 'Alleen bij een actief doel' : undefined}
-                                onClick={() => setProductMenuOpen(open ? null : doel.uuid)}>
-                                Start product
-                              </Button>
-                              {open && !unavailable && (
-                                <div className="pdca-menu">
-                                  {available.map(k => (
-                                    <button key={k.id} type="button"
-                                      disabled={startingBouwblok === k.id + doel.uuid}
-                                      onClick={() => handleStartProduct(k, doel.uuid)}
-                                      className="pdca-menu-item">
-                                      <span style={{fontSize: 13, fontWeight: 500}}>
-                                        {startingBouwblok === k.id + doel.uuid ? 'Starten…' : k.naam}
-                                      </span>
-                                      {k.omschrijving && (
-                                        <span style={{display: 'block', fontSize: 11, color: 'var(--cds-text-secondary)'}}>{k.omschrijving}</span>
-                                      )}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
+                        {productKoppelingen.length > 0 && (
+                          <KoppelingMenu label="Start product" koppelingen={productKoppelingen} disabled={!actief}
+                            open={productMenuOpen === doel.uuid}
+                            onToggle={() => setProductMenuOpen(productMenuOpen === doel.uuid ? null : doel.uuid)}
+                            startingKey={startingBouwblok} doelUuid={doel.uuid}
+                            onKies={k => handleStartProduct(k, doel.uuid)} />
+                        )}
                       </div>
                     </div>
                     {di.map(inst => {
                       const pt = productTypeByUrn(producttypen, inst.product);
                       const idet = detailsByInstrument.get(inst.uuid);
-                      const vOpen = voortgangOpen.has(inst.uuid);
+                      const instStatus = instrumentStatus(inst, idet);
+                      const instActief = inst.status === 'actief';
+                      const instGepland = instActief && idet?.uitvoeringsStatus === 'GEPLAND';
+                      const instActies = actiesForInstrument(inst.uuid);
                       // Instrument created by a DOSSIER product: the zaak
                       // register field carries the aanvraagdossier's URN.
                       const dossierRef = parseDossierUrn(inst.zaak);
@@ -684,7 +690,7 @@ export function PlanGoals() {
                               {idet?.effectiviteitScore != null && <Tag size="sm" type="teal">effectiviteit {idet.effectiviteitScore}/5</Tag>}
                             </div>
                             <div className="pdca-row-actions">
-                              <Tag size="sm" type={doelStatusTag(inst.status, inst.resultaat) as any}>{doelStatusLabel(inst.status, inst.resultaat)}</Tag>
+                              <Tag size="sm" type={instStatus.tag}>{instStatus.label}</Tag>
                               {dossierRef && (
                                 <Button size="sm" kind="ghost" renderIcon={Launch}
                                   title="Open het aanvraagdossier van dit product"
@@ -692,51 +698,66 @@ export function PlanGoals() {
                                   Dossier
                                 </Button>
                               )}
-                              <Button size="sm" kind="ghost" onClick={() => toggle(inst.uuid, setVoortgangOpen)}>Voortgang &amp; notities</Button>
-                              {inst.status === 'actief' && (
-                                <Button size="sm" kind="ghost" renderIcon={Add}
-                                  title="Taak/opdracht bij dit instrument"
-                                  onClick={() => setActionModal({ doelUuid: doel.uuid, instrumentUuid: inst.uuid })}>
-                                  Actie
-                                </Button>
+                              {instGepland && (
+                                <Button size="sm" kind="ghost" disabled={!!busy} onClick={() => handleInstrumentStarten(inst, doel)}>Starten</Button>
                               )}
-                              {inst.status === 'actief' && <Button size="sm" kind="ghost" onClick={() => handleInstrumentAfronden(inst.uuid)}>Afronden</Button>}
-                              {inst.status === 'actief' && (
-                                <Button size="sm" kind="danger--ghost" renderIcon={StopOutline} iconDescription="Afbreken" hasIconOnly
-                                  onClick={() => setAfbreekTarget({ kind: 'instrument', uuid: inst.uuid, titel: inst.titel })} />
+                              {instActief && !instGepland && (
+                                <Button size="sm" kind="ghost" renderIcon={Checkmark} disabled={!!busy}
+                                  onClick={() => handleInstrumentAfronden(inst, doel)}>Afronden</Button>
                               )}
+                              <OverflowMenu size="sm" flipped aria-label={`Meer acties voor ${inst.titel}`} iconDescription="Meer acties">
+                                {instActief && (
+                                  <OverflowMenuItem itemText="Actie toevoegen"
+                                    onClick={() => setActionModal({ doelUuid: doel.uuid, instrumentUuid: inst.uuid })} />
+                                )}
+                                <OverflowMenuItem itemText="Voortgang & notities" onClick={() => toggle(inst.uuid, setVoortgangOpen)} />
+                                {instActief && (
+                                  <OverflowMenuItem itemText="Afbreken" isDelete hasDivider
+                                    onClick={() => setAfbreekTarget({ kind: 'instrument', uuid: inst.uuid, titel: inst.titel })} />
+                                )}
+                              </OverflowMenu>
                             </div>
                           </div>
                           {idet?.afbreekReden && (
                             <p style={{fontSize: 12, color: 'var(--cds-text-error, #da1e28)', margin: '0 0 8px 0'}}>Afbreekreden: {idet.afbreekReden}</p>
                           )}
                           {/* Taken/opdrachten of this instrument (W&P: instrument -> 0..n taken). */}
-                          {actiesForInstrument(inst.uuid).length > 0 && (
+                          {instActies.length > 0 && (
                             <div style={{margin: '0 0 8px 16px', borderLeft: '2px solid var(--cds-border-subtle)', paddingLeft: 8}}>
-                              {actiesForInstrument(inst.uuid).map(actie => (
-                                <ActieRow key={actie.id} actie={actie} onStatus={handleActieStatus} />
+                              {instActies.map(actie => (
+                                <ActieRow key={actie.id} actie={actie} busy={!!busy} onStatus={handleActieStatus} />
                               ))}
                             </div>
                           )}
-                          {vOpen && (
-                            <Layer className="pdca-instrument-panel">
-                              <div>
-                                <div className="pdca-section-title"><span>Voortgang</span></div>
-                                <VoortgangForm instrument={inst} details={idet}
-                                  onSave={(uren, score, toelichting) => handleVoortgangSave(inst.uuid, uren, score, toelichting)} />
-                              </div>
-                              <div>
-                                <div className="pdca-section-title"><span>Notities</span></div>
-                                <NotitiesBlok id={inst.uuid} details={idet}
-                                  onSave={(intern, extern) => handleNotities({ kind: 'INSTRUMENT', uuid: inst.uuid, titel: inst.titel }, idet, intern, extern)} />
-                              </div>
-                            </Layer>
+                          {voortgangOpen.has(inst.uuid) && (
+                            <InstrumentPanel>
+                              <VoortgangNotitiesSectie
+                                bewerken={bewerken.has(inst.uuid)}
+                                onBewerken={() => setBewerkt(inst.uuid, true)}
+                                onSluiten={() => { toggle(inst.uuid, setVoortgangOpen); setBewerkt(inst.uuid, false); }}
+                                samenvatting={<InstrumentSamenvatting details={idet} />}
+                                formulier={
+                                  <InstrumentBijwerken id={inst.uuid} details={idet}
+                                    onSave={saveInstrumentBijwerken(inst)}
+                                    onCancel={() => setBewerkt(inst.uuid, false)} />
+                                } />
+                            </InstrumentPanel>
                           )}
                         </div>
                       );
                     })}
-                    {di.length === 0 && <p style={{fontSize: 12, color: 'var(--cds-text-helper)', fontStyle: 'italic'}}>Geen instrumenten</p>}
+                    {di.length === 0 && <p className="pdca-empty-inline">Geen instrumenten</p>}
                   </div>
+
+                  <VoortgangNotitiesSectie
+                    bewerken={bewerken.has(doel.uuid)}
+                    onBewerken={() => setBewerkt(doel.uuid, true)}
+                    samenvatting={<DoelSamenvatting details={dd} />}
+                    formulier={
+                      <DoelBijwerken id={doel.uuid} details={dd} metVoortgang={actief}
+                        onSave={saveDoelBijwerken('SUBDOEL', doel)}
+                        onCancel={() => setBewerkt(doel.uuid, false)} />
+                    } />
                 </div>
               )}
             </Layer>
@@ -753,8 +774,41 @@ export function PlanGoals() {
           doelgroep={doelgroepVoorSubject(plan?.domeinregister)}
           onClose={() => setInstrumentModal(null)} onSave={handleSaveInstrument} />
         <AfbreekModal target={afbreekTarget} onClose={() => setAfbreekTarget(null)} onSubmit={handleAfbreken} />
+        <VerwijderModal target={verwijderTarget} onClose={() => setVerwijderTarget(null)} onSubmit={handleDeleteDoel} />
       </div>
     </Theme>
+  );
+}
+
+/** "Actie kiezen" / "Start product": a dropdown of the building block koppelingen available under a doel. */
+function KoppelingMenu({ label, koppelingen, disabled, open, onToggle, startingKey, doelUuid, onKies }: {
+  label: string; koppelingen: ActieBouwblokKoppeling[]; disabled: boolean; open: boolean; onToggle: () => void;
+  startingKey: string | null; doelUuid: string; onKies: (koppeling: ActieBouwblokKoppeling) => void;
+}) {
+  return (
+    <div style={{position: 'relative'}}>
+      <Button size="sm" kind="tertiary" renderIcon={ChevronDown} disabled={disabled}
+        title={disabled ? 'Alleen bij een actief doel' : undefined} onClick={onToggle}>
+        {label}
+      </Button>
+      {open && !disabled && (
+        <div className="pdca-menu">
+          {koppelingen.map(k => (
+            <button key={k.id} type="button"
+              disabled={startingKey === k.id + doelUuid}
+              onClick={() => onKies(k)}
+              className="pdca-menu-item">
+              <span style={{fontSize: 13, fontWeight: 500}}>
+                {startingKey === k.id + doelUuid ? 'Starten…' : k.naam}
+              </span>
+              {k.omschrijving && (
+                <span style={{display: 'block', fontSize: 11, color: 'var(--cds-text-secondary)'}}>{k.omschrijving}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -763,9 +817,10 @@ export function PlanGoals() {
  * block process the Operaton task is the source of completion; the local
  * status buttons stay hidden. Used under a doel and under an instrument.
  */
-function ActieRow({ actie, onStatus }: { actie: Actie; onStatus: (id: string, action: string) => void }) {
+function ActieRow({ actie, busy, onStatus }: { actie: Actie; busy: boolean; onStatus: (id: string, action: string) => void }) {
   const isBouwblok = actie.uitvoering === 'BOUWBLOK';
   const loopt = isBouwblok && actie.status !== 'COMPLETED' && actie.status !== 'REJECTED';
+  const status = actieStatus(actie.status);
   return (
     <div className="pdca-action-row">
       <div className="pdca-row-main">
@@ -781,15 +836,13 @@ function ActieRow({ actie, onStatus }: { actie: Actie; onStatus: (id: string, ac
       <div className="pdca-row-actions">
         {isBouwblok && <Tag size="sm" type="teal" title="Uitgevoerd door een GZAC-bouwblokproces; afronden gaat via de taak in de takenlijst">Bouwblok</Tag>}
         {actie.priority && !isBouwblok && <Tag size="sm" type={actie.priority === 'HIGH' ? 'red' : 'gray'}>{priorityLabel(actie.priority)}</Tag>}
-        <Tag size="sm" type={actie.status === 'COMPLETED' ? 'green' : actie.status === 'PENDING_REVIEW' ? 'warm-gray' : actie.status === 'IN_PROGRESS' ? 'blue' : 'gray'}>
-          {statusLabel(actie.status)}
-        </Tag>
-        {!loopt && <>
-          {actie.status === 'PLANNED' && !isBouwblok && <Button size="sm" kind="ghost" onClick={() => onStatus(actie.id, 'IN_PROGRESS')}>Start</Button>}
-          {actie.status === 'IN_PROGRESS' && !isBouwblok && <Button size="sm" kind="ghost" onClick={() => onStatus(actie.id, 'PENDING_REVIEW')}>Ter beoordeling</Button>}
-          {actie.status === 'PENDING_REVIEW' && !isBouwblok && <>
-            <Button size="sm" kind="primary" renderIcon={Checkmark} onClick={() => onStatus(actie.id, 'approve')}>Goedkeuren</Button>
-            <Button size="sm" kind="danger" renderIcon={Close} onClick={() => onStatus(actie.id, 'reject')}>Afkeuren</Button>
+        <Tag size="sm" type={status.tag}>{status.label}</Tag>
+        {!loopt && !isBouwblok && <>
+          {actie.status === 'PLANNED' && <Button size="sm" kind="ghost" disabled={busy} onClick={() => onStatus(actie.id, 'IN_PROGRESS')}>Starten</Button>}
+          {actie.status === 'IN_PROGRESS' && <Button size="sm" kind="ghost" disabled={busy} onClick={() => onStatus(actie.id, 'PENDING_REVIEW')}>Ter beoordeling</Button>}
+          {actie.status === 'PENDING_REVIEW' && <>
+            <Button size="sm" kind="primary" renderIcon={Checkmark} disabled={busy} onClick={() => onStatus(actie.id, 'approve')}>Goedkeuren</Button>
+            <Button size="sm" kind="danger" renderIcon={Close} disabled={busy} onClick={() => onStatus(actie.id, 'reject')}>Afkeuren</Button>
           </>}
         </>}
       </div>
@@ -807,137 +860,272 @@ function registratieSamenvatting(d: InstrumentDetails | undefined): string | nul
   return delen.length > 0 ? delen.join(' · ') : null;
 }
 
+const eersteRegel = (tekst: string) => tekst.split('\n').find(r => r.trim())?.trim() ?? '';
+
+/**
+ * "Voortgang & notities" of a doel or instrument: a compact summary with
+ * "Bijwerken", which swaps in the edit form until it is saved or cancelled.
+ */
+function VoortgangNotitiesSectie({ bewerken, onBewerken, onSluiten, samenvatting, formulier }: {
+  bewerken: boolean; onBewerken: () => void; onSluiten?: () => void;
+  samenvatting: React.ReactNode; formulier: React.ReactNode;
+}) {
+  return (
+    <div className="pdca-section-block">
+      <div className="pdca-section-title">
+        <span>Voortgang &amp; notities</span>
+        {!bewerken && (
+          <div className="pdca-row-actions">
+            <Button size="sm" kind="ghost" onClick={onBewerken}>Bijwerken</Button>
+            {onSluiten && <Button size="sm" kind="ghost" onClick={onSluiten}>Sluiten</Button>}
+          </div>
+        )}
+      </div>
+      {bewerken ? formulier : samenvatting}
+    </div>
+  );
+}
+
+function NotitiesSamenvatting({ details }: { details?: Partial<Notities> }) {
+  const intern = eersteRegel(details?.interneNotitie ?? '');
+  const extern = eersteRegel(details?.externeNotitie ?? '');
+  if (!intern && !extern) return <p className="pdca-summary-line pdca-summary-empty">Geen notities</p>;
+  return <>
+    {intern && <p className="pdca-summary-line pdca-text-ellipsis">Interne notitie: {intern}</p>}
+    {extern && <p className="pdca-summary-line pdca-text-ellipsis">Externe notitie: {extern}</p>}
+  </>;
+}
+
+function DoelSamenvatting({ details }: { details?: DoelDetails }) {
+  return (
+    <div className="pdca-summary">
+      {details?.voortgangStatus ? (
+        <p className="pdca-summary-line">
+          <Tag size="sm" type={voortgangStatusTag(details.voortgangStatus)}>{voortgangStatusLabel(details.voortgangStatus)}</Tag>
+          {details.voortgangToelichting && <span className="pdca-text-wrap">{details.voortgangToelichting}</span>}
+        </p>
+      ) : (
+        <p className="pdca-summary-line pdca-summary-empty">Nog niet beoordeeld</p>
+      )}
+      <NotitiesSamenvatting details={details} />
+    </div>
+  );
+}
+
+function InstrumentSamenvatting({ details }: { details?: InstrumentDetails }) {
+  const registratie = registratieSamenvatting(details);
+  return (
+    <div className="pdca-summary">
+      <p className={`pdca-summary-line${registratie ? '' : ' pdca-summary-empty'}`}>
+        {registratie ?? 'Nog geen uren of effectiviteit geregistreerd'}
+      </p>
+      {details?.effectiviteitToelichting && <p className="pdca-summary-line pdca-text-wrap">{details.effectiviteitToelichting}</p>}
+      <NotitiesSamenvatting details={details} />
+    </div>
+  );
+}
+
+/** The nested "Voortgang & notities" panel under an instrument row; scrolls into view when it opens. */
+function InstrumentPanel({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { ref.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, []);
+  return <Layer className="pdca-instrument-panel"><div ref={ref}>{children}</div></Layer>;
+}
+
+/** Buttons under an edit form: cancel closes it, save is enabled once something changed. */
+function BijwerkenActies({ saving, kanOpslaan, fout, onCancel, onSave }: {
+  saving: boolean; kanOpslaan: boolean; fout: string | null; onCancel: () => void; onSave: () => void;
+}) {
+  return <>
+    {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
+    <div className="pdca-edit-actions">
+      <Button size="sm" kind="ghost" disabled={saving} onClick={onCancel}>Annuleren</Button>
+      <Button size="sm" disabled={saving || !kanOpslaan} onClick={onSave}>{saving ? 'Opslaan…' : 'Opslaan'}</Button>
+    </div>
+  </>;
+}
+
+/**
+ * Edit form for the voortgang (active subdoel or hoofddoel) and the notes of
+ * a doel; only the parts that changed are saved.
+ */
+function DoelBijwerken({ id, details, metVoortgang, onSave, onCancel }: {
+  id: string; details?: DoelDetails; metVoortgang: boolean;
+  onSave: (voortgang: VoortgangInvoer | null, notities: Notities | null) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [status, setStatus] = useState<VoortgangStatus | ''>(details?.voortgangStatus ?? '');
+  const [toelichting, setToelichting] = useState(details?.voortgangToelichting ?? '');
+  const [notities, setNotities] = useState<Notities>({
+    interneNotitie: details?.interneNotitie ?? '', externeNotitie: details?.externeNotitie ?? '',
+  });
+  const { saving, fout, submit } = useSubmit();
+  const voortgangGewijzigd = metVoortgang
+    && (status !== (details?.voortgangStatus ?? '') || toelichting !== (details?.voortgangToelichting ?? ''));
+  const notitiesGewijzigd = notities.interneNotitie !== (details?.interneNotitie ?? '')
+    || notities.externeNotitie !== (details?.externeNotitie ?? '');
+  const kanOpslaan = (voortgangGewijzigd || notitiesGewijzigd) && !(voortgangGewijzigd && !status);
+  return (
+    <div className="pdca-edit-form">
+      {metVoortgang && (
+        <VoortgangStatusBlok id={id} status={status} toelichting={toelichting} heeftStatus={!!details?.voortgangStatus}
+          onStatus={setStatus} onToelichting={setToelichting} />
+      )}
+      <NotitiesBlok id={id} notities={notities} onChange={setNotities} />
+      <BijwerkenActies saving={saving} kanOpslaan={kanOpslaan} fout={fout} onCancel={onCancel}
+        onSave={() => submit(() => onSave(
+          voortgangGewijzigd && status ? { status, toelichting } : null,
+          notitiesGewijzigd ? notities : null,
+        ))} />
+    </div>
+  );
+}
+
+/** Edit form for the hours, effectiveness and notes of an instrument; only the parts that changed are saved. */
+function InstrumentBijwerken({ id, details, onSave, onCancel }: {
+  id: string; details?: InstrumentDetails;
+  onSave: (registratie: RegistratieInvoer | null, notities: Notities | null) => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [uren, setUren] = useState<string>(details?.urenBesteed?.toString() ?? '');
+  const [score, setScore] = useState<string>(details?.effectiviteitScore?.toString() ?? '');
+  const [toelichting, setToelichting] = useState(details?.effectiviteitToelichting ?? '');
+  const [notities, setNotities] = useState<Notities>({
+    interneNotitie: details?.interneNotitie ?? '', externeNotitie: details?.externeNotitie ?? '',
+  });
+  const { saving, fout, submit } = useSubmit();
+  const registratieGewijzigd = uren !== (details?.urenBesteed?.toString() ?? '')
+    || score !== (details?.effectiviteitScore?.toString() ?? '')
+    || toelichting !== (details?.effectiviteitToelichting ?? '');
+  const notitiesGewijzigd = notities.interneNotitie !== (details?.interneNotitie ?? '')
+    || notities.externeNotitie !== (details?.externeNotitie ?? '');
+  return (
+    <div className="pdca-edit-form">
+      <VoortgangForm id={id} uren={uren} score={score} toelichting={toelichting}
+        onUren={setUren} onScore={setScore} onToelichting={setToelichting} />
+      <NotitiesBlok id={id} notities={notities} onChange={setNotities} />
+      <BijwerkenActies saving={saving} kanOpslaan={registratieGewijzigd || notitiesGewijzigd} fout={fout} onCancel={onCancel}
+        onSave={() => submit(() => onSave(
+          registratieGewijzigd
+            ? { uren: uren ? parseInt(uren, 10) : null, score: score ? parseInt(score, 10) : null, toelichting }
+            : null,
+          notitiesGewijzigd ? notities : null,
+        ))} />
+    </div>
+  );
+}
+
 /**
  * Internal note (colleagues only) and external note (may be shared with the
- * inwoner) of a subdoel, the hoofddoel or an instrument; saved together.
+ * inwoner) of a subdoel, the hoofddoel or an instrument.
  */
-function NotitiesBlok({ id, details, onSave }: {
-  id: string;
-  details?: { interneNotitie?: string; externeNotitie?: string };
-  onSave: (interneNotitie: string, externeNotitie: string) => void;
+function NotitiesBlok({ id, notities, onChange }: {
+  id: string; notities: Notities; onChange: (notities: Notities) => void;
 }) {
-  const [intern, setIntern] = useState(details?.interneNotitie ?? '');
-  const [extern, setExtern] = useState(details?.externeNotitie ?? '');
-  useEffect(() => {
-    setIntern(details?.interneNotitie ?? '');
-    setExtern(details?.externeNotitie ?? '');
-  }, [details?.interneNotitie, details?.externeNotitie]);
-  const gewijzigd = intern !== (details?.interneNotitie ?? '') || extern !== (details?.externeNotitie ?? '');
   return (
-    <div>
-      <div className="pdca-form-grid">
-        <TextArea id={`intern-${id}`} rows={3} labelText="Interne notitie" helperText="Alleen zichtbaar voor collega's"
-          value={intern} onChange={(e: any) => setIntern(e.target.value)} />
-        <TextArea id={`extern-${id}`} rows={3} labelText="Externe notitie" helperText="Kan gedeeld worden met de inwoner"
-          value={extern} onChange={(e: any) => setExtern(e.target.value)} />
-      </div>
-      {gewijzigd && (
-        <div className="pdca-edit-actions">
-          <Button size="sm" kind="ghost" onClick={() => { setIntern(details?.interneNotitie ?? ''); setExtern(details?.externeNotitie ?? ''); }}>Herstellen</Button>
-          <Button size="sm" onClick={() => onSave(intern, extern)}>Notities opslaan</Button>
-        </div>
-      )}
+    <div className="pdca-form-grid">
+      <TextArea id={`intern-${id}`} rows={3} labelText="Interne notitie" helperText="Alleen zichtbaar voor collega's"
+        value={notities.interneNotitie} onChange={(e: any) => onChange({ ...notities, interneNotitie: e.target.value })} />
+      <TextArea id={`extern-${id}`} rows={3} labelText="Externe notitie" helperText="Kan gedeeld worden met de inwoner"
+        value={notities.externeNotitie} onChange={(e: any) => onChange({ ...notities, externeNotitie: e.target.value })} />
     </div>
   );
 }
 
 /**
  * Voortgangsstatus with its explanation, for an active subdoel or the
- * hoofddoel; saved together. During an evaluation a changed explanation
- * becomes the reason of the recorded change.
+ * hoofddoel. During an evaluation a changed explanation becomes the reason
+ * of the recorded change.
  */
-function VoortgangStatusBlok({ id, details, onSave }: {
-  id: string;
-  details?: DoelDetails;
-  onSave: (status: VoortgangStatus, toelichting: string) => void;
+function VoortgangStatusBlok({ id, status, toelichting, heeftStatus, onStatus, onToelichting }: {
+  id: string; status: VoortgangStatus | ''; toelichting: string; heeftStatus: boolean;
+  onStatus: (status: VoortgangStatus | '') => void; onToelichting: (toelichting: string) => void;
 }) {
-  const [status, setStatus] = useState<VoortgangStatus | ''>(details?.voortgangStatus ?? '');
-  const [toelichting, setToelichting] = useState(details?.voortgangToelichting ?? '');
-  const herstel = () => { setStatus(details?.voortgangStatus ?? ''); setToelichting(details?.voortgangToelichting ?? ''); };
-  useEffect(herstel, [details?.voortgangStatus, details?.voortgangToelichting]);
-  const gewijzigd = status !== (details?.voortgangStatus ?? '') || toelichting !== (details?.voortgangToelichting ?? '');
   return (
-    <div>
-      <div className="pdca-form-grid">
-        <Select id={`voortgang-${id}`} labelText="Status" value={status}
-          onChange={(e: any) => setStatus(e.target.value)}>
-          <SelectItem value="" text="Geen status" disabled hidden={!!details?.voortgangStatus} />
-          {VOORTGANG_STATUSSEN.map(st => <SelectItem key={st} value={st} text={voortgangStatusLabel(st)} />)}
-        </Select>
-        <TextArea id={`voortgang-toelichting-${id}`} rows={2} labelText="Toelichting" helperText="Waarom gaat het zo?"
-          value={toelichting} onChange={(e: any) => setToelichting(e.target.value)} />
-      </div>
-      {gewijzigd && (
-        <div className="pdca-edit-actions">
-          <Button size="sm" kind="ghost" onClick={herstel}>Herstellen</Button>
-          <Button size="sm" disabled={!status} onClick={() => status && onSave(status, toelichting)}>Voortgang opslaan</Button>
-        </div>
-      )}
+    <div className="pdca-form-grid">
+      <Select id={`voortgang-${id}`} labelText="Voortgang" value={status}
+        onChange={(e: any) => onStatus(e.target.value)}>
+        <SelectItem value="" text="Geen status" disabled hidden={heeftStatus} />
+        {VOORTGANG_STATUSSEN.map(st => <SelectItem key={st} value={st} text={voortgangStatusLabel(st)} />)}
+      </Select>
+      <TextArea id={`voortgang-toelichting-${id}`} rows={2} labelText="Toelichting" helperText="Waarom gaat het zo?"
+        value={toelichting} onChange={(e: any) => onToelichting(e.target.value)} />
     </div>
   );
 }
 
 const EFFECTIVITEIT_LABELS = ['geen effect', 'weinig effect', 'neutraal', 'effectief', 'zeer effectief'];
 
-/** Hours + effectiviteit with its explanation per instrument (PDCA overlay). */
-function VoortgangForm({ instrument, details, onSave }: {
-  instrument: Instrument; details?: InstrumentDetails;
-  onSave: (uren: number | null, score: number | null, toelichting: string) => void;
+/** Hours + effectiviteit with its explanation of an instrument (PDCA overlay). */
+function VoortgangForm({ id, uren, score, toelichting, onUren, onScore, onToelichting }: {
+  id: string; uren: string; score: string; toelichting: string;
+  onUren: (uren: string) => void; onScore: (score: string) => void; onToelichting: (toelichting: string) => void;
 }) {
-  const [uren, setUren] = useState<string>(details?.urenBesteed?.toString() ?? '');
-  const [score, setScore] = useState<string>(details?.effectiviteitScore?.toString() ?? '');
-  const [toelichting, setToelichting] = useState(details?.effectiviteitToelichting ?? '');
-  const herstel = () => {
-    setUren(details?.urenBesteed?.toString() ?? '');
-    setScore(details?.effectiviteitScore?.toString() ?? '');
-    setToelichting(details?.effectiviteitToelichting ?? '');
-  };
-  useEffect(herstel, [details?.urenBesteed, details?.effectiviteitScore, details?.effectiviteitToelichting]);
-  const gewijzigd = uren !== (details?.urenBesteed?.toString() ?? '')
-    || score !== (details?.effectiviteitScore?.toString() ?? '')
-    || toelichting !== (details?.effectiviteitToelichting ?? '');
   return (
     <div>
       <div className="pdca-form-grid">
-        <TextInput id={`uren-${instrument.uuid}`} labelText="Bestede uren" type="number"
-          value={uren} onChange={(e: any) => setUren(e.target.value)} />
-        <Select id={`score-${instrument.uuid}`} labelText="Effectiviteit" value={score} onChange={(e: any) => setScore(e.target.value)}>
+        <TextInput id={`uren-${id}`} labelText="Bestede uren" type="number"
+          value={uren} onChange={(e: any) => onUren(e.target.value)} />
+        <Select id={`score-${id}`} labelText="Effectiviteit" value={score} onChange={(e: any) => onScore(e.target.value)}>
           <SelectItem value="" text="-" />
           {EFFECTIVITEIT_LABELS.map((label, i) => <SelectItem key={i} value={String(i + 1)} text={`${i + 1} - ${label}`} />)}
         </Select>
       </div>
-      <TextArea id={`toel-${instrument.uuid}`} className="pdca-form-field" rows={2} labelText="Toelichting"
+      <TextArea id={`toel-${id}`} className="pdca-form-field" rows={2} labelText="Toelichting"
         helperText="Hoe werkt dit instrument voor de inwoner?"
-        value={toelichting} onChange={(e: any) => setToelichting(e.target.value)} />
-      {gewijzigd && (
-        <div className="pdca-edit-actions">
-          <Button size="sm" kind="ghost" onClick={herstel}>Herstellen</Button>
-          <Button size="sm" onClick={() => onSave(uren ? parseInt(uren, 10) : null, score ? parseInt(score, 10) : null, toelichting)}>
-            Voortgang opslaan
-          </Button>
-        </div>
-      )}
+        value={toelichting} onChange={(e: any) => onToelichting(e.target.value)} />
     </div>
   );
 }
 
 /** Aborting always requires a reason (doel: cascades to linked voorzieningen). */
 function AfbreekModal({ target, onClose, onSubmit }: {
-  target: AfbreekTarget; onClose: () => void; onSubmit: (reden: string) => void;
+  target: AfbreekTarget; onClose: () => void; onSubmit: (reden: string) => Promise<void>;
 }) {
   const [reden, setReden] = useState('');
-  useEffect(() => { if (target) setReden(''); }, [target]);
+  const { saving, fout, submit, reset } = useSubmit();
+  useEffect(() => { if (target) { setReden(''); reset(); } }, [target]);
   return (
-    <Modal open={!!target} danger modalHeading={`${target?.kind === 'doel' ? 'Doel' : 'Instrument'} afbreken`}
-      primaryButtonText="Afbreken" secondaryButtonText="Annuleren" primaryButtonDisabled={!reden.trim()}
-      onRequestClose={onClose} onRequestSubmit={() => reden.trim() && onSubmit(reden.trim())}>
+    <Modal open={!!target} danger modalHeading={`${target?.kind === 'doel' ? 'Subdoel' : 'Instrument'} afbreken`}
+      primaryButtonText={saving ? 'Afbreken…' : 'Afbreken'} secondaryButtonText="Annuleren"
+      primaryButtonDisabled={saving || !reden.trim()}
+      onRequestClose={onClose} onRequestSubmit={() => reden.trim() && submit(() => onSubmit(reden.trim()))}>
       <div className="pdca-modal-form">
-        <p style={{marginBottom: 12}}>
+        {fout && <InlineNotification kind="error" title="Afbreken mislukt" subtitle={fout} lowContrast hideCloseButton />}
+        <p>
           Je staat op het punt <strong>{target?.titel}</strong> af te breken.
           {target?.kind === 'doel' && ' Gekoppelde actieve voorzieningen worden ook afgebroken.'}
         </p>
         <TextArea id="afbreek-reden" labelText="Reden (verplicht)" value={reden}
           onChange={(e: any) => setReden(e.target.value)} placeholder="Waarom wordt dit afgebroken?" />
+      </div>
+    </Modal>
+  );
+}
+
+/** Removing a subdoel takes its own instruments and its acties with it. */
+function VerwijderModal({ target, onClose, onSubmit }: {
+  target: VerwijderTarget; onClose: () => void; onSubmit: () => Promise<void>;
+}) {
+  const { saving, fout, submit, reset } = useSubmit();
+  useEffect(() => { if (target) reset(); }, [target]);
+  const mee = target
+    ? [
+        target.instrumenten > 0 ? aantal(target.instrumenten, 'instrument', 'instrumenten') : null,
+        target.acties > 0 ? aantal(target.acties, 'actie', 'acties') : null,
+      ].filter(Boolean).join(' en ')
+    : '';
+  return (
+    <Modal open={!!target} danger modalHeading="Subdoel verwijderen"
+      primaryButtonText={saving ? 'Verwijderen…' : 'Verwijderen'} secondaryButtonText="Annuleren"
+      primaryButtonDisabled={saving}
+      onRequestClose={onClose} onRequestSubmit={() => submit(onSubmit)}>
+      <div className="pdca-modal-form">
+        {fout && <InlineNotification kind="error" title="Verwijderen mislukt" subtitle={fout} lowContrast hideCloseButton />}
+        <p>
+          <strong>{target?.titel}</strong> wordt verwijderd{mee ? `, inclusief ${mee}` : ''}. Dit kan niet ongedaan worden gemaakt.
+        </p>
+        <p>Is het subdoel niet meer van toepassing? Kies dan liever Afbreken; dan blijft het met de reden zichtbaar in het plan.</p>
       </div>
     </Modal>
   );
@@ -951,14 +1139,16 @@ function AfbreekModal({ target, onClose, onSubmit }: {
 function DoelModal({ open, doel, doeltypen, hoofddoelNaam, subdoelMapping, onClose, onSave }: {
   open: boolean; doel: Doel | null; doeltypen: DoelType[];
   hoofddoelNaam?: string | null; subdoelMapping?: string | null;
-  onClose: () => void; onSave: (data: { titel: string; toelichting: string; doeltypeUuid: string }) => void;
+  onClose: () => void; onSave: (data: { titel: string; toelichting: string; doeltypeUuid: string }) => Promise<void>;
 }) {
   const [toelichting, setToelichting] = useState('');
   const [doeltypeUuid, setDoeltypeUuid] = useState('');
+  const { saving, fout, submit, reset } = useSubmit();
   useEffect(() => {
     if (open) {
       setToelichting(doel?.beschrijving || '');
       setDoeltypeUuid(doel?.doeltype?.uuid || '');
+      reset();
     }
   }, [open, doel]);
 
@@ -972,22 +1162,23 @@ function DoelModal({ open, doel, doeltypen, hoofddoelNaam, subdoelMapping, onClo
 
   return (
     <Modal open={open} modalHeading={doel ? 'Subdoel bewerken' : 'Subdoel toevoegen'}
-      primaryButtonText="Opslaan" secondaryButtonText="Annuleren"
-      primaryButtonDisabled={!doeltypeUuid || !titel}
+      primaryButtonText={saving ? 'Opslaan…' : 'Opslaan'} secondaryButtonText="Annuleren"
+      primaryButtonDisabled={saving || !doeltypeUuid || !titel}
       onRequestClose={onClose}
-      onRequestSubmit={() => doeltypeUuid && titel && onSave({ titel, toelichting, doeltypeUuid })}>
+      onRequestSubmit={() => doeltypeUuid && titel && submit(() => onSave({ titel, toelichting, doeltypeUuid }))}>
       <div className="pdca-modal-form">
-        <Select id="doel-type" labelText="Subdoel (uit doeltype-register)" value={doeltypeUuid} onChange={(e: any) => setDoeltypeUuid(e.target.value)}
+        {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
+        <Select id="doel-type" labelText="Subdoel" value={doeltypeUuid} onChange={(e: any) => setDoeltypeUuid(e.target.value)}
           helperText={gescoped
             ? `Subdoelen die horen bij hoofddoel "${hoofddoelNaam}"`
-            : 'Vast gedefinieerde doelen uit het register'}>
+            : 'Vast gedefinieerde doelen uit het doeltype-register'}>
           <SelectItem value="" text="-- Kies subdoel --" />
           {huidigOnbekend && <SelectItem value={doel!.doeltype!.uuid} text={`${doel!.titel} (huidig)`} />}
           {opties.map(t => (
             <SelectItem key={t.uuid} value={t.uuid} text={t.doelType} />
           ))}
         </Select>
-        <TextArea id="doel-toelichting" labelText="Toelichting (t.b.v. de inwoner)" value={toelichting}
+        <TextArea id="doel-toelichting" labelText="Toelichting" helperText="Uitleg voor de inwoner" value={toelichting}
           onChange={(e: any) => setToelichting(e.target.value)} />
       </div>
     </Modal>
@@ -998,7 +1189,7 @@ function ActieModal({ open, ctx, onClose, onSave }: {
   open: boolean;
   ctx: { doelUuid: string; instrumentUuid?: string } | null;
   onClose: () => void;
-  onSave: (ctx: { doelUuid: string; instrumentUuid?: string }, data: any) => void;
+  onSave: (ctx: { doelUuid: string; instrumentUuid?: string }, data: Partial<Actie> & { title: string }) => Promise<void>;
 }) {
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
@@ -1006,13 +1197,22 @@ function ActieModal({ open, ctx, onClose, onSave }: {
   const [assigneeName, setAssigneeName] = useState('');
   const [priority, setPriority] = useState('NORMAL');
   const [dueDate, setDueDate] = useState('');
-  useEffect(() => { if (open) { setTitle(''); setDesc(''); setAssigneeName(''); setDueDate(''); } }, [open]);
+  const { saving, fout, submit, reset } = useSubmit();
+  useEffect(() => { if (open) { setTitle(''); setDesc(''); setAssigneeName(''); setDueDate(''); reset(); } }, [open]);
+  const opslaan = () => {
+    if (!ctx || !title.trim()) return;
+    submit(() => onSave(ctx, {
+      title: title.trim(), description: desc, assigneeType, assigneeName, priority, dueDate: dueDate || undefined,
+    }));
+  };
   return (
     <Modal open={open} modalHeading={ctx?.instrumentUuid ? 'Actie bij instrument toevoegen' : 'Actie toevoegen'}
-      primaryButtonText="Opslaan" secondaryButtonText="Annuleren"
-      onRequestClose={onClose} onRequestSubmit={() => ctx && onSave(ctx, { title, description: desc, assigneeType, assigneeName, priority, dueDate: dueDate || undefined })}>
+      primaryButtonText={saving ? 'Opslaan…' : 'Opslaan'} secondaryButtonText="Annuleren"
+      primaryButtonDisabled={saving || !title.trim()}
+      onRequestClose={onClose} onRequestSubmit={opslaan}>
       <div className="pdca-modal-form">
-        <TextInput id="actie-title" labelText="Titel" value={title} onChange={(e: any) => setTitle(e.target.value)} />
+        {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
+        <TextInput id="actie-title" labelText="Titel (verplicht)" value={title} onChange={(e: any) => setTitle(e.target.value)} />
         <TextArea id="actie-desc" labelText="Beschrijving" value={desc} onChange={(e: any) => setDesc(e.target.value)} />
         <Select id="actie-assignee-type" labelText="Uitvoerder type" value={assigneeType} onChange={(e: any) => setAssigneeType(e.target.value)}>
           <SelectItem value="PROFESSIONAL" text="Behandelaar" />
@@ -1032,21 +1232,22 @@ function ActieModal({ open, ctx, onClose, onSave }: {
 }
 
 /**
- * Manual product: an instrument registered straight on the doel, without a
- * request process. The catalog is scoped to the subdoel — producttypen that
- * carry a thema of the doeltype, within the doelgroep of the plan subject —
- * with "Toon alle producten" as escape hatch for a product that is not (yet)
- * thematised.
+ * "Instrument toevoegen": an instrument registered straight on the doel,
+ * without a request process; it starts as Gepland. The catalog is scoped to
+ * the subdoel — producttypen that carry a thema of the doeltype, within the
+ * doelgroep of the plan subject — with "Toon alle producten" as escape hatch
+ * for a product that is not (yet) thematised.
  */
 function InstrumentModal({ open, doelUuid, producttypen, doelType, doelgroep, onClose, onSave }: {
   open: boolean; doelUuid: string | null; producttypen: ProductType[];
   doelType?: DoelType; doelgroep?: string; onClose: () => void;
-  onSave: (doelUuid: string, data: { titel: string; producttype?: ProductType }) => void;
+  onSave: (doelUuid: string, data: { titel: string; producttype?: ProductType }) => Promise<void>;
 }) {
   const [titel, setTitel] = useState('');
   const [productUuid, setProductUuid] = useState('');
   const [alleProducten, setAlleProducten] = useState(false);
-  useEffect(() => { if (open) { setTitel(''); setProductUuid(''); setAlleProducten(false); } }, [open]);
+  const { saving, fout, submit, reset } = useSubmit();
+  useEffect(() => { if (open) { setTitel(''); setProductUuid(''); setAlleProducten(false); reset(); } }, [open]);
   const themas = doelTypeThemas(doelType);
   const passend = useMemo(
     () => producttypenVoorDoel(producttypen, doelType, doelgroep),
@@ -1065,9 +1266,13 @@ function InstrumentModal({ open, doelUuid, producttypen, doelType, doelgroep, on
     if (!checked && productUuid && !passend.some(p => p.uuid === productUuid)) setProductUuid('');
   };
   return (
-    <Modal open={open} modalHeading="Instrument toevoegen" primaryButtonText="Opslaan" secondaryButtonText="Annuleren"
-      onRequestClose={onClose} onRequestSubmit={() => doelUuid && onSave(doelUuid, { titel, producttype: selected })}>
+    <Modal open={open} modalHeading="Instrument toevoegen"
+      primaryButtonText={saving ? 'Opslaan…' : 'Opslaan'} secondaryButtonText="Annuleren"
+      primaryButtonDisabled={saving || !titel.trim()}
+      onRequestClose={onClose}
+      onRequestSubmit={() => doelUuid && titel.trim() && submit(() => onSave(doelUuid, { titel: titel.trim(), producttype: selected }))}>
       <div className="pdca-modal-form">
+        {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
         <Select id="inst-product" labelText="Producttype uit Open Product" value={productUuid} onChange={(e: any) => onProductSelect(e.target.value)}
           helperText={alleProducten
             ? 'Volledige catalogus van Open Product'
@@ -1090,7 +1295,7 @@ function InstrumentModal({ open, doelUuid, producttypen, doelType, doelgroep, on
             {selected.parameters.find(p => p.naam === 'duur') ? ` · Duur: ${selected.parameters.find(p => p.naam === 'duur')!.waarde}` : ''}
           </p>
         )}
-        <TextInput id="inst-titel" labelText="Titel" value={titel} onChange={(e: any) => setTitel(e.target.value)} />
+        <TextInput id="inst-titel" labelText="Titel (verplicht)" value={titel} onChange={(e: any) => setTitel(e.target.value)} />
       </div>
     </Modal>
   );

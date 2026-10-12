@@ -47,16 +47,38 @@ tasks.withType<Test> {
 
 tasks.register<Exec>("dockerUp") {
     group = "docker"
-    description = "Start the PDCA app's dependencies via docker compose"
-    commandLine("/usr/local/bin/docker", "compose", "up", "-d")
+    description = "Start the PDCA app's dependencies via docker compose and wait until they are healthy"
+    commandLine("/usr/local/bin/docker", "compose", "up", "-d", "--wait")
     workingDir = projectDir
     environment("PATH", "/usr/local/bin:/usr/bin:/bin")
 }
 
+// The compose stack logs every visitor of a register admin in as `admin`
+// (docker/register-dev/pdca_dev.py), so these pages open logged in.
+// Skip with -PopenRegisterAdmins=false.
+val openRegisterAdmins = providers.gradleProperty("openRegisterAdmins").orElse("true")
+
+tasks.register("openRegisterAdmins") {
+    group = "application"
+    description = "Open the admin pages of Open Plan, Open Product and Open Klant in the browser"
+    mustRunAfter("dockerUp")
+    onlyIf { openRegisterAdmins.get() != "false" }
+    doLast {
+        val urls = listOf(7501, 7502, 7504).map { "http://localhost:$it/admin/" }
+        val os = System.getProperty("os.name").lowercase()
+        val commands = when {
+            "mac" in os -> listOf(listOf("open") + urls)
+            "win" in os -> urls.map { listOf("cmd", "/c", "start", "", it) }
+            else -> urls.map { listOf("xdg-open", it) }
+        }
+        commands.forEach { ProcessBuilder(it).inheritIO().start().waitFor() }
+    }
+}
+
 tasks.register("bootRunWithDocker") {
     group = "application"
-    description = "Start docker compose, then run the PDCA app"
-    dependsOn("dockerUp")
+    description = "Start docker compose, open the register admins, then run the PDCA app"
+    dependsOn("dockerUp", "openRegisterAdmins")
     finalizedBy("bootRun")
 }
 
