@@ -648,37 +648,37 @@ function BouwblokkenBeheer({ soort, vorm, planConfigs, doeltypen, onToast }: {
   const product = soort === 'PRODUCT';
   const dossierVorm = vorm === 'DOSSIER';
   const t = dossierVorm ? {
-    titel: 'Product-dossiers',
-    hint: 'Productaanvragen als volwaardige case: elke aanvraag vanaf de planpagina krijgt een eigen dossier ' +
+    titel: 'Instrument-dossiers',
+    hint: 'Instrumentaanvragen als volwaardige case: elke aanvraag vanaf de planpagina krijgt een eigen dossier ' +
       '(eigen taken, PBAC, documenten en optioneel een zaak via de zaaktype-link van het dossiertype). ' +
       'Het proces zet bij toekenning het instrument in het plan — met de dossier-URN in het zaak-veld, ' +
       'waardoor de planpagina naar het aanvraagdossier kan springen.',
-    kolom: 'Product',
+    kolom: 'Instrument',
     kolomProces: 'Dossiertype',
-    leeg: 'Geen product-dossiers gekoppeld.',
-    naamLabel: 'Naam van het product',
+    leeg: 'Geen instrument-dossiers gekoppeld.',
+    naamLabel: 'Naam van het instrument',
     naamPlaceholder: 'bijv. Werkfit-traject aanvragen',
-    koppelKnop: 'Product-dossier koppelen',
-    modalEdit: 'Product-dossier bewerken',
-    toastGekoppeld: 'Product-dossier gekoppeld; de pdca-proceskoppelingen van het dossiertype staan op de gekozen configuratie',
-    toastOntkoppeld: 'Product-dossier ontkoppeld',
-    confirmOntkoppelen: (naam: string, caseDef: string) => `Product-dossier "${naam}" (${caseDef}) ontkoppelen?`,
+    koppelKnop: 'Instrument-dossier koppelen',
+    modalEdit: 'Instrument-dossier bewerken',
+    toastGekoppeld: 'Instrument-dossier gekoppeld; de pdca-proceskoppelingen van het dossiertype staan op de gekozen configuratie',
+    toastOntkoppeld: 'Instrument-dossier ontkoppeld',
+    confirmOntkoppelen: (naam: string, caseDef: string) => `Instrument-dossier "${naam}" (${caseDef}) ontkoppelen?`,
   } : product ? {
-    titel: 'Product-bouwblokken',
-    hint: 'GZAC-bouwblokken die een product/voorziening aanvragen onder een doel ("product X aanvragen") ' +
-      'en op het plandossier draaien. Alle productlogica zit in het bouwblok zelf — via de plugin-actions ' +
+    titel: 'Instrument-bouwblokken',
+    hint: 'GZAC-bouwblokken die een instrument aanvragen onder een doel ("instrument X aanvragen") ' +
+      'en op het plandossier draaien. Alle aanvraaglogica zit in het bouwblok zelf — via de plugin-actions ' +
       'aanmaak-instrument/update-instrument zet het het instrument in het plan en werkt het het bij; ' +
       'hier bepaal je alleen onder welk plandossiertype en doeltype(s) het beschikbaar is.',
-    kolom: 'Product',
+    kolom: 'Instrument',
     kolomProces: 'Bouwblok',
-    leeg: 'Geen product-bouwblokken gekoppeld.',
-    naamLabel: 'Naam van het product',
+    leeg: 'Geen instrument-bouwblokken gekoppeld.',
+    naamLabel: 'Naam van het instrument',
     naamPlaceholder: 'bijv. Jobcoaching aanvragen',
-    koppelKnop: 'Product-bouwblok koppelen',
-    modalEdit: 'Product-bouwblok bewerken',
-    toastGekoppeld: 'Product-bouwblok gekoppeld; de pluginconfiguratie staat op de bouwbloklink van het dossiertype',
-    toastOntkoppeld: 'Product-bouwblok ontkoppeld',
-    confirmOntkoppelen: (naam: string, caseDef: string) => `Product-bouwblok "${naam}" (${caseDef}) ontkoppelen?`,
+    koppelKnop: 'Instrument-bouwblok koppelen',
+    modalEdit: 'Instrument-bouwblok bewerken',
+    toastGekoppeld: 'Instrument-bouwblok gekoppeld; de pluginconfiguratie staat op de bouwbloklink van het dossiertype',
+    toastOntkoppeld: 'Instrument-bouwblok ontkoppeld',
+    confirmOntkoppelen: (naam: string, caseDef: string) => `Instrument-bouwblok "${naam}" (${caseDef}) ontkoppelen?`,
   } : {
     titel: 'Actie-bouwblokken',
     hint: 'GZAC-bouwblokken die als actie onder een doel gestart kunnen worden. Importeer de bouwblok-zip ' +
@@ -772,7 +772,7 @@ function BouwblokkenBeheer({ soort, vorm, planConfigs, doeltypen, onToast }: {
 
   const handleSave = async () => {
     if (!formCaseDefKey) { alert('Kies een plandossiertype'); return; }
-    if (dossierVorm && !formProductCaseKey.trim()) { alert('Kies het productdossiertype'); return; }
+    if (dossierVorm && !formProductCaseKey.trim()) { alert('Kies het instrumentdossiertype'); return; }
     if (!dossierVorm && !formProcesKey.trim()) { alert('Kies een bouwblok (of vul de proceskey in)'); return; }
     if (!formNaam.trim()) { alert('Vul een naam voor de actie in'); return; }
     if (!formPluginConfig) { alert('Kies de PDCA-pluginconfiguratie'); return; }
@@ -888,20 +888,20 @@ function BouwblokkenBeheer({ soort, vorm, planConfigs, doeltypen, onToast }: {
 
           {dossierVorm ? (
             productDossiertypes !== null ? (
-              <Select id={`bb-${soort}-${vorm}-productcase`} labelText="Productdossiertype"
-                helperText="Dossiertypes met het productcontract in hun documentschema (dossierUrn + instrumentUuid + doelUuid). Alleen dossiertypes met een geactiveerde versie verschijnen hier."
+              <Select id={`bb-${soort}-${vorm}-productcase`} labelText="Instrumentdossiertype"
+                helperText="Dossiertypes met het instrumentcontract in hun documentschema (dossierUrn + instrumentUuid + doelUuid). Alleen dossiertypes met een geactiveerde versie verschijnen hier."
                 value={formProductCaseKey} onChange={(e: any) => {
                   setFormProductCaseKey(e.target.value);
                   if (e.target.value && !formNaam.trim()) setFormNaam(e.target.value);
                 }}>
-                <SelectItem value="" text={productDossiertypes.length === 0 ? '— importeer én activeer eerst een productdossier-zip in GZAC —' : '— kies productdossiertype —'} />
+                <SelectItem value="" text={productDossiertypes.length === 0 ? '— importeer én activeer eerst een instrumentdossier-zip in GZAC —' : '— kies instrumentdossiertype —'} />
                 {productDossiertypes.map(c => <SelectItem key={c} value={c} text={c} />)}
                 {formProductCaseKey && !productDossiertypes.includes(formProductCaseKey) && (
                   <SelectItem value={formProductCaseKey} text={`${formProductCaseKey} (huidig)`} />
                 )}
               </Select>
             ) : (
-              <TextInput id={`bb-${soort}-${vorm}-productcase`} labelText="Productdossiertype (case definition key)"
+              <TextInput id={`bb-${soort}-${vorm}-productcase`} labelText="Instrumentdossiertype (case definition key)"
                 value={formProductCaseKey} onChange={(e: any) => setFormProductCaseKey(e.target.value)}
                 placeholder="werkfit-aanvraag"
                 helperText="De dossiertypelijst van GZAC is niet beschikbaar (accepteer de nieuwe manifest-grant); vul de key handmatig in." />
@@ -928,7 +928,7 @@ function BouwblokkenBeheer({ soort, vorm, planConfigs, doeltypen, onToast }: {
 
           <Select id={`bb-${soort}-${vorm}-pluginconfig`} labelText="PDCA-pluginconfiguratie"
             helperText={dossierVorm
-              ? 'De losse pdca-proceskoppelingen van het productdossiertype worden aan deze configuratie gekoppeld; één configuratie per productdossiertype.'
+              ? 'De losse pdca-proceskoppelingen van het instrumentdossiertype worden aan deze configuratie gekoppeld; één configuratie per instrumentdossiertype.'
               : 'Deze configuratie wordt als pluginmapping op de bouwbloklink van het dossiertype gezet; één configuratie per bouwblok per dossiertype.'}
             value={formPluginConfig} onChange={(e: any) => setFormPluginConfig(e.target.value)}>
             <SelectItem value="" text={pluginConfigs.length === 0 ? '— geen configuratie gepusht door GZAC —' : '— kies configuratie —'} />

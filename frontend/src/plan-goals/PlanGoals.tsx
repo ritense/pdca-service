@@ -43,7 +43,7 @@ export function PlanGoals() {
   const [startingBouwblok, setStartingBouwblok] = useState<string | null>(null);
   /** DoelUuid whose "Actie kiezen" dropdown is open. */
   const [actieMenuOpen, setActieMenuOpen] = useState<string | null>(null);
-  /** DoelUuid whose "Start product" dropdown is open. */
+  /** DoelUuid whose "Instrument aanvragen" dropdown is open. */
   const [productMenuOpen, setProductMenuOpen] = useState<string | null>(null);
   /** Confirmation after starting a product request; for a DOSSIER product
    *  it carries the created aanvraagdossier for a direct link. */
@@ -262,7 +262,7 @@ export function PlanGoals() {
         : { message: `Aanvraag "${koppeling.naam}" gestart — de beoordelingstaak staat in de takenlijst van het dossier.` });
       await reload();
     } catch (e: any) {
-      setError(`Product "${koppeling.naam}" aanvragen mislukt: ` + e.message);
+      setError(`Instrument "${koppeling.naam}" aanvragen mislukt: ` + e.message);
     } finally {
       setStartingBouwblok(null);
     }
@@ -359,7 +359,7 @@ export function PlanGoals() {
     await reload();
   });
 
-  // Aborting requires a reason; for a doel, linked active voorzieningen are
+  // Aborting requires a reason; for a doel, linked active instruments are
   // aborted along with it.
   const handleAfbreken = async (reden: string) => {
     if (!afbreekTarget || !plan) return;
@@ -507,7 +507,7 @@ export function PlanGoals() {
         {evaluatieLoopt && <EvaluatieBanner />}
         {productStarted && (
           <div className="pdca-row pdca-notification-row">
-            <InlineNotification className="pdca-notification" kind="success" title="Product aangevraagd" subtitle={productStarted.message}
+            <InlineNotification className="pdca-notification" kind="success" title="Instrument aangevraagd" subtitle={productStarted.message}
               lowContrast onCloseButtonClick={() => setProductStarted(null)} style={{flex: '1 1 16rem'}} />
             {productStarted.dossier && (
               <Button size="sm" kind="tertiary" renderIcon={Launch}
@@ -654,7 +654,7 @@ export function PlanGoals() {
 
                   <div className="pdca-section-block">
                     <div className="pdca-section-title">
-                      <span>Instrumenten / voorzieningen ({di.length})</span>
+                      <span>Instrumenten ({di.length})</span>
                       <div className="pdca-row-actions">
                         <Button size="sm" kind="ghost" renderIcon={Add} onClick={() => setInstrumentModal(doel.uuid)}>Instrument toevoegen</Button>
                         {/* Product building blocks (PDCA Beheer) with a matching doeltype:
@@ -662,7 +662,7 @@ export function PlanGoals() {
                             The instrument only appears in the plan once the request is
                             granted in the dossier's task list — the block manages it. */}
                         {productKoppelingen.length > 0 && (
-                          <KoppelingMenu label="Start product" koppelingen={productKoppelingen} disabled={!actief}
+                          <KoppelingMenu label="Instrument aanvragen" koppelingen={productKoppelingen} disabled={!actief}
                             open={productMenuOpen === doel.uuid}
                             onToggle={() => setProductMenuOpen(productMenuOpen === doel.uuid ? null : doel.uuid)}
                             startingKey={startingBouwblok} doelUuid={doel.uuid}
@@ -693,7 +693,7 @@ export function PlanGoals() {
                               <Tag size="sm" type={instStatus.tag}>{instStatus.label}</Tag>
                               {dossierRef && (
                                 <Button size="sm" kind="ghost" renderIcon={Launch}
-                                  title="Open het aanvraagdossier van dit product"
+                                  title="Open het aanvraagdossier van dit instrument"
                                   onClick={() => openDossier(dossierRef.caseDefinitionKey, dossierRef.documentId)}>
                                   Dossier
                                 </Button>
@@ -780,7 +780,7 @@ export function PlanGoals() {
   );
 }
 
-/** "Actie kiezen" / "Start product": a dropdown of the building block koppelingen available under a doel. */
+/** "Actie kiezen" / "Instrument aanvragen": a dropdown of the building block koppelingen available under a doel. */
 function KoppelingMenu({ label, koppelingen, disabled, open, onToggle, startingKey, doelUuid, onKies }: {
   label: string; koppelingen: ActieBouwblokKoppeling[]; disabled: boolean; open: boolean; onToggle: () => void;
   startingKey: string | null; doelUuid: string; onKies: (koppeling: ActieBouwblokKoppeling) => void;
@@ -834,7 +834,6 @@ function ActieRow({ actie, busy, onStatus }: { actie: Actie; busy: boolean; onSt
         )}
       </div>
       <div className="pdca-row-actions">
-        {isBouwblok && <Tag size="sm" type="teal" title="Uitgevoerd door een GZAC-bouwblokproces; afronden gaat via de taak in de takenlijst">Bouwblok</Tag>}
         {actie.priority && !isBouwblok && <Tag size="sm" type={actie.priority === 'HIGH' ? 'red' : 'gray'}>{priorityLabel(actie.priority)}</Tag>}
         <Tag size="sm" type={status.tag}>{status.label}</Tag>
         {!loopt && !isBouwblok && <>
@@ -1078,7 +1077,7 @@ function VoortgangForm({ id, uren, score, toelichting, onUren, onScore, onToelic
   );
 }
 
-/** Aborting always requires a reason (doel: cascades to linked voorzieningen). */
+/** Aborting always requires a reason (doel: cascades to linked instruments). */
 function AfbreekModal({ target, onClose, onSubmit }: {
   target: AfbreekTarget; onClose: () => void; onSubmit: (reden: string) => Promise<void>;
 }) {
@@ -1094,7 +1093,7 @@ function AfbreekModal({ target, onClose, onSubmit }: {
         {fout && <InlineNotification kind="error" title="Afbreken mislukt" subtitle={fout} lowContrast hideCloseButton />}
         <p>
           Je staat op het punt <strong>{target?.titel}</strong> af te breken.
-          {target?.kind === 'doel' && ' Gekoppelde actieve voorzieningen worden ook afgebroken.'}
+          {target?.kind === 'doel' && ' Gekoppelde actieve instrumenten worden ook afgebroken.'}
         </p>
         <TextArea id="afbreek-reden" labelText="Reden (verplicht)" value={reden}
           onChange={(e: any) => setReden(e.target.value)} placeholder="Waarom wordt dit afgebroken?" />
@@ -1235,7 +1234,7 @@ function ActieModal({ open, ctx, onClose, onSave }: {
  * "Instrument toevoegen": an instrument registered straight on the doel,
  * without a request process; it starts as Gepland. The catalog is scoped to
  * the subdoel — producttypen that carry a thema of the doeltype, within the
- * doelgroep of the plan subject — with "Toon alle producten" as escape hatch
+ * doelgroep of the plan subject — with "Toon alle instrumenttypen" as escape hatch
  * for a product that is not (yet) thematised.
  */
 function InstrumentModal({ open, doelUuid, producttypen, doelType, doelgroep, onClose, onSave }: {
@@ -1273,19 +1272,19 @@ function InstrumentModal({ open, doelUuid, producttypen, doelType, doelgroep, on
       onRequestSubmit={() => doelUuid && titel.trim() && submit(() => onSave(doelUuid, { titel: titel.trim(), producttype: selected }))}>
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
-        <Select id="inst-product" labelText="Producttype uit Open Product" value={productUuid} onChange={(e: any) => onProductSelect(e.target.value)}
+        <Select id="inst-product" labelText="Instrumenttype" value={productUuid} onChange={(e: any) => onProductSelect(e.target.value)}
           helperText={alleProducten
-            ? 'Volledige catalogus van Open Product'
+            ? 'Volledige catalogus'
             : themas.length > 0
-              ? `Producten bij dit subdoel (${themas.join(', ')})`
+              ? `Instrumenttypen bij dit subdoel (${themas.join(', ')})`
               : 'Dit subdoel heeft geen thema; de volledige catalogus wordt getoond'}>
-          <SelectItem value="" text="-- Selecteer producttype (optioneel) --" />
+          <SelectItem value="" text="-- Selecteer instrumenttype (optioneel) --" />
           {opties.map(p => (
             <SelectItem key={p.uuid} value={p.uuid} text={`${p.naam}${p.organisaties[0] ? ` (${p.organisaties[0].naam})` : ''}`} />
           ))}
         </Select>
         {(alleProducten || passend.length < producttypen.length) && (
-          <Checkbox id="inst-alle-producten" labelText="Toon alle producten"
+          <Checkbox id="inst-alle-producten" labelText="Toon alle instrumenttypen"
             checked={alleProducten}
             onChange={(_: unknown, { checked }: { checked: boolean }) => toggleAlleProducten(checked)} />
         )}

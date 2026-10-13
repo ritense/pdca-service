@@ -201,7 +201,7 @@ the `pdca-admin` view and the `evaluation` side panel are loaded as sandboxed if
   [`gzac/case-definitions/README.md`](./gzac/case-definitions/README.md)). In the PDCA
   configuration the intake case type points at its plan case type via
   **planCaseDefinitionKey**.
-- **Product-dossier type** `werkfit-aanvraag`: a product request as a **full case** —
+- **Instrument-dossier type** `werkfit-aanvraag`: a product request as a **full case** —
   every request from the plan page gets its own dossier (own tasks, PBAC, documents,
   optionally a zaak via GZAC's zaaktype-link) and manages the instrument in the plan
   through the pdca plugin actions; the instrument's `zaak` field carries the dossier URN,
@@ -238,8 +238,8 @@ configurations including prefill mapping and intake→plan reference):
    inactive case type stays invisible (dossier lists, start menus, and the PDCA Beheer
    dropdowns all show active case types only).
 3. **Menu config** — add the plugin page "PDCA Beheer" (`pdca-admin`) to the menu.
-4. **Link actions and products** — PDCA Beheer → Actie-bouwblokken, Product-bouwblokken
-   or Product-dossiers: pick the building block (or, in the Product-dossiers section, the
+4. **Link actions and products** — PDCA Beheer → Actie-bouwblokken, Instrument-bouwblokken
+   or Instrument-dossiers: pick the building block (or, in the Instrument-dossiers section, the
    product case type such as `werkfit-aanvraag`), the plugin
    configuration and the doeltype(s) per plan case type; see
    [`gzac/case-definitions/README.md`](./gzac/case-definitions/README.md). Optional: give

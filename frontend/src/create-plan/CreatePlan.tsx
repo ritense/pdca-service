@@ -1029,10 +1029,10 @@ export function CreatePlan() {
                   </div>
                   <div className="cp-veld">
                     <Select
-                      id={`cp-instrument-${it.key}-product`} size="sm" labelText="Product" value={it.product}
+                      id={`cp-instrument-${it.key}-product`} size="sm" labelText="Instrumenttype" value={it.product}
                       onChange={e => kiesProduct(it, e.target.value)}
                     >
-                      <SelectItem value="" text="Geen product" />
+                      <SelectItem value="" text="Geen instrumenttype" />
                       {productOpties(it).map(p => <SelectItem key={p.code} value={p.code} text={p.naam} />)}
                     </Select>
                   </div>

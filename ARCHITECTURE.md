@@ -721,11 +721,11 @@ app↔bouwblok communication.
 - An `ActieBouwblokKoppeling` connects, per plan case type, a building block
   process (recognised by the `BB:` version tag) to a PDCA plugin configuration
   and optionally doeltype(s) (empty = all doeltypes). PDCA Beheer has a
-  section per soort/uitvoeringsvorm (Actie-bouwblokken, Product-bouwblokken,
-  Product-dossiers §9.1). Doeltype
+  section per soort/uitvoeringsvorm (Actie-bouwblokken, Instrument-bouwblokken,
+  Instrument-dossiers §9.1). Doeltype
   matching determines under which doelen the item is offered on the plan page
-  (the "Actie kiezen" and "Start product" dropdowns, next to "Handmatige
-  actie" / "Handmatig product", §9.2) — in the frontend and validated
+  (the "Actie kiezen" and "Instrument aanvragen" dropdowns, next to "Handmatige
+  actie" / "Instrument toevoegen", §9.2) — in the frontend and validated
   server-side at start.
 - On save the app writes the chosen configuration into the
   **`pluginConfigurationMappings`** of that case type's building-block link
@@ -810,7 +810,7 @@ differences:
   starts these dossiers (a manual start would lack the plan context).
 
 **Administration:** the same koppeling model, in its own PDCA Beheer section
-**Product-dossiers**, with a productdossiertype instead of a bouwblok (the
+**Instrument-dossiers**, with an instrumentdossiertype instead of a bouwblok (the
 dropdown lists case types whose schema carries the contract marker fields,
 read from GZAC's **management** document-definition list — the `/api/v1`
 list is PBAC-filtered and would hide freshly imported types). On save —
@@ -862,9 +862,9 @@ link, adjust the forms — and register it in `build.gradle.kts`
 
 ### 9.2 Manual product (no process)
 
-Next to the two process routes the goals tab offers **Handmatig product**: an
+Next to the two process routes the goals tab offers **Instrument toevoegen**: an
 instrument created directly in Open Plan on the doel (titel + producttype URN,
-`instrument.doelen`), for a voorziening that needs no request process.
+`instrument.doelen`), for an instrument that needs no request process.
 
 Its catalog is **scoped to the subdoel**, and the registers carry that scope —
 the overlay holds no producttype↔doeltype mapping:
@@ -882,7 +882,7 @@ the overlay holds no producttype↔doeltype mapping:
   `burgers`, object → `bedrijven_en_instellingen`) must match the
   producttype's doelgroep; a producttype without doelgroep fits everywhere.
 
-**Toon alle producten** in the modal opens the full catalog, for a product
+**Toon alle instrumenttypen** in the modal opens the full catalog, for a product
 that is not (yet) thematised. The scoping rule lives in
 `frontend/src/shared/labels.ts` (`producttypenVoorDoel`); the themas on the
 doeltypen are seeded by `docker/openplan/reference_data.py`, the themas on

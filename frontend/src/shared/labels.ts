@@ -310,7 +310,7 @@ const WIJZIGING_LABELS: Record<string, string> = {
   ACTIE_TOEGEVOEGD: 'Actie toegevoegd',
   ACTIE_STATUS: 'Actiestatus',
   BOUWBLOK_GESTART: 'Bouwblok-actie gestart',
-  PRODUCT_AANGEVRAAGD: 'Product aangevraagd',
+  PRODUCT_AANGEVRAAGD: 'Instrument aangevraagd',
   HOOFDDOEL_GEWISSELD: 'Hoofddoel gewisseld',
   HOOFDDOEL_TOELICHTING: 'Toelichting bij hoofddoel',
   PLAN_STATUS: 'Status plan',

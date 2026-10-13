@@ -209,11 +209,11 @@ class ActieBouwblokService(
             Uitvoeringsvorm.DOSSIER -> {
                 if (koppeling.soort != BouwblokSoort.PRODUCT) {
                     throw ResponseStatusException(
-                        HttpStatus.BAD_REQUEST, "Uitvoeringsvorm DOSSIER is alleen beschikbaar voor producten"
+                        HttpStatus.BAD_REQUEST, "Uitvoeringsvorm DOSSIER is alleen beschikbaar voor instrumenten"
                     )
                 }
                 val caseKey = koppeling.productCaseDefinitionKey?.takeIf { it.isNotBlank() }
-                    ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Productdossiertype is verplicht")
+                    ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Instrumentdossiertype is verplicht")
                 koppelingRepository.findAll()
                     .firstOrNull {
                         it.id != ignoreId &&
@@ -223,8 +223,8 @@ class ActieBouwblokService(
                     ?.let {
                         throw ResponseStatusException(
                             HttpStatus.CONFLICT,
-                            "Productdossiertype '$caseKey' is al gekoppeld met pluginconfiguratie " +
-                                "'${it.pluginConfigId}' (koppeling '${it.naam}'); één configuratie per productdossiertype " +
+                            "Instrumentdossiertype '$caseKey' is al gekoppeld met pluginconfiguratie " +
+                                "'${it.pluginConfigId}' (koppeling '${it.naam}'); één configuratie per instrumentdossiertype " +
                                 "(de proceskoppelingen van het dossiertype verwijzen vast naar één configuratie)"
                         )
                     }
@@ -351,7 +351,7 @@ class ActieBouwblokService(
      */
     fun ensureDossierPluginConfiguration(koppeling: ActieBouwblokKoppeling) {
         val caseKey = koppeling.productCaseDefinitionKey?.takeIf { it.isNotBlank() }
-            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Productdossiertype ontbreekt op de koppeling")
+            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Instrumentdossiertype ontbreekt op de koppeling")
         val processDefinitionId = gzacClient.latestProcessDefinitionId(caseKey)
         val pdcaLinks = gzacClient.processLinks(processDefinitionId).filter {
             it["processLinkType"] == "external_plugin" && it["pluginDefinitionKey"] == PDCA_PLUGIN_ID
@@ -359,7 +359,7 @@ class ActieBouwblokService(
         if (pdcaLinks.isEmpty()) {
             throw ResponseStatusException(
                 HttpStatus.BAD_REQUEST,
-                "Productdossiertype '$caseKey' heeft geen pdca-proceskoppelingen; importeer de nieuwste dossier-zip"
+                "Instrumentdossiertype '$caseKey' heeft geen pdca-proceskoppelingen; importeer de nieuwste dossier-zip"
             )
         }
 
@@ -540,7 +540,7 @@ class ActieBouwblokService(
         doel: Map<*, *>
     ): DossierRef {
         val caseKey = koppeling.productCaseDefinitionKey
-            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Koppeling '${koppeling.naam}' heeft geen productdossiertype")
+            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Koppeling '${koppeling.naam}' heeft geen instrumentdossiertype")
 
         // Self-healing: repair the product case's pdca process links to this
         // koppeling's configuration (a re-import leaves them dangling).

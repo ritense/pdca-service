@@ -352,15 +352,15 @@ your own fields, draw timers/gateways/extra tasks in between and reuse the
 building block per case type (the mapping lives on the case type's
 building-block link).
 
-## Product building blocks: requesting a product/voorziening with a GZAC building block
+## Product building blocks: requesting an instrument with a GZAC building block
 
 Next to actie building blocks there are **product building blocks**
 ("product X aanvragen"); bundled: `jobcoaching-aanvragen.zip`. All product
 logic lives in the building block itself — the PDCA app creates nothing at
-start and only determines (PDCA Beheer → Product-bouwblokken) under which
+start and only determines (PDCA Beheer → Instrument-bouwblokken) under which
 plan case type and doeltype(s) it is available. On the plan page the
-instruments section has the **Start product** button (next to **Handmatig
-product**), greyed out when no product building blocks match the doeltype.
+instruments section has the **Instrument aanvragen** button (next to **Instrument
+toevoegen**), greyed out when no product building blocks match the doeltype.
 
 The bundled process: user task **Jobcoaching-aanvraag beoordelen** (form
 with a besluit toekennen/afwijzen — process variables, since the gateway
@@ -387,7 +387,7 @@ to the plan-dossier zips and to bundle it into those zips (the
 ## Product dossiers: requesting a product as a full case
 
 Next to the product *building blocks* there are **product dossiers**
-(their own PDCA Beheer section, Product-dossiers); bundled:
+(their own PDCA Beheer section, Instrument-dossiers); bundled:
 `werkfit-aanvraag.zip` (product Werkfit Traject WIO). Every request from the
 plan page becomes a **case of its own**: own dossier and task list, own
 PBAC roles, documents — and optionally a **zaak**: link the case type to a

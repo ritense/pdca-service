@@ -320,7 +320,7 @@ export async function deleteDoelCascade(doelUuid: string): Promise<void> {
 /**
  * Aborting a doel with a mandatory reason: register status geannuleerd +
  * toelichting, cascading to all still-active linked instrumenten
- * (voorzieningen) with the same reason.
+ * (instrumenten) with the same reason.
  */
 export async function afbreekDoelCascade(doelUuid: string, planUuid: string, reden: string): Promise<void> {
   const einddatum = new Date().toISOString();
@@ -341,7 +341,7 @@ export async function afbreekDoelCascade(doelUuid: string, planUuid: string, red
   });
 }
 
-/** Aborting an instrument/voorziening with a mandatory reason. */
+/** Aborting an instrument with a mandatory reason. */
 export async function afbreekInstrument(instrumentUuid: string, planUuid: string, reden: string): Promise<void> {
   await openplan.instrumenten.update(instrumentUuid, { status: 'geannuleerd', einddatum: new Date().toISOString() });
   await pdca.instrumentdetails.upsert(instrumentUuid, { planUuid, afbreekReden: reden });

@@ -26,7 +26,7 @@ import java.time.LocalDateTime
 import java.util.UUID
 
 /**
- * PDCA voortgangsregistratie for an instrument/voorziening in Open Plan
+ * PDCA voortgangsregistratie for an instrument in Open Plan
  * (pk = Open Plan instrument uuid): the fine-grained uitvoeringsstatus,
  * bestede uren, effectiviteit, the internal and external note and — when the
  * instrument is afgebroken — the mandatory reason. The register itself only

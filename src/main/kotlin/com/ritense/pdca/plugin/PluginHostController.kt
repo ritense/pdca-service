@@ -258,9 +258,9 @@ class PluginHostController(
             ),
             mapOf(
                 "key" to "aanmaak-instrument",
-                "title" to "Instrument/voorziening aanmaken",
+                "title" to "Instrument aanmaken",
                 "description" to "Maakt een instrument onder een doel aan in Open Plan " +
-                    "(bijv. na toekenning van een productaanvraag) en geeft de instrumentUuid " +
+                    "(bijv. na toekenning van een instrumentaanvraag) en geeft de instrumentUuid " +
                     "terug als resultaat (via een result mapping in het bouwblokdocument te zetten).",
                 "activityTypes" to listOf("SERVICE_TASK_START"),
                 "properties" to listOf(
@@ -274,7 +274,7 @@ class PluginHostController(
             ),
             mapOf(
                 "key" to "update-instrument",
-                "title" to "Instrument/voorziening bijwerken",
+                "title" to "Instrument bijwerken",
                 "description" to "Zet de status van een instrument in Open Plan op afgerond " +
                     "(met resultaat behaald/gefaald) of geannuleerd; een toelichting komt in " +
                     "de PDCA-overlay.",
