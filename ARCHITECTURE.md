@@ -398,9 +398,11 @@ fields.
   optional agenda) and "Start evaluatie" / "Toon lopende evaluatie". The
   user's own running evaluation of this plan is shown on top (tag *Loopt*,
   start time, deelnemers, the concept verslag and the changes so far,
-  refreshed on opening; only its owner sees it), then the planned
-  evaluations (*Gepland* or *Verlopen*, with "Starten" and "Verzetten"), then
-  the contactmomenten that took place; a completed evaluation shows who ran
+  refreshed on opening; only its owner sees it). When it carries out a
+  planned contactmoment, that contactmoment is shown only as the running
+  evaluation (with its planned date and agenda) and not counted as planned.
+  Then follow the planned evaluations (*Gepland* or *Verlopen*, with
+  "Starten" and "Verzetten") and the contactmomenten that took place; a completed evaluation shows who ran
   it, the deelnemers, the gespreksverslag and its plan changes with their
   reasons (`GET /api/v1/pdca/evaluaties`). Intake contactmomenten keep their
   notitie, doelvoortgang and actiepunten. A type filter (content switcher)

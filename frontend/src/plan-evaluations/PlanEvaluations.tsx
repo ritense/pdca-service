@@ -193,9 +193,13 @@ export function PlanEvaluations() {
     listEvaluationChanges().then(setLopendeWijzigingen).catch(() => setLopendeWijzigingen([]));
   }, [lopend?.id, lopendOpen]);
 
+  // A planned contactmoment carried out by the running evaluation is shown as that evaluation.
+  const uitgevoerd = lopend?.geplandContactmomentUuid
+    ? contactmomenten.find(cm => cm.uuid === lopend.geplandContactmomentUuid) ?? null : null;
+  const zichtbaar = contactmomenten.filter(cm => cm !== uitgevoerd);
   const filtered = filter
-    ? contactmomenten.filter(cm => cmDetailsByUuid.get(cm.uuid)?.evaluatieType === filter)
-    : contactmomenten;
+    ? zichtbaar.filter(cm => cmDetailsByUuid.get(cm.uuid)?.evaluatieType === filter)
+    : zichtbaar;
   // Planned contactmomenten first (soonest on top), then the history (latest on top).
   const geplande = filtered.filter(isGepland)
     .sort((a, b) => (datumVan(a) || '').localeCompare(datumVan(b) || ''));
@@ -203,7 +207,7 @@ export function PlanEvaluations() {
     .sort((a, b) => (b.plaatsgevondenOp || '').localeCompare(a.plaatsgevondenOp || ''));
   const sorted = [...geplande, ...historie];
   const afgerond = contactmomenten.filter(cm => cm.indicatieContactGelukt === true).length;
-  const gepland = contactmomenten.filter(isGepland).length;
+  const gepland = zichtbaar.filter(isGepland).length;
   const filterOpties = [null, ...evalTypes];
 
   if (loading) return <Theme theme="g10"><div className="pdca-container"><Loading withOverlay={false} /></div></Theme>;
@@ -261,6 +265,7 @@ export function PlanEvaluations() {
                 {lopend.evaluatieType && <Tag size="sm" type={evalTypeTag(lopend.evaluatieType) as any}>{evalTypeLabel(lopend.evaluatieType)}</Tag>}
                 <Tag size="sm" type="blue">Loopt</Tag>
                 <span style={{fontSize: 13, color: 'var(--cds-text-secondary)'}}>
+                  {uitgevoerd && datumVan(uitgevoerd) && `Gepland op ${formatDate(datumVan(uitgevoerd))} · `}
                   Gestart {formatDate(lopend.startedAt)} {formatTime(lopend.startedAt)}
                 </span>
               </div>
@@ -271,6 +276,12 @@ export function PlanEvaluations() {
                   Alleen jij ziet deze evaluatie tot je hem afrondt in het zijpaneel.
                 </p>
                 {lopend.deelnemers && <p style={{fontSize: 12, color: 'var(--cds-text-secondary)', marginTop: 12}}>Deelnemers: {lopend.deelnemers}</p>}
+                {uitgevoerd?.inhoud && (
+                  <div className="pdca-info-block" style={{marginTop: 12}}>
+                    <div className="pdca-info-label">Agenda</div>
+                    <div className="pdca-info-value">{uitgevoerd.inhoud}</div>
+                  </div>
+                )}
                 <div className="pdca-info-block" style={{marginTop: 12}}>
                   <div className="pdca-info-label">Gespreksverslag (concept)</div>
                   <div className={`pdca-info-value${lopend.verslag ? '' : ' empty'}`}>{lopend.verslag || 'Nog geen verslag'}</div>
@@ -298,7 +309,6 @@ export function PlanEvaluations() {
           const planned = isGepland(cm);
           const datum = datumVan(cm);
           const status = contactmomentStatus(cm, planned ? datum : null);
-          const wordtUitgevoerd = planned && session?.geplandContactmomentUuid === cm.uuid;
           return (
             <Layer key={cm.uuid} className={`pdca-eval-card type-${evalType}`}>
               <div className="pdca-row pdca-eval-header" onClick={() => toggle(cm.uuid)}>
@@ -316,11 +326,9 @@ export function PlanEvaluations() {
                 </div>
                 {planned && (
                   <div className="pdca-row-actions" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
-                    {wordtUitgevoerd
-                      ? <Tag size="sm" type="blue">Evaluatie loopt</Tag>
-                      : <Button size="sm" kind="tertiary" disabled={!!session || starting}
-                          onClick={() => handleStartSession(cm.uuid)}>Starten</Button>}
-                    <Button size="sm" kind="ghost" disabled={wordtUitgevoerd}
+                    <Button size="sm" kind="tertiary" disabled={!!session || starting}
+                      onClick={() => handleStartSession(cm.uuid)}>Starten</Button>
+                    <Button size="sm" kind="ghost"
                       onClick={() => setVerzetten({ uuid: cm.uuid, datum: (datum || '').split('T')[0] })}>Verzetten</Button>
                   </div>
                 )}
