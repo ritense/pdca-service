@@ -49,6 +49,7 @@ import {
   RelatieType,
   BrpPersoon,
   ObjectRecord,
+  VoortgangStatusOptie,
 } from '../shared/api';
 import {
   evalTypeLabel, formatDate, planStatus, isVerlopen, contactmomentDatum,
@@ -107,6 +108,7 @@ export function PlanOverview() {
   const [subject, setSubject] = useState<SubjectData>(null);
   const [planStatusOpties, setPlanStatusOpties] = useState<string[]>([]);
   const [positieTypen, setPositieTypen] = useState<string[]>([]);
+  const [voortgangOpties, setVoortgangOpties] = useState<VoortgangStatusOptie[]>([]);
   const [doeltypen, setDoeltypen] = useState<DoelType[]>([]);
   const [relatietypen, setRelatietypen] = useState<RelatieType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -163,7 +165,7 @@ export function PlanOverview() {
 
   async function loadPlanData(selected: Plan, selectedDetails: PlanDetails | null) {
     try {
-      const [doelenRes, doelDetailsRes, actiesRes, cmRes, cmDetailsRes, betrokkenenRes, rollenRes, doeltypenRes, subjectRes] =
+      const [doelenRes, doelDetailsRes, actiesRes, cmRes, cmDetailsRes, betrokkenenRes, rollenRes, doeltypenRes, subjectRes, voortgangRes] =
         await Promise.all([
           openplan.doelen.listByPlan(selected.uuid),
           pdca.doeldetails.listByPlan(selected.uuid).catch(() => [] as DoelDetails[]),
@@ -174,6 +176,7 @@ export function PlanOverview() {
           openplan.relatietypen.list().catch(() => [] as RelatieType[]),
           openplan.doeltypen.list().catch(() => [] as DoelType[]),
           loadSubject(selected),
+          pdca.voortgangStatussen(selected.uuid).catch(() => [] as VoortgangStatusOptie[]),
         ]);
 
       let statusOptiesRes: string[] = [];
@@ -199,6 +202,7 @@ export function PlanOverview() {
       setSubject(subjectRes);
       setPlanStatusOpties(statusOptiesRes.length ? statusOptiesRes : ['Concept', 'Vastgesteld']);
       setPositieTypen(positieTypenRes);
+      setVoortgangOpties(voortgangRes);
       setLoading(false);
     } catch (err: any) {
       setError('Fout bij laden van plangegevens: ' + err.message);
@@ -216,16 +220,20 @@ export function PlanOverview() {
   }, [plan]);
 
   const kpi = useMemo(() => {
-    // Voortgang = how the active subdoelen are going (overlay voortgangsstatus); the hoofddoel stays out.
+    // Voortgang = how the active subdoelen are going (overlay voortgangsstatus, counted by the
+    // betekenis of the status in the plan's list); the hoofddoel stays out.
     const subdoelen = doelen.filter(d => {
       const type = doeltypen.find(t => t.uuid === d.doeltype?.uuid);
       return !(type && isHoofddoelType(type));
     });
     const actieveSubdoelen = subdoelen.filter(d => d.status === 'actief');
-    const statusTelling = (status: string) =>
-      actieveSubdoelen.filter(d => detailsByDoel.get(d.uuid)?.voortgangStatus === status).length;
-    const opKoers = statusTelling('OP_KOERS');
-    const aandacht = statusTelling('AANDACHT_NODIG') + statusTelling('LOOPT_ACHTER');
+    const betekenisVan = (d: Doel) =>
+      voortgangOpties.find(o => o.code === detailsByDoel.get(d.uuid)?.voortgangStatus)?.betekenis;
+    const opKoers = actieveSubdoelen.filter(d => betekenisVan(d) === 'GAAT_GOED').length;
+    const aandacht = actieveSubdoelen.filter(d => {
+      const betekenis = betekenisVan(d);
+      return betekenis === 'LET_OP' || betekenis === 'GAAT_NIET_GOED';
+    }).length;
     const beoordeeld = actieveSubdoelen.filter(d => !!detailsByDoel.get(d.uuid)?.voortgangStatus).length;
     const openActies = acties.filter(a =>
       a.status === 'PLANNED' || a.status === 'IN_PROGRESS' || a.status === 'PENDING_REVIEW'
@@ -245,7 +253,7 @@ export function PlanOverview() {
       afgerondeEvaluaties,
       volgendeEvaluatie: geplandeDatums[0] ?? null,
     };
-  }, [doelen, doeltypen, detailsByDoel, acties, contactmomenten, cmDetailsByUuid]);
+  }, [doelen, doeltypen, detailsByDoel, voortgangOpties, acties, contactmomenten, cmDetailsByUuid]);
 
   const recentEvals = useMemo(() =>
     contactmomenten
@@ -464,7 +472,7 @@ export function PlanOverview() {
   const { voortgang } = kpi;
   const voortgangSub = voortgang.beoordeeld === 0
     ? 'Nog niet beoordeeld'
-    : 'op koers'
+    : 'gaat goed'
       + (voortgang.aandacht ? ` · ${voortgang.aandacht} ${voortgang.aandacht === 1 ? 'vraagt' : 'vragen'} aandacht` : '')
       + (voortgang.nietBeoordeeld ? ` · ${voortgang.nietBeoordeeld} nog niet beoordeeld` : '');
   const volgendeVerlopen = isVerlopen(kpi.volgendeEvaluatie);

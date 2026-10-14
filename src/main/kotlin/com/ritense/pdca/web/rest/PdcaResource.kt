@@ -21,6 +21,7 @@ import com.ritense.pdca.domain.DoelDetails
 import com.ritense.pdca.domain.InstrumentDetails
 import com.ritense.pdca.domain.PlanDetails
 import com.ritense.pdca.domain.UitvoeringsStatus
+import com.ritense.pdca.domain.VoortgangStatusOptie
 import com.ritense.pdca.repository.ActionRepository
 import com.ritense.pdca.repository.ContactmomentDetailsRepository
 import com.ritense.pdca.repository.DoelDetailsRepository
@@ -41,6 +42,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.client.RestClient
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
@@ -85,7 +87,8 @@ class PdcaResource(
     private val actionRepository: ActionRepository,
     private val involvedPartyRepository: InvolvedPartyRepository,
     private val phaseConfigService: PhaseConfigService,
-    private val klantcontactService: KlantcontactService
+    private val klantcontactService: KlantcontactService,
+    private val openPlanRestClient: RestClient
 ) {
 
     // --------------------------------------------------------- plandetails
@@ -158,6 +161,16 @@ class PdcaResource(
 
     // --------------------------------------------------------- doeldetails
 
+    /**
+     * The voortgangsstatussen a doel of this plan can get (its case type's
+     * list, or the standard list); without planUuid the standard list.
+     */
+    @GetMapping("/voortgangstatussen")
+    fun listVoortgangStatussen(
+        @RequestParam(name = "planUuid", required = false) planUuid: UUID?
+    ): List<VoortgangStatusOptie> =
+        phaseConfigService.getVoortgangStatussen(planUuid?.let { caseDefinitionKeyVan(it) })
+
     @GetMapping("/doeldetails")
     fun listDoelDetails(@RequestParam(name = "planUuid") planUuid: UUID): List<DoelDetails> =
         doelDetailsRepository.findByPlanUuid(planUuid).sortedBy { it.sortering }
@@ -170,6 +183,9 @@ class PdcaResource(
         val existing = doelDetailsRepository.findById(doelUuid).orElse(null)
         val planUuid = existing?.planUuid ?: request.planUuid
             ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "planUuid is required when creating doeldetails")
+        request.voortgangStatus
+            ?.takeIf { it != existing?.voortgangStatus }
+            ?.let { validateVoortgangStatus(planUuid, doelUuid, it) }
 
         val details = if (existing == null) {
             val sortering = request.sortering
@@ -178,7 +194,6 @@ class PdcaResource(
                 doelUuid = doelUuid,
                 planUuid = planUuid,
                 uitvoeringsStatus = request.uitvoeringsStatus ?: UitvoeringsStatus.GEPLAND,
-                voortgangScore = request.voortgangScore,
                 voortgangToelichting = request.voortgangToelichting,
                 voortgangStatus = request.voortgangStatus,
                 interneNotitie = request.interneNotitie,
@@ -188,7 +203,6 @@ class PdcaResource(
         } else {
             existing.apply {
                 uitvoeringsStatus = request.uitvoeringsStatus ?: uitvoeringsStatus
-                voortgangScore = request.voortgangScore ?: voortgangScore
                 voortgangToelichting = request.voortgangToelichting ?: voortgangToelichting
                 voortgangStatus = request.voortgangStatus ?: voortgangStatus
                 interneNotitie = request.interneNotitie ?: interneNotitie
@@ -388,8 +402,41 @@ class PdcaResource(
         }
     }
 
+    private fun caseDefinitionKeyVan(planUuid: UUID): String? =
+        planDetailsRepository.findById(planUuid).orElse(null)?.caseDefinitionKey
+
+    /**
+     * A voortgangsstatus comes from the plan's list and only applies while the
+     * doel runs: once Open Plan has it afgerond or geannuleerd, the register
+     * status says how it ended.
+     */
+    private fun validateVoortgangStatus(planUuid: UUID, doelUuid: UUID, code: String) {
+        val opties = phaseConfigService.getVoortgangStatussen(caseDefinitionKeyVan(planUuid))
+        if (opties.none { it.code == code }) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Onbekende voortgangsstatus '$code'. Kies uit: ${opties.joinToString { it.naam }}"
+            )
+        }
+        val registerStatus = try {
+            openPlanRestClient.get()
+                .uri("/plannen/api/v0/doel/$doelUuid")
+                .retrieve()
+                .body(Map::class.java)
+                ?.get("status") as? String
+        } catch (e: Exception) {
+            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Doel $doelUuid ophalen uit Open Plan mislukt: ${e.message}")
+        }
+        if (registerStatus != "actief") {
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Voortgang kan alleen worden vastgelegd bij een lopend doel (status in Open Plan: ${registerStatus ?: "onbekend"})"
+            )
+        }
+    }
+
     private fun validateEvaluatieType(planUuid: UUID, evaluatieType: String) {
-        val caseDefinitionKey = planDetailsRepository.findById(planUuid).orElse(null)?.caseDefinitionKey ?: return
+        val caseDefinitionKey = caseDefinitionKeyVan(planUuid) ?: return
         val validTypes = phaseConfigService.getEvaluationTypes(caseDefinitionKey)
         if (evaluatieType !in validTypes) {
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid evaluatieType '$evaluatieType'. Valid types: $validTypes")

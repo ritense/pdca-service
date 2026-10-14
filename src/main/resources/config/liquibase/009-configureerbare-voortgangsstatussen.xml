@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Voortgangsstatussen are configured per plan case type (phase_config) and a
+  doel stores the code of one of them, so the column takes any configured
+  code. The numeric voortgang (0-100) is gone: the score column is dropped and
+  the scores are removed from the doelvoortgang recorded on contactmomenten.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="009-01-phase-config-voortgang-statussen" author="pdca">
+        <addColumn tableName="phase_config">
+            <column name="voortgang_statussen" type="TEXT"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="009-02-doel-details-voortgang-status-code" author="pdca">
+        <modifyDataType tableName="doel_details" columnName="voortgang_status" newDataType="VARCHAR(64)"/>
+    </changeSet>
+
+    <changeSet id="009-03-drop-voortgang-score" author="pdca">
+        <dropColumn tableName="doel_details" columnName="voortgang_score"/>
+        <sql>
+            UPDATE contactmoment_details
+            SET doel_voortgang = (
+                SELECT COALESCE(jsonb_agg(element - 'score'), '[]'::jsonb)::text
+                FROM jsonb_array_elements(doel_voortgang::jsonb) AS element
+            )
+            WHERE doel_voortgang LIKE '[%'
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

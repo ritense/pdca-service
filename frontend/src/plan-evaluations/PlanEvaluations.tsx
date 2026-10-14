@@ -7,10 +7,11 @@ import { ChevronRight, ArrowRight } from '@carbon/react/icons';
 import { onInit, resizeIframe } from '../shared/bridge';
 import {
   openplan, openklant, pdca, planVoorDossier,
-  Plan, Doel, Klantcontact, ContactmomentDetails, CompletedEvaluation,
+  Plan, Doel, Klantcontact, ContactmomentDetails, CompletedEvaluation, VoortgangStatusOptie,
 } from '../shared/api';
 import {
   evalTypeLabel, formatDate, isHoofddoelType, contactmomentStatus, contactmomentDatum, overWeken, vandaag,
+  voortgangStatus,
 } from '../shared/labels';
 import {
   EvaluationSession, EvaluationChange, offerEvaluationPanel, startEvaluationSession, syncEvaluationPanel,
@@ -64,6 +65,7 @@ export function PlanEvaluations() {
   const [cmDetails, setCmDetails] = useState<ContactmomentDetails[]>([]);
   const [evaluaties, setEvaluaties] = useState<CompletedEvaluation[]>([]);
   const [evalTypes, setEvalTypes] = useState<string[]>([]);
+  const [voortgangOpties, setVoortgangOpties] = useState<VoortgangStatusOptie[]>([]);
   const [filter, setFilter] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [session, setSession] = useState<EvaluationSession | null>(null);
@@ -147,13 +149,14 @@ export function PlanEvaluations() {
   }, []);
 
   const loadLists = async (planUuid: string) => {
-    const [g, cm, cmd, ev] = await Promise.all([
+    const [g, cm, cmd, ev, vo] = await Promise.all([
       listSubdoelen(planUuid),
       openklant.klantcontacten.listByPlan(planUuid),
       pdca.contactmomentdetails.listByPlan(planUuid).catch(() => [] as ContactmomentDetails[]),
       pdca.evaluaties.listByPlan(planUuid).catch(() => [] as CompletedEvaluation[]),
+      pdca.voortgangStatussen(planUuid).catch(() => [] as VoortgangStatusOptie[]),
     ]);
-    setDoelen(g); setContactmomenten(cm); setCmDetails(cmd); setEvaluaties(ev);
+    setDoelen(g); setContactmomenten(cm); setCmDetails(cmd); setEvaluaties(ev); setVoortgangOpties(vo);
   };
 
   const reload = useCallback(async () => {
@@ -361,10 +364,11 @@ export function PlanEvaluations() {
                       <div className="pdca-section-title">Doelvoortgang</div>
                       {doelVoortgang.map((dv: any, j: number) => {
                         const doel = doelen.find(d => d.uuid === dv.doelUuid);
+                        const weergave = dv.status ? voortgangStatus(dv.status, voortgangOpties, dv.statusNaam) : null;
                         return (
                           <div key={j} style={{marginBottom: 8, padding: '8px 12px', background: 'var(--cds-layer-02)'}}>
                             <div style={{fontWeight: 500, fontSize: 13}}>{doel?.titel || dv.doelUuid}</div>
-                            {dv.score != null && <Tag size="sm" type="blue">{dv.score}%</Tag>}
+                            {weergave && <Tag size="sm" type={weergave.tag}>{weergave.label}</Tag>}
                             {dv.toelichting && <p style={{fontSize: 12, color: 'var(--cds-text-secondary)', marginTop: 4}}>{dv.toelichting}</p>}
                           </div>
                         );

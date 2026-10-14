@@ -99,7 +99,7 @@ flowchart LR
 
 | Resource | Path | Purpose |
 |---|---|---|
-| `PdcaResource` | `/api/v1/pdca/{plandetails,doeldetails,instrumentdetails,contactmomentdetails}` | Overlay CRUD per register object |
+| `PdcaResource` | `/api/v1/pdca/{plandetails,doeldetails,instrumentdetails,contactmomentdetails}`, `/api/v1/pdca/voortgangstatussen` | Overlay CRUD per register object; the voortgangsstatussen of a plan (§5.2) |
 | `PdcaResource` | `POST /api/v1/pdca/contactmomenten`, `PATCH /api/v1/pdca/contactmomenten/{uuid}` | Create a contactmoment (took place or planned) and reschedule a planned one: the klantcontact in Open Klant plus its overlay row (§5.1); contactmomenten cannot be deleted |
 | `ActieResource` | `/api/v1/pdca/acties` | Actions per doel (local and building block) |
 | `BetrokkeneResource` | `/api/v1/pdca/betrokkenen` (+ `PUT /{id}/procesbegeleider`) | Responsibilities/involved parties per plan and the plan's procesbegeleider (§5.2) |
@@ -117,16 +117,17 @@ All tables via Liquibase (`src/main/resources/config/liquibase/`:
 `001-schema.xml` as the consolidated baseline, `002-seed-data.xml` for the
 demo case configs, `003-subdoel-mapping.xml` for the subdoelmapping,
 `004-drop-doelpositie.xml`, `005-plan-details-intake-dossier.xml`,
-`006-evaluation-session.xml`, `007-evaluation-content.xml` and
-`008-status-procesbegeleider-gepland-contactmoment.xml`; new changes continue
-the numbering). Core:
+`006-evaluation-session.xml`, `007-evaluation-content.xml`,
+`008-status-procesbegeleider-gepland-contactmoment.xml` and
+`009-configureerbare-voortgangsstatussen.xml`; new changes continue the
+numbering). Core:
 
 | Entity | Key | Holds |
 |---|---|---|
 | `PlanDetails` | `planUuid` | `dossierId` (1:1, unique), `intakeDossierId` (the intake this plan came from, §7), `caseDefinitionKey`, `persoonUuid`, plan display status, positie, subdoelgroep (W&P segmentation, advised by the intake DMN), hoofddoel type, `streefEinddatum` |
-| `DoelDetails` | `doelUuid` | subdoelen and the hoofddoel: `UitvoeringsStatus` (GEPLAND or GESTART, §5.2), `VoortgangStatus` (OP_KOERS, AANDACHT_NODIG, LOOPT_ACHTER; how an active subdoel or the hoofddoel is going, shown in the plan tabs) with its explanation `voortgangToelichting`, internal and external note, sort order (the hoofddoel's row has -1); plus the numeric `voortgangScore` that only the `evaluate` task form still writes |
+| `DoelDetails` | `doelUuid` | subdoelen and the hoofddoel: `UitvoeringsStatus` (GEPLAND or GESTART, §5.2), `voortgangStatus` (the code of one of the plan's voortgangsstatussen, §5.2) with its explanation `voortgangToelichting`, internal and external note, sort order (the hoofddoel's row has -1) |
 | `InstrumentDetails` | `instrumentUuid` | `uitvoeringsStatus` (GEPLAND or GESTART, §5.2; null on an actief instrument means gestart), hours, effectiveness with its explanation (`effectiviteitToelichting`), internal and external note, abort reason |
-| `ContactmomentDetails` | `contactmomentUuid` (= klantcontact uuid in Open Klant) | evaluation type, planned date (`geplandeDatum`), deelnemers, doel progress and action points (intake contactmomenten), `evaluationSessionId` when the contactmoment is a completed evaluation |
+| `ContactmomentDetails` | `contactmomentUuid` (= klantcontact uuid in Open Klant) | evaluation type, planned date (`geplandeDatum`), deelnemers, doelvoortgang (per subdoel the voortgangsstatus as recorded then: code, name and explanation; `evaluate` task form) and action points (intake and `evaluate` task form), `evaluationSessionId` when the contactmoment is a completed evaluation |
 | `InvolvedParty` | own id | involved parties per plan; `isPrimary` marks the plan's **procesbegeleider** (at most one per plan, partial unique index; §5.2) |
 | `Action` | own id | actions per doel, optionally attached to an instrument (`instrumentUuid`; W&P: instrument → 0..n taken, shown in the instrument block): title/description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED), `Uitvoering` (LOKAAL or BOUWBLOK), and for building block actions `bouwblokKoppelingId` + `gzacProcessInstanceId` + result |
 | `ActieBouwblokKoppeling` | own id | admin link case type→process (§9): `soort` (ACTIE or PRODUCT), `uitvoeringsvorm` (BOUWBLOK or DOSSIER), name, `caseDefinitionKey`, building block key/version + `processDefinitionKey` (BOUWBLOK) or `productCaseDefinitionKey` (DOSSIER), `pluginConfigId`, doeltype uuids (JSON) |
@@ -204,9 +205,43 @@ One lifecycle, with the same words everywhere (`labels.ts`: `doelStatus`,
   maps them onto register status + overlay, gives every instrument an
   overlay row, starts a subdoel whose instrument is gestart or afgerond, and
   gives the hoofddoel a GESTART row. Legacy `actief` still works (doel:
-  gestart when `voortgang` > 0, otherwise gepland; instrument: gestart).
+  gepland; instrument: gestart).
 - A plan is closed with *Plan afronden* (optional explanation) or *Plan
   afbreken* (reason required), both stored in Open Plan's `redenEinde`.
+
+**Voortgangsstatus** — next to its lifecycle, a running hoofddoel or subdoel
+says how it is going. There is no percentage; the statuses are configured
+per plan case type (`PhaseConfig.voortgangStatussen`, §10) and the same list
+applies to the hoofddoel and the subdoelen.
+
+- **A status** is `{code, naam, betekenis}`: the `code` is stable and stored
+  on the doel (`DoelDetails.voortgangStatus`), the `naam` is what users see
+  and can be renamed, the `betekenis` (`GAAT_GOED`, `LET_OP`,
+  `GAAT_NIET_GOED`) gives the tag colour (green, magenta, red) and counts in
+  the Voortgang KPI (§6.2). The backend assigns the code of a new status once,
+  from its name (`Wacht op inwoner` → `WACHT_OP_INWONER`).
+- **Standard list** — a case type that configures none gets *Op koers*
+  (gaat goed), *Aandacht nodig* (let op) and *Loopt achter* (gaat niet goed)
+  (`VoortgangStatusOptie.STANDAARD`). `GET /api/v1/pdca/voortgangstatussen
+  ?planUuid=` gives the list of a plan's case type, without plan the standard
+  list; the plan tabs and the `evaluate` task form read it there, PDCA
+  Beheer the standard list.
+- **The register decides the phase.** A voortgangsstatus can only be set
+  while the doel is `actief` in Open Plan: `PUT /doeldetails/{uuid}` with a
+  changed `voortgangStatus` checks the doel in Open Plan (409 otherwise) and
+  that the code is in the plan's list (400 otherwise). Afronden and Afbreken
+  stay explicit actions that write to the register; a voortgangsstatus never
+  does. Once a doel is closed, its card shows the register status (*Afgerond*,
+  *Niet behaald*, *Afgebroken*) and no voortgang; the value stays in the
+  overlay and in the evaluation history and shows again when the doel runs
+  again.
+- **No double meanings** — a voortgangsstatus may not be named like a
+  lifecycle status (*Gepland, Gestart, Afgerond, Afgebroken, Behaald, Niet
+  behaald*); names are unique per list.
+- **Removed statuses** — a doel whose status was removed from the list keeps
+  showing it, in gray (its name from the code, or as recorded), and can keep
+  it until someone picks another one; it counts as assessed but neither
+  *gaat goed* nor *let op* in the KPI.
 
 The **procesbegeleider** is one concept: the betrokkene with `isPrimary`
 (label "Procesbegeleider" everywhere; the intake rows carry
@@ -404,8 +439,9 @@ fields.
   Then follow the planned evaluations (*Gepland* or *Verlopen*, with
   "Starten" and "Verzetten") and the contactmomenten that took place; a completed evaluation shows who ran
   it, the deelnemers, the gespreksverslag and its plan changes with their
-  reasons (`GET /api/v1/pdca/evaluaties`). Intake contactmomenten keep their
-  notitie, doelvoortgang and actiepunten. A type filter (content switcher)
+  reasons (`GET /api/v1/pdca/evaluaties`). Contactmomenten from the intake or
+  the `evaluate` task form show their notitie, doelvoortgang (the
+  voortgangsstatus per subdoel as recorded then) and actiepunten. A type filter (content switcher)
   narrows the list.
 - The panel fills the full panel height and follows GZAC's light/dark theme
   (the `theme` in `init` plus `themeChanged`, bridge `onHostThemeChanged`),
@@ -417,11 +453,10 @@ fields.
 ### 6.2 Voortgang and notes in the plan tabs
 
 - **Voortgang per subdoel and of the hoofddoel** — an active subdoel and the
-  active hoofddoel (expand its card) get one of *Op koers*, *Aandacht nodig*
-  or *Loopt achter* (`DoelDetails.voortgangStatus`) with an explanation
-  (`voortgangToelichting`), shown as a tag in the card header. The numeric
-  `voortgangScore` is not shown in the plan tabs; only the `evaluate` task
-  form still writes it.
+  active hoofddoel (expand its card) get one of the plan's voortgangsstatussen
+  (§5.2; `DoelDetails.voortgangStatus`) with an explanation
+  (`voortgangToelichting`), shown as a tag in the card header. A closed doel
+  shows no voortgang.
 - **Voortgang per instrument** — hours spent, effectiveness (1–5) and an
   explanation (`InstrumentDetails.effectiviteitToelichting`).
 - **Internal and external note** on every subdoel, on the active hoofddoel
@@ -445,9 +480,9 @@ fields.
   heractiveren for a closed plan). Building-block menus only appear when a
   koppeling exists for the doeltype. Modals block a second submit while
   saving (`useSubmit`).
-- **Planoverzicht KPIs** — *Voortgang*: active subdoelen on koers out of
-  those assessed, with the number that needs attention and the number not
-  yet assessed (*Nog niet beoordeeld* while none is); *Subdoelen*: running
+- **Planoverzicht KPIs** — *Voortgang*: active subdoelen whose status *gaat
+  goed* out of those assessed, with the number whose status means *let op*
+  or *gaat niet goed* (needs attention) and the number not yet assessed (*Nog niet beoordeeld* while none is); *Subdoelen*: running
   out of all subdoelen (hoofddoel excluded); *Open acties*; *Volgende
   evaluatie*: the earliest planned evaluation (marked *verlopen* when
   overdue) or *Niet gepland*, with the number completed.
@@ -496,8 +531,9 @@ task form) attach to the active hoofddoel too. Switching the hoofddoel on
 the overview tab completes the current hoofddoel-doel (it stays visible as
 history in the goals tab), creates a new one and re-points the subdoelen.
 The goals tab renders the active hoofddoel as a fixed card (the strategy,
-expandable for its notes) above the flat subdoelen list; voortgang (status
-and doelvoortgang) covers only the subdoelen.
+expandable for its notes) above the flat subdoelen list. Both get a
+voortgangsstatus from the same list (§5.2); the Voortgang KPI and the
+doelvoortgang of the `evaluate` task form cover only the subdoelen.
 2. **Via the dossier content** — a `planId` in the dossier content (the app
    writes it into every plan dossier it creates); when a PDCA view opens a
    dossier without a linked plan the frontend calls
@@ -894,10 +930,26 @@ how to seed registers outside docker compose).
 ## 10. Case configuration (`PhaseConfig`)
 
 Configurable per `caseDefinitionKey` via PDCA Beheer: evaluation types, plan
-display statuses, **position types** (the plan's positie comes from this
-register; free text is rejected), the **subdoelmapping** (below),
-prefill mapping (intake configs) and `planCaseDefinitionKey` (intake→plan
-reference).
+display statuses, the **voortgangsstatussen** (below), **position types**
+(the plan's positie comes from this register; free text is rejected), the
+**subdoelmapping** (below), prefill mapping (intake configs) and
+`planCaseDefinitionKey` (intake→plan reference).
+
+### Voortgangsstatussen (`voortgangStatussen`)
+
+How a running hoofddoel or subdoel of a plan of this case type is going
+(§5.2): a JSON array of `{code, naam, betekenis}` in display order; empty
+means the standard list. Only plan case types carry it.
+
+- **Edited as rows**, not as text: per status a name, its betekenis (*Gaat
+  goed*, *Let op*, *Gaat niet goed*) and a preview of the tag; drag for the
+  order, "Status toevoegen", and "Standaardlijst herstellen" once the list
+  differs from the standard. A new config starts with the standard list.
+- **Validated on save** (`PhaseConfigService`, also in the editor, which
+  blocks saving): every status has a name, names are unique (ignoring case)
+  and none is a lifecycle status; new statuses get their code there. The
+  overview table shows the list as tags, or the standard list marked
+  *standaard*.
 
 ### Subdoelen per hoofddoel (`subdoelMapping`)
 

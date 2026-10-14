@@ -19,6 +19,7 @@ package com.ritense.pdca.service
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.ritense.pdca.domain.PhaseConfig
+import com.ritense.pdca.domain.VoortgangStatusOptie
 import com.ritense.pdca.repository.PhaseConfigRepository
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -52,6 +53,7 @@ class PhaseConfigService(
     }
 
     fun create(phaseConfig: PhaseConfig): PhaseConfig {
+        phaseConfig.voortgangStatussen = normalizeVoortgangStatussen(phaseConfig.voortgangStatussen)
         return phaseConfigRepository.save(phaseConfig)
     }
 
@@ -73,6 +75,7 @@ class PhaseConfigService(
         val existing = getByCaseDefinitionKey(caseDefinitionKey)
         existing.evaluationTypes = updated.evaluationTypes
         existing.planStatussen = updated.planStatussen
+        existing.voortgangStatussen = normalizeVoortgangStatussen(updated.voortgangStatussen)
         existing.positieTypen = updated.positieTypen
         existing.subdoelMapping = updated.subdoelMapping
         existing.prefillMapping = updated.prefillMapping
@@ -91,6 +94,65 @@ class PhaseConfigService(
         val config = phaseConfigRepository.findByCaseDefinitionKey(caseDefinitionKey) ?: return null
         val statussen = config.planStatussen?.takeIf { it.isNotBlank() } ?: return null
         return parseJsonList(statussen).takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * The voortgangsstatussen of a plan of this case type, in display order:
+     * the configured list, or [VoortgangStatusOptie.STANDAARD] when the case
+     * type (or the plan) configures none.
+     */
+    fun getVoortgangStatussen(caseDefinitionKey: String?): List<VoortgangStatusOptie> {
+        val raw = caseDefinitionKey?.let { phaseConfigRepository.findByCaseDefinitionKey(it) }
+            ?.voortgangStatussen?.takeIf { it.isNotBlank() }
+            ?: return VoortgangStatusOptie.STANDAARD
+        return parseVoortgangStatussen(raw).takeIf { it.isNotEmpty() } ?: VoortgangStatusOptie.STANDAARD
+    }
+
+    /**
+     * Validates a configured list and gives new statuses (no code yet) a
+     * stable code derived from their name. Names are required, unique and
+     * may not be a lifecycle status of the register (Gepland, Afgerond, ...).
+     * An empty list is stored as null: the standard list applies.
+     */
+    private fun normalizeVoortgangStatussen(raw: String?): String? {
+        if (raw.isNullOrBlank()) return null
+        val opties = try {
+            parseVoortgangStatussen(raw)
+        } catch (e: Exception) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Voortgangsstatussen zijn ongeldig: ${e.message}")
+        }
+        if (opties.isEmpty()) return null
+        val namen = mutableSetOf<String>()
+        val codes = mutableSetOf<String>()
+        val genormaliseerd = opties.map { optie ->
+            val naam = optie.naam.trim()
+            val sleutel = naam.lowercase()
+            when {
+                naam.isEmpty() -> throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Elke voortgangsstatus heeft een naam nodig")
+                sleutel in VoortgangStatusOptie.GERESERVEERDE_NAMEN -> throw ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "'$naam' is al een status van het doel zelf en kan geen voortgangsstatus zijn"
+                )
+                !namen.add(sleutel) -> throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Voortgangsstatus '$naam' staat er dubbel in")
+            }
+            val code = optie.code.trim().ifEmpty { vrijeCode(naam, codes + opties.map { it.code }) }
+            if (!VoortgangStatusOptie.CODE_PATROON.matches(code) || !codes.add(code)) {
+                throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Voortgangsstatus '$naam' heeft een ongeldige code '$code'")
+            }
+            optie.copy(code = code, naam = naam)
+        }
+        return objectMapper.writeValueAsString(genormaliseerd)
+    }
+
+    /** "Wacht op inwoner" -> WACHT_OP_INWONER, suffixed when that code is taken. */
+    private fun vrijeCode(naam: String, bezet: Set<String>): String {
+        val basis = naam.uppercase()
+            .replace(Regex("[^A-Z0-9]+"), "_")
+            .trim('_')
+            .take(60)
+            .ifEmpty { "STATUS" }
+        return generateSequence(1) { it + 1 }
+            .map { if (it == 1) basis else "${basis}_$it" }
+            .first { it !in bezet }
     }
 
     /** Configured positietypen for the domein, or null when unconfigured (any value allowed). */
@@ -113,6 +175,9 @@ class PhaseConfigService(
 
     private fun parseJsonList(json: String): List<String> =
         objectMapper.readValue(json, object : TypeReference<List<String>>() {})
+
+    private fun parseVoortgangStatussen(json: String): List<VoortgangStatusOptie> =
+        objectMapper.readValue(json, object : TypeReference<List<VoortgangStatusOptie>>() {})
 
     private fun parseJsonMap(json: String): Map<String, List<String>> =
         objectMapper.readValue(json, object : TypeReference<Map<String, List<String>>>() {})

@@ -25,14 +25,6 @@
   .actions{display:flex;gap:12px;margin-top:24px;justify-content:flex-end}
   .goal-progress{background:#f4f4f4;padding:14px;margin-bottom:10px;border-left:3px solid #0f62fe}
   .goal-progress .goal-name{font-weight:500;margin-bottom:8px}
-  .score-group{display:flex;gap:4px;align-items:center;margin-bottom:6px}
-  .score-group label{display:flex;align-items:center;gap:3px;font-size:13px;font-weight:400;color:#161616;cursor:pointer;padding:4px 10px;border:1px solid #e0e0e0;background:#fff;margin-bottom:0}
-  .score-group input[type=radio]{display:none}
-  .score-group input[type=radio]:checked+span{background:#0f62fe;color:#fff}
-  .score-label{display:inline-block;padding:4px 10px;border:1px solid #e0e0e0;font-size:13px;cursor:pointer;transition:all .15s}
-  .score-label:hover{border-color:#0f62fe}
-  .score-label.selected{background:#0f62fe;color:#fff;border-color:#0f62fe}
-  .score-legend{display:flex;gap:16px;font-size:11px;color:#a8a8a8;margin-bottom:6px}
   .goal-explanation input{margin-top:4px}
   .section-divider{border-top:1px solid #e0e0e0;margin:20px 0}
   .msg{padding:12px;margin-bottom:12px;background:#defbe6;border-left:3px solid #24a148;display:none}
@@ -73,7 +65,6 @@
 
 <div class="section-divider"></div>
 <h3>Voortgang per doel</h3>
-<div class="score-legend"><span>0 = Niet gestart</span><span>50 = Deels gehaald</span><span>100 = Volledig gehaald</span></div>
 <div id="goalProgressList"><div class="loading">Doelen laden...</div></div>
 
 <div class="section-divider"></div>
@@ -95,6 +86,7 @@ var OPENPLAN=API+'/openplan/plannen/api/v0';
 var planId=null;
 var goals=[];
 var goalDetails={};
+var statusOpties=[];
 
 var initialized=false;
 window.addEventListener('message',function(e){
@@ -132,18 +124,22 @@ function init(context,naResolve){
     return Promise.all([
       fetch(OPENPLAN+'/doel?plannen__uuid='+planId).then(function(r){return r.json()}),
       fetch(API+'/api/v1/pdca/doeldetails?planUuid='+planId).then(function(r){return r.ok?r.json():[]}),
-      fetch(OPENPLAN+'/doeltype').then(function(r){return r.json()}).catch(function(){return {results:[]}})
+      fetch(OPENPLAN+'/doeltype').then(function(r){return r.json()}).catch(function(){return {results:[]}}),
+      fetch(API+'/api/v1/pdca/voortgangstatussen?planUuid='+planId).then(function(r){return r.ok?r.json():[]})
     ]);
   }).then(function(res){
-    // Voortgang per subdoel; het hoofddoel (de strategie) wordt niet gescoord.
+    // Voortgang of the running subdoelen (the voortgangsstatussen of the
+    // plan's case type); the hoofddoel (the strategy) stays out, and a closed
+    // doel has its register status instead.
     var hoofddoelTypeUuids={};
     (res[2].results||[]).forEach(function(dt){
       if((dt.categorieen||[]).some(function(c){return c.naam==='Hoofddoel'}))hoofddoelTypeUuids[dt.uuid]=true;
     });
     goals=(res[0].results||[]).filter(function(g){
-      return g.status!=='geannuleerd'&&!(g.doeltype&&hoofddoelTypeUuids[g.doeltype.uuid]);
+      return g.status==='actief'&&!(g.doeltype&&hoofddoelTypeUuids[g.doeltype.uuid]);
     });
     (res[1]||[]).forEach(function(d){goalDetails[d.doelUuid]=d});
+    statusOpties=res[3]||[];
     renderGoalProgress();
   }).catch(function(err){if(err==='no plan')return;document.getElementById('goalProgressList').innerHTML='<div style="color:#da1e28">Fout bij laden: '+err.message+'</div>'});
 }
@@ -156,29 +152,25 @@ function renderGoalProgress(){
     var d=goalDetails[g.uuid]||{};
     html+='<div class="goal-progress">';
     html+='<div class="goal-name">'+esc(g.titel)+'</div>';
-    html+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">';
-    html+='<input type="range" id="score_'+i+'" min="0" max="100" value="'+(d.voortgangScore||0)+'" oninput="updateScoreDisplay('+i+')" style="flex:1">';
-    html+='<span id="scoreVal_'+i+'" style="min-width:40px;font-weight:600;text-align:right">'+(d.voortgangScore||0)+'%</span>';
-    html+='</div>';
+    html+='<select id="status_'+i+'"><option value="">Geen status</option>';
+    statusOpties.forEach(function(o){
+      html+='<option value="'+esc(o.code)+'"'+(o.code===d.voortgangStatus?' selected':'')+'>'+esc(o.naam)+'</option>';
+    });
+    html+='</select>';
     html+='<div class="goal-explanation"><input type="text" id="explanation_'+i+'" placeholder="Toelichting" value="'+(d.voortgangToelichting?esc(d.voortgangToelichting):'')+'"></div>';
     html+='</div>';
   });
   el.innerHTML=html;
 }
 
-function updateScoreDisplay(i){
-  var val=document.getElementById('score_'+i).value;
-  document.getElementById('scoreVal_'+i).textContent=val+'%';
-}
-
 function submitEval(){
   var goalProgress=[];
   goals.forEach(function(g,i){
-    var scoreEl=document.getElementById('score_'+i);
-    var score=scoreEl?parseInt(scoreEl.value):null;
+    var status=document.getElementById('status_'+i).value;
+    var optie=statusOpties.filter(function(o){return o.code===status})[0];
     var explanation=document.getElementById('explanation_'+i).value.trim();
-    if(score||explanation){
-      goalProgress.push({doelUuid:g.uuid,score:score,toelichting:explanation});
+    if(status||explanation){
+      goalProgress.push({doelUuid:g.uuid,status:status||null,statusNaam:optie?optie.naam:null,toelichting:explanation});
     }
   });
 
@@ -203,11 +195,11 @@ function submitEval(){
   .then(function(details){
     var cm={uuid:details.contactmomentUuid};
     goalProgress.forEach(function(gp){
-      if(gp.score){
+      if(gp.status){
         fetch(API+'/api/v1/pdca/doeldetails/'+gp.doelUuid,{
           method:'PUT',
           headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({planUuid:planId,voortgangScore:gp.score,voortgangToelichting:gp.toelichting||null})
+          body:JSON.stringify({planUuid:planId,voortgangStatus:gp.status,voortgangToelichting:gp.toelichting||null})
         });
       }
     });

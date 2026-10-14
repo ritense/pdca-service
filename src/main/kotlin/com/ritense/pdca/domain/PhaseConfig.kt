@@ -25,7 +25,7 @@ import java.util.UUID
 
 /**
  * PDCA configuration per GZAC case definition: evaluation types, plan display
- * statuses, the positietypen register, which subdoeltypen belong under which
+ * statuses, the voortgangsstatussen of doelen, the positietypen register, which subdoeltypen belong under which
  * hoofddoeltype, the intake prefill mapping and the intake -> plan case type
  * reference.
  */
@@ -45,6 +45,14 @@ data class PhaseConfig(
     /** JSON array of configurable plan display statuses (Concept, Vastgesteld, ...). */
     @Column(name = "plan_statussen", columnDefinition = "TEXT")
     var planStatussen: String? = null,
+
+    /**
+     * JSON array of [VoortgangStatusOptie] ({code, naam, betekenis}), in
+     * display order: the voortgangsstatussen of the subdoelen and the
+     * hoofddoel of a plan of this case type. Empty = [VoortgangStatusOptie.STANDAARD].
+     */
+    @Column(name = "voortgang_statussen", columnDefinition = "TEXT")
+    var voortgangStatussen: String? = null,
 
     /**
      * JSON array of positietypen (inwoner-/objectposities) for this domein.

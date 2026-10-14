@@ -65,6 +65,7 @@ class PhaseConfigResource(
                 caseDefinitionKey = request.caseDefinitionKey,
                 evaluationTypes = request.evaluationTypes,
                 planStatussen = request.planStatussen,
+                voortgangStatussen = request.voortgangStatussen,
                 positieTypen = request.positieTypen,
                 subdoelMapping = request.subdoelMapping,
                 prefillMapping = request.prefillMapping,
@@ -83,6 +84,7 @@ class PhaseConfigResource(
         val updated = existing.copy(
             evaluationTypes = request.evaluationTypes ?: existing.evaluationTypes,
             planStatussen = request.planStatussen ?: existing.planStatussen,
+            voortgangStatussen = request.voortgangStatussen ?: existing.voortgangStatussen,
             positieTypen = request.positieTypen ?: existing.positieTypen,
             subdoelMapping = request.subdoelMapping ?: existing.subdoelMapping,
             prefillMapping = request.prefillMapping ?: existing.prefillMapping,

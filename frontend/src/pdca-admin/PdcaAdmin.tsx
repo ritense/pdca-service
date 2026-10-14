@@ -7,8 +7,12 @@ import { Add, Edit, TrashCan, Draggable, Close } from '@carbon/react/icons';
 import { onInit, resizeIframe } from '../shared/bridge';
 import {
   openplan, pdca, PhaseConfig, DoelType, ActieBouwblokKoppeling, BouwblokProces, PluginConfiguratie,
+  VoortgangStatusOptie, VoortgangBetekenis,
 } from '../shared/api';
-import { evalTypeLabel, subdoelTypen, hoofddoelTypen, doelTypeNaam } from '../shared/labels';
+import {
+  evalTypeLabel, subdoelTypen, hoofddoelTypen, doelTypeNaam, voortgangStatus,
+  VOORTGANG_BETEKENISSEN, GERESERVEERDE_STATUSNAMEN,
+} from '../shared/labels';
 
 const ALL_EVAL_TYPES = ['INTAKE', 'PROGRESS', 'EVALUATION', 'INSPECTION', 'CRISIS'];
 
@@ -118,6 +122,116 @@ function SortableList({ items, onChange, emptyText, tagType }: {
         </div>
         <Button size="sm" kind="tertiary" renderIcon={Add} onClick={() => voegToe(nieuw)}
           disabled={!nieuw.trim()}>Toevoegen</Button>
+      </div>
+    </div>
+  );
+}
+
+/** A voortgangsstatus being edited; [sleutel] keys the row, [code] is empty until the backend assigns one. */
+type VoortgangRij = VoortgangStatusOptie & { sleutel: string };
+
+let volgendeRij = 0;
+const alsRijen = (opties: VoortgangStatusOptie[]): VoortgangRij[] =>
+  opties.map(o => ({ ...o, sleutel: `rij-${volgendeRij++}` }));
+
+/** Why a row cannot be saved, or null: a name is required, unique and not a lifecycle status. */
+function voortgangFout(rij: VoortgangRij, rijen: VoortgangRij[]): string | null {
+  const naam = rij.naam.trim().toLowerCase();
+  if (!naam) return 'Geef de status een naam';
+  if (GERESERVEERDE_STATUSNAMEN.includes(naam)) return 'Dit is al een status van het doel zelf';
+  if (rijen.some(r => r !== rij && r.naam.trim().toLowerCase() === naam)) return 'Deze naam staat er al';
+  return null;
+}
+
+/**
+ * The voortgangsstatussen of a plan case type: per row a name, what it means
+ * (gaat goed / let op / gaat niet goed: the tag colour and the Voortgang KPI)
+ * and a preview of the tag; drag for the order. The code behind a status is
+ * assigned once by the backend, so renaming carries through to existing doelen.
+ */
+function VoortgangStatussenEditor({ rijen, onChange, standaard }: {
+  rijen: VoortgangRij[];
+  onChange: (rijen: VoortgangRij[]) => void;
+  standaard: VoortgangStatusOptie[];
+}) {
+  const [sleepIndex, setSleepIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
+
+  const wijzig = (i: number, deel: Partial<VoortgangRij>) =>
+    onChange(rijen.map((r, ri) => (ri === i ? { ...r, ...deel } : r)));
+
+  const verplaats = (van: number, naar: number) => {
+    if (van === naar) return;
+    const kopie = [...rijen];
+    const [rij] = kopie.splice(van, 1);
+    kopie.splice(naar, 0, rij);
+    onChange(kopie);
+  };
+
+  const isStandaard = rijen.length === standaard.length
+    && rijen.every((r, i) => r.naam === standaard[i].naam && r.betekenis === standaard[i].betekenis);
+
+  return (
+    <div>
+      {rijen.length === 0 && (
+        <div style={{ ...hintStyle, fontStyle: 'italic' }}>Geen statussen — de standaardlijst geldt.</div>
+      )}
+      {rijen.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: '16px 16px 1fr 180px 140px 40px', gap: 8, marginBottom: 4 }}>
+          <span /><span />
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--cds-text-secondary)' }}>Naam</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--cds-text-secondary)' }}>Betekenis</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--cds-text-secondary)' }}>Zo ziet het eruit</span>
+          <span />
+        </div>
+      )}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8 }}>
+        {rijen.map((rij, i) => {
+          const fout = voortgangFout(rij, rijen);
+          const tag = VOORTGANG_BETEKENISSEN.find(b => b.betekenis === rij.betekenis)?.tag ?? 'gray';
+          return (
+            <div key={rij.sleutel} draggable
+              onDragStart={() => setSleepIndex(i)}
+              onDragOver={e => { e.preventDefault(); setOverIndex(i); }}
+              onDragLeave={() => setOverIndex(cur => (cur === i ? null : cur))}
+              onDrop={() => { if (sleepIndex !== null) verplaats(sleepIndex, i); setSleepIndex(null); setOverIndex(null); }}
+              onDragEnd={() => { setSleepIndex(null); setOverIndex(null); }}
+              style={{
+                display: 'grid', gridTemplateColumns: '16px 16px 1fr 180px 140px 40px', gap: 8,
+                alignItems: 'start', padding: '6px 8px',
+                background: 'var(--cds-layer-01, #f4f4f4)', cursor: 'grab',
+                border: '1px solid var(--cds-border-subtle)',
+                borderTop: overIndex === i && sleepIndex !== null && sleepIndex !== i
+                  ? '2px solid var(--cds-border-interactive, #0f62fe)' : '1px solid var(--cds-border-subtle)',
+                opacity: sleepIndex === i ? 0.5 : 1,
+              }}>
+              <Draggable size={16} style={{ color: 'var(--cds-icon-secondary)', marginTop: 8 }} />
+              <span style={{ fontSize: 12, color: 'var(--cds-text-helper)', marginTop: 8 }}>{i + 1}.</span>
+              <TextInput id={`voortgang-naam-${rij.sleutel}`} labelText="" hideLabel size="sm" value={rij.naam}
+                placeholder="bijv. Wacht op inwoner"
+                invalid={!!fout} invalidText={fout ?? undefined}
+                onChange={(e: any) => wijzig(i, { naam: e.target.value })} />
+              <Select id={`voortgang-betekenis-${rij.sleutel}`} labelText="" hideLabel size="sm" value={rij.betekenis}
+                onChange={(e: any) => wijzig(i, { betekenis: e.target.value as VoortgangBetekenis })}>
+                {VOORTGANG_BETEKENISSEN.map(b => <SelectItem key={b.betekenis} value={b.betekenis} text={b.label} />)}
+              </Select>
+              <div style={{ marginTop: 4 }}>
+                <Tag size="sm" type={tag}>{rij.naam.trim() || 'Naam'}</Tag>
+              </div>
+              <Button size="sm" kind="ghost" renderIcon={Close} iconDescription="Verwijderen" hasIconOnly
+                onClick={() => onChange(rijen.filter((_, ri) => ri !== i))} />
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Button size="sm" kind="tertiary" renderIcon={Add}
+          onClick={() => onChange([...rijen, ...alsRijen([{ code: '', naam: '', betekenis: 'LET_OP' }])])}>
+          Status toevoegen
+        </Button>
+        {!isStandaard && (
+          <Button size="sm" kind="ghost" onClick={() => onChange(alsRijen(standaard))}>Standaardlijst herstellen</Button>
+        )}
       </div>
     </div>
   );
@@ -277,6 +391,9 @@ export function PdcaAdmin() {
   const [editKey, setEditKey] = useState<string | null>(null);
   const [formKey, setFormKey] = useState('');
   const [formPlanStatussen, setFormPlanStatussen] = useState<string[]>([]);
+  const [formVoortgang, setFormVoortgang] = useState<VoortgangRij[]>([]);
+  /** The standard voortgangsstatussen (backend), for a case type that configures none. */
+  const [standaardVoortgang, setStandaardVoortgang] = useState<VoortgangStatusOptie[]>([]);
   const [formPositieTypen, setFormPositieTypen] = useState<string[]>([]);
   const [formSubdoelMapping, setFormSubdoelMapping] = useState<SubdoelMappingRij[]>([]);
   const [formMapping, setFormMapping] = useState<MappingRij[]>([]);
@@ -294,20 +411,22 @@ export function PdcaAdmin() {
   }, []);
 
   useEffect(() => { onInit(() => loadData()); }, []);
-  useEffect(() => { resizeIframe(); }, [loading, configs, modal, formPlanStatussen, formPositieTypen, formSubdoelMapping, formMapping]);
+  useEffect(() => { resizeIframe(); }, [loading, configs, modal, formPlanStatussen, formVoortgang, formPositieTypen, formSubdoelMapping, formMapping]);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [data, dossiertypes, dt] = await Promise.all([
+      const [data, dossiertypes, dt, sv] = await Promise.all([
         pdca.phaseConfigs.list(),
         // Case types from GZAC; null = list unavailable (grant not yet
         // accepted or GZAC down) -> free entry as fallback.
         pdca.caseDefinitions.list().catch(() => null),
         // Doeltype register: the doeltype selection of the bouwblok koppelingen.
         openplan.doeltypen.list().catch(() => [] as DoelType[]),
+        pdca.voortgangStatussen().catch(() => [] as VoortgangStatusOptie[]),
       ]);
       setConfigs(data);
+      setStandaardVoortgang(sv);
       setGzacDossiertypes(dossiertypes);
       setDoeltypen(dt);
       setLoading(false);
@@ -316,6 +435,14 @@ export function PdcaAdmin() {
 
   const parseList = (raw?: string | null): string[] => {
     try { return JSON.parse(raw || '[]'); } catch { return []; }
+  };
+
+  /** The configured voortgangsstatussen, or null when the case type configures none (standard list). */
+  const parseVoortgang = (raw?: string | null): VoortgangStatusOptie[] | null => {
+    try {
+      const opties = JSON.parse(raw || '[]') as VoortgangStatusOptie[];
+      return opties.length > 0 ? opties : null;
+    } catch { return null; }
   };
 
   const parseSubdoelMapping = (raw?: string | null): SubdoelMappingRij[] => {
@@ -336,6 +463,7 @@ export function PdcaAdmin() {
   const openCreate = () => {
     setEditKey(null); setFormKey('');
     setFormPlanStatussen(['Concept', 'Vastgesteld', 'In uitvoering']);
+    setFormVoortgang(alsRijen(standaardVoortgang));
     setFormPositieTypen([]);
     setFormSubdoelMapping([]);
     setFormMapping([]);
@@ -350,6 +478,7 @@ export function PdcaAdmin() {
     setEditKey(cfg.caseDefinitionKey);
     setFormKey(cfg.caseDefinitionKey);
     setFormPlanStatussen(parseList(cfg.planStatussen));
+    setFormVoortgang(alsRijen(parseVoortgang(cfg.voortgangStatussen) ?? standaardVoortgang));
     setFormPositieTypen(parseList(cfg.positieTypen));
     setFormSubdoelMapping(parseSubdoelMapping(cfg.subdoelMapping));
     setFormMapping(parseMapping(cfg.prefillMapping));
@@ -372,6 +501,8 @@ export function PdcaAdmin() {
     const payload = {
       caseDefinitionKey: formKey,
       planStatussen: JSON.stringify(formPlanStatussen),
+      voortgangStatussen: formIsIntake ? null
+        : JSON.stringify(formVoortgang.map(({ code, naam, betekenis }) => ({ code, naam: naam.trim(), betekenis }))),
       positieTypen: JSON.stringify(formPositieTypen),
       subdoelMapping: subdoelRijen.length > 0 ? JSON.stringify(subdoelMap) : null,
       evaluationTypes: JSON.stringify(Array.from(formEvalTypes)),
@@ -433,6 +564,7 @@ export function PdcaAdmin() {
                 <tr>
                   <th style={thStyle}>Dossiertype</th>
                   <th style={thStyle}>Planstatussen</th>
+                  <th style={thStyle}>Voortgangsstatussen</th>
                   <th style={thStyle}>Positietypen</th>
                   <th style={thStyle}>Subdoelen per hoofddoel</th>
                   <th style={thStyle}>Evaluatietypen</th>
@@ -442,6 +574,7 @@ export function PdcaAdmin() {
               <tbody>
                 {configs.map(cfg => {
                   const ps = parseList(cfg.planStatussen);
+                  const vs = parseVoortgang(cfg.voortgangStatussen);
                   const pt = parseList(cfg.positieTypen);
                   const sm = parseSubdoelMapping(cfg.subdoelMapping);
                   const et = JSON.parse(cfg.evaluationTypes) as string[];
@@ -459,6 +592,19 @@ export function PdcaAdmin() {
                         <div style={{display: 'flex', gap: 4, flexWrap: 'wrap'}}>
                           {ps.map(p => <Tag key={p} size="sm" type="teal">{p}</Tag>)}
                         </div>
+                      </td>
+                      <td style={{padding: '12px 16px'}}>
+                        {cfg.planCaseDefinitionKey ? (
+                          <span style={{fontSize: 12, color: 'var(--cds-text-helper)', fontStyle: 'italic'}}>n.v.t. (intake)</span>
+                        ) : (
+                          <div style={{display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center'}}>
+                            {(vs ?? standaardVoortgang).map(o => {
+                              const weergave = voortgangStatus(o.code, vs ?? standaardVoortgang);
+                              return <Tag key={o.code} size="sm" type={weergave.tag}>{weergave.label}</Tag>;
+                            })}
+                            {!vs && <span style={{fontSize: 12, color: 'var(--cds-text-helper)', fontStyle: 'italic'}}>standaard</span>}
+                          </div>
+                        )}
                       </td>
                       <td style={{padding: '12px 16px'}}>
                         <div style={{display: 'flex', gap: 4, flexWrap: 'wrap'}}>
@@ -513,6 +659,7 @@ export function PdcaAdmin() {
 
         <Modal open={modal} size="lg" modalHeading={editKey ? 'Configuratie bewerken' : 'Nieuwe configuratie'}
           primaryButtonText="Opslaan" secondaryButtonText="Annuleren"
+          primaryButtonDisabled={!formIsIntake && formVoortgang.some(r => voortgangFout(r, formVoortgang) !== null)}
           onRequestClose={() => setModal(false)} onRequestSubmit={handleSave}>
           <div className="pdca-modal-form">
             {editKey ? (
@@ -576,6 +723,16 @@ export function PdcaAdmin() {
                 </p>
                 <SortableList items={formPlanStatussen} onChange={setFormPlanStatussen}
                   emptyText="Geen statussen — vrije invoer in het planoverzicht." tagType="teal" />
+
+                <h5 style={sectionTitleStyle}>Voortgangsstatussen (hoofddoel en subdoelen)</h5>
+                <p style={hintStyle}>
+                  Hoe het gaat met een lopend hoofddoel of subdoel. De fase (Gepland, Gestart, Afgerond,
+                  Afgebroken) komt uit het register en is geen voortgangsstatus; na afronden of afbreken
+                  toont een doel weer die fase. Een naam wijzigen werkt door op bestaande doelen; een
+                  verwijderde status blijft grijs zichtbaar op doelen die hem nog hebben. Sleep voor de volgorde.
+                </p>
+                <VoortgangStatussenEditor rijen={formVoortgang} onChange={setFormVoortgang}
+                  standaard={standaardVoortgang} />
 
                 <h5 style={sectionTitleStyle}>Positietypen</h5>
                 <p style={hintStyle}>

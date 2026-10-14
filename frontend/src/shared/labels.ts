@@ -4,6 +4,8 @@
  * domain values the plan tabs show.
  */
 
+import type { VoortgangBetekenis, VoortgangStatusOptie } from './api';
+
 const EVAL_TYPE_LABELS: Record<string, string> = {
   INTAKE: 'Intake', PROGRESS: 'Voortgang', EVALUATION: 'Evaluatie',
   INSPECTION: 'Inspectie', CRISIS: 'Crisis',
@@ -269,23 +271,34 @@ export function doelgroepVoorSubject(domeinregister: string | null | undefined):
   return undefined;
 }
 
-/** Voortgangsstatus of an active subdoel or hoofddoel (overlay DoelDetails.voortgangStatus). */
-export const VOORTGANG_STATUSSEN = ['OP_KOERS', 'AANDACHT_NODIG', 'LOOPT_ACHTER'] as const;
+/** What a voortgangsstatus means, as chosen in PDCA Beheer; the tag colour follows it. */
+export const VOORTGANG_BETEKENISSEN: { betekenis: VoortgangBetekenis; label: string; tag: TagKleur }[] = [
+  { betekenis: 'GAAT_GOED', label: 'Gaat goed', tag: 'green' },
+  { betekenis: 'LET_OP', label: 'Let op', tag: 'magenta' },
+  { betekenis: 'GAAT_NIET_GOED', label: 'Gaat niet goed', tag: 'red' },
+];
 
-const VOORTGANG_STATUS_LABELS: Record<string, string> = {
-  OP_KOERS: 'Op koers', AANDACHT_NODIG: 'Aandacht nodig', LOOPT_ACHTER: 'Loopt achter',
-};
+/**
+ * Names of the lifecycle statuses (register status plus gepland/gestart); a
+ * voortgangsstatus may not reuse them. Mirrors VoortgangStatusOptie in the backend.
+ */
+export const GERESERVEERDE_STATUSNAMEN = ['gepland', 'gestart', 'afgerond', 'afgebroken', 'niet behaald', 'behaald'];
 
-const VOORTGANG_STATUS_TAGS: Record<string, TagKleur> = {
-  OP_KOERS: 'green', AANDACHT_NODIG: 'magenta', LOOPT_ACHTER: 'red',
-};
-
-export function voortgangStatusLabel(s: string | null | undefined): string {
-  return s ? VOORTGANG_STATUS_LABELS[s] || s : 'Geen status';
+/** OP_KOERS -> "Op koers": the name of a status that is no longer in the plan's list. */
+function codeAlsNaam(code: string): string {
+  const tekst = code.toLowerCase().replace(/_/g, ' ');
+  return tekst.charAt(0).toUpperCase() + tekst.slice(1);
 }
 
-export function voortgangStatusTag(s: string | null | undefined): TagKleur {
-  return (s && VOORTGANG_STATUS_TAGS[s]) || 'gray';
+/**
+ * Voortgangsstatus of an active subdoel or hoofddoel (overlay
+ * DoelDetails.voortgangStatus), looked up in the plan's list. A status that
+ * was removed from the list keeps showing, in gray.
+ */
+export function voortgangStatus(code: string, opties: VoortgangStatusOptie[], naam?: string | null): StatusWeergave {
+  const optie = opties.find(o => o.code === code);
+  if (!optie) return { label: naam || codeAlsNaam(code), tag: 'gray' };
+  return { label: optie.naam, tag: VOORTGANG_BETEKENISSEN.find(b => b.betekenis === optie.betekenis)?.tag ?? 'gray' };
 }
 
 /**

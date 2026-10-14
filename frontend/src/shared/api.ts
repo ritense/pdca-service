@@ -145,6 +145,9 @@ export const pdca = {
       request<PlanDetails>(`${PDCA}/plandetails/${planUuid}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (planUuid: string) => request<void>(`${PDCA}/plandetails/${planUuid}`, { method: 'DELETE' }),
   },
+  /** The voortgangsstatussen of a plan (its case type's list); without plan the standard list. */
+  voortgangStatussen: (planUuid?: string) =>
+    request<VoortgangStatusOptie[]>(`${PDCA}/voortgangstatussen${planUuid ? `?planUuid=${planUuid}` : ''}`),
   doeldetails: {
     listByPlan: (planUuid: string) => request<DoelDetails[]>(`${PDCA}/doeldetails?planUuid=${planUuid}`),
     upsert: (doelUuid: string, data: Partial<DoelDetails>) =>
@@ -502,20 +505,28 @@ export interface PlanDetails {
 
 export type UitvoeringsStatus = 'GEPLAND' | 'GESTART';
 
-/** How an active subdoel is going. */
-export type VoortgangStatus = 'OP_KOERS' | 'AANDACHT_NODIG' | 'LOOPT_ACHTER';
+/** What a voortgangsstatus means: drives its tag colour and the Voortgang KPI. */
+export type VoortgangBetekenis = 'GAAT_GOED' | 'LET_OP' | 'GAAT_NIET_GOED';
+
+/**
+ * One voortgangsstatus of a plan case type (PhaseConfig.voortgangStatussen):
+ * the stable code stored on a doel, the name users see and its meaning.
+ */
+export interface VoortgangStatusOptie {
+  code: string;
+  naam: string;
+  betekenis: VoortgangBetekenis;
+}
 
 export interface DoelDetails {
   doelUuid: string;
   planUuid: string;
   /** Refinement of register status actief: gepland or gestart. */
   uitvoeringsStatus: UitvoeringsStatus;
-  /** Numeric score from the intake and the evaluate task form; the plan tabs show voortgangStatus. */
-  voortgangScore?: number;
-  /** Explanation of the voortgang (status in the plan tabs, score in the intake). */
+  /** Explanation of the voortgang. */
   voortgangToelichting?: string;
-  /** How an active subdoel or hoofddoel is going. */
-  voortgangStatus?: VoortgangStatus;
+  /** How an active subdoel or hoofddoel is going: code of one of the plan's voortgangsstatussen. */
+  voortgangStatus?: string;
   /** Note for colleagues only. */
   interneNotitie?: string;
   /** Note that may be shared with the inwoner. */
@@ -658,6 +669,8 @@ export interface PhaseConfig {
   evaluationTypes: string;
   /** JSON array: configurable plan statuses (Concept, Vastgesteld, ...). */
   planStatussen?: string | null;
+  /** JSON array of VoortgangStatusOptie: voortgangsstatussen of doelen; empty = the standard list. */
+  voortgangStatussen?: string | null;
   /** JSON array: the domein's positietype register (begin/target positions). */
   positieTypen?: string | null;
   /** JSON object: hoofddoeltype name -> subdoeltype names allowed under it. */

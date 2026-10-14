@@ -227,7 +227,7 @@ class IntakeService(
         }
         validatePositie(planCaseDefinitionKey, "beginPositie", request.beginPositie)
         // Statuses are checked before anything is written to the registers.
-        val doelStatussen = request.doelen.map { doelStatus(it.status, it.voortgang) }
+        val doelStatussen = request.doelen.map { doelStatus(it.status) }
         val instrumentStatussen = request.instrumenten.map { instrumentStatus(it.status) }
         val procesbegeleider = request.betrokkenen.firstOrNull { it.procesbegeleider }
 
@@ -358,7 +358,6 @@ class IntakeService(
                     doelUuid = doelUuid,
                     planUuid = planUuid,
                     uitvoeringsStatus = intakeStatus.uitvoeringsStatus ?: UitvoeringsStatus.GEPLAND,
-                    voortgangScore = doel.voortgang,
                     voortgangToelichting = doel.toelichting,
                     sortering = index
                 )
@@ -484,10 +483,10 @@ class IntakeService(
         AFGEROND("afgerond", null)
     }
 
-    /** Legacy `actief` (also the default) counts as gestart once there is voortgang. */
-    private fun doelStatus(status: String?, voortgang: Int?): IntakeStatus =
+    /** Legacy `actief` (also the default) means gepland. */
+    private fun doelStatus(status: String?): IntakeStatus =
         when (val value = status?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "actief") {
-            "actief" -> if ((voortgang ?: 0) > 0) IntakeStatus.GESTART else IntakeStatus.GEPLAND
+            "actief" -> IntakeStatus.GEPLAND
             else -> intakeStatus("doel", value)
         }
 

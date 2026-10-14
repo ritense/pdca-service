@@ -71,13 +71,12 @@ data class PlanIntakeRequest(
     val betrokkenen: List<IntakeBetrokkene> = emptyList()
 )
 
-/** [status]: gepland, gestart or afgerond (legacy `actief`: gestart when voortgang > 0, otherwise gepland). */
+/** [status]: gepland, gestart or afgerond (legacy `actief` = gepland). */
 data class IntakeDoel(
     val doelType: String,
     val beschrijving: String? = null,
     val status: String? = null,
     val resultaat: String? = null,
-    val voortgang: Int? = null,
     val toelichting: String? = null
 )
 

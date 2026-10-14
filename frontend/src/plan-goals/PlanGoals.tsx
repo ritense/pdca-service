@@ -14,19 +14,19 @@ import {
   openplan, openproduct, pdca, planVoorDossier, urn, deleteDoelCascade, afbreekDoelCascade, afbreekInstrument, productTypeByUrn,
   parseDossierUrn,
   Plan, PlanDetails, Doel, DoelDetails, DoelType, InstrumentType, Instrument, InstrumentDetails, Actie, ProductType,
-  ActieBouwblokKoppeling, PhaseConfig, VoortgangStatus,
+  ActieBouwblokKoppeling, PhaseConfig, VoortgangStatusOptie,
 } from '../shared/api';
 import {
   aantal, doelStatus, instrumentStatus, actieStatus, doelTypeNaam, subdoelTypen, subdoelTypenVoorHoofddoel, isHoofddoelType,
   doelTypeThemas, producttypenVoorDoel, doelgroepVoorSubject,
-  priorityLabel, formatDate, voortgangStatusLabel, voortgangStatusTag, VOORTGANG_STATUSSEN,
+  priorityLabel, formatDate, voortgangStatus,
 } from '../shared/labels';
 
 type AfbreekTarget = { kind: 'doel' | 'instrument'; uuid: string; titel: string } | null;
 /** Subdoel awaiting confirmation of its removal, with what goes with it. */
 type VerwijderTarget = { uuid: string; titel: string; instrumenten: number; acties: number } | null;
 type Notities = { interneNotitie: string; externeNotitie: string };
-type VoortgangInvoer = { status: VoortgangStatus; toelichting: string };
+type VoortgangInvoer = { status: string; toelichting: string };
 type RegistratieInvoer = { uren: number | null; score: number | null; toelichting: string };
 
 export function PlanGoals() {
@@ -53,6 +53,8 @@ export function PlanGoals() {
   const [doeltypen, setDoeltypen] = useState<DoelType[]>([]);
   /** Case configuration; carries the subdoelmapping that scopes the subdoel choice list. */
   const [phaseConfig, setPhaseConfig] = useState<PhaseConfig | null>(null);
+  /** The voortgangsstatussen of this plan's case type (PDCA Beheer), for subdoelen and the hoofddoel. */
+  const [voortgangOpties, setVoortgangOpties] = useState<VoortgangStatusOptie[]>([]);
   const [instrumenttypen, setInstrumenttypen] = useState<InstrumentType[]>([]);
   const [producttypen, setProducttypen] = useState<ProductType[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -109,7 +111,7 @@ export function PlanGoals() {
       setPlan(p);
       setDetails(pDetails);
 
-      const [g, gd, a, idet, dt, it, pt] = await Promise.all([
+      const [g, gd, a, idet, dt, it, pt, vo] = await Promise.all([
         openplan.doelen.listByPlan(p.uuid),
         pdca.doeldetails.listByPlan(p.uuid).catch(() => [] as DoelDetails[]),
         pdca.acties.listByPlan(p.uuid).catch(() => [] as Actie[]),
@@ -117,10 +119,11 @@ export function PlanGoals() {
         openplan.doeltypen.list().catch(() => [] as DoelType[]),
         openplan.instrumenttypen.list().catch(() => [] as InstrumentType[]),
         openproduct.producttypen.list().catch(() => [] as ProductType[]),
+        pdca.voortgangStatussen(p.uuid).catch(() => [] as VoortgangStatusOptie[]),
       ]);
       const i = await openplan.instrumenten.listByDoelen(g.map(d => d.uuid)).catch(() => [] as Instrument[]);
       setDoelen(g); setDoelDetails(gd); setActies(a); setInstrumenten(i); setInstrumentDetails(idet);
-      setDoeltypen(dt); setInstrumenttypen(it); setProducttypen(pt);
+      setDoeltypen(dt); setInstrumenttypen(it); setProducttypen(pt); setVoortgangOpties(vo);
 
       if (pDetails?.caseDefinitionKey) {
         // Bouwblok koppelingen of this case type (PDCA Beheer): startable
@@ -435,8 +438,8 @@ export function PlanGoals() {
     });
     rec({
       subjectType: kind, subjectUuid: doel.uuid, subjectTitel: doel.titel, soort: 'VOORTGANG', samenvoegen: true,
-      vanWaarde: voor?.voortgangStatus ? voortgangStatusLabel(voor.voortgangStatus) : null,
-      naarWaarde: voortgangStatusLabel(invoer.status),
+      vanWaarde: voor?.voortgangStatus ? voortgangStatus(voor.voortgangStatus, voortgangOpties).label : null,
+      naarWaarde: voortgangStatus(invoer.status, voortgangOpties).label,
       toelichting: invoer.toelichting !== (voor?.voortgangToelichting ?? '') ? invoer.toelichting : undefined,
     });
   };
@@ -537,9 +540,7 @@ export function PlanGoals() {
                   )}
                 </div>
                 <div className="pdca-row-actions">
-                  {hd?.voortgangStatus && (
-                    <Tag size="sm" type={voortgangStatusTag(hd.voortgangStatus)}>{voortgangStatusLabel(hd.voortgangStatus)}</Tag>
-                  )}
+                  {hd?.voortgangStatus && <VoortgangTag code={hd.voortgangStatus} opties={voortgangOpties} />}
                   <Tag size="sm" type={status.tag}>{status.label}</Tag>
                 </div>
               </div>
@@ -548,9 +549,9 @@ export function PlanGoals() {
                   <VoortgangNotitiesSectie
                     bewerken={bewerken.has(actiefHoofddoel.uuid)}
                     onBewerken={() => setBewerkt(actiefHoofddoel.uuid, true)}
-                    samenvatting={<DoelSamenvatting details={hd} />}
+                    samenvatting={<DoelSamenvatting details={hd} metVoortgang opties={voortgangOpties} />}
                     formulier={
-                      <DoelBijwerken id={actiefHoofddoel.uuid} details={hd} metVoortgang
+                      <DoelBijwerken id={actiefHoofddoel.uuid} details={hd} metVoortgang opties={voortgangOpties}
                         onSave={saveDoelBijwerken('HOOFDDOEL', actiefHoofddoel)}
                         onCancel={() => setBewerkt(actiefHoofddoel.uuid, false)} />
                     } />
@@ -600,9 +601,7 @@ export function PlanGoals() {
                       {aantal(aantalActies, 'actie', 'acties')} · {aantal(di.length, 'instrument', 'instrumenten')}
                     </span>
                   )}
-                  {actief && dd?.voortgangStatus && (
-                    <Tag size="sm" type={voortgangStatusTag(dd.voortgangStatus)}>{voortgangStatusLabel(dd.voortgangStatus)}</Tag>
-                  )}
+                  {actief && dd?.voortgangStatus && <VoortgangTag code={dd.voortgangStatus} opties={voortgangOpties} />}
                   <Tag size="sm" type={status.tag}>{status.label}</Tag>
                 </div>
               </div>
@@ -752,9 +751,9 @@ export function PlanGoals() {
                   <VoortgangNotitiesSectie
                     bewerken={bewerken.has(doel.uuid)}
                     onBewerken={() => setBewerkt(doel.uuid, true)}
-                    samenvatting={<DoelSamenvatting details={dd} />}
+                    samenvatting={<DoelSamenvatting details={dd} metVoortgang={actief} opties={voortgangOpties} />}
                     formulier={
-                      <DoelBijwerken id={doel.uuid} details={dd} metVoortgang={actief}
+                      <DoelBijwerken id={doel.uuid} details={dd} metVoortgang={actief} opties={voortgangOpties}
                         onSave={saveDoelBijwerken('SUBDOEL', doel)}
                         onCancel={() => setBewerkt(doel.uuid, false)} />
                     } />
@@ -895,17 +894,29 @@ function NotitiesSamenvatting({ details }: { details?: Partial<Notities> }) {
   </>;
 }
 
-function DoelSamenvatting({ details }: { details?: DoelDetails }) {
+/** The voortgangsstatus of a doel as a tag, looked up in the plan's list. */
+function VoortgangTag({ code, opties }: { code: string; opties: VoortgangStatusOptie[] }) {
+  const weergave = voortgangStatus(code, opties);
+  return <Tag size="sm" type={weergave.tag}>{weergave.label}</Tag>;
+}
+
+/**
+ * Summary of a doel's voortgang and notes. The voortgang only shows while the
+ * doel runs; once it is closed its register status says how it ended.
+ */
+function DoelSamenvatting({ details, metVoortgang, opties }: {
+  details?: DoelDetails; metVoortgang: boolean; opties: VoortgangStatusOptie[];
+}) {
   return (
     <div className="pdca-summary">
-      {details?.voortgangStatus ? (
+      {metVoortgang && (details?.voortgangStatus ? (
         <p className="pdca-summary-line">
-          <Tag size="sm" type={voortgangStatusTag(details.voortgangStatus)}>{voortgangStatusLabel(details.voortgangStatus)}</Tag>
+          <VoortgangTag code={details.voortgangStatus} opties={opties} />
           {details.voortgangToelichting && <span className="pdca-text-wrap">{details.voortgangToelichting}</span>}
         </p>
       ) : (
         <p className="pdca-summary-line pdca-summary-empty">Nog niet beoordeeld</p>
-      )}
+      ))}
       <NotitiesSamenvatting details={details} />
     </div>
   );
@@ -948,12 +959,12 @@ function BijwerkenActies({ saving, kanOpslaan, fout, onCancel, onSave }: {
  * Edit form for the voortgang (active subdoel or hoofddoel) and the notes of
  * a doel; only the parts that changed are saved.
  */
-function DoelBijwerken({ id, details, metVoortgang, onSave, onCancel }: {
-  id: string; details?: DoelDetails; metVoortgang: boolean;
+function DoelBijwerken({ id, details, metVoortgang, opties, onSave, onCancel }: {
+  id: string; details?: DoelDetails; metVoortgang: boolean; opties: VoortgangStatusOptie[];
   onSave: (voortgang: VoortgangInvoer | null, notities: Notities | null) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [status, setStatus] = useState<VoortgangStatus | ''>(details?.voortgangStatus ?? '');
+  const [status, setStatus] = useState<string>(details?.voortgangStatus ?? '');
   const [toelichting, setToelichting] = useState(details?.voortgangToelichting ?? '');
   const [notities, setNotities] = useState<Notities>({
     interneNotitie: details?.interneNotitie ?? '', externeNotitie: details?.externeNotitie ?? '',
@@ -967,8 +978,8 @@ function DoelBijwerken({ id, details, metVoortgang, onSave, onCancel }: {
   return (
     <div className="pdca-edit-form">
       {metVoortgang && (
-        <VoortgangStatusBlok id={id} status={status} toelichting={toelichting} heeftStatus={!!details?.voortgangStatus}
-          onStatus={setStatus} onToelichting={setToelichting} />
+        <VoortgangStatusBlok id={id} status={status} toelichting={toelichting} huidig={details?.voortgangStatus}
+          opties={opties} onStatus={setStatus} onToelichting={setToelichting} />
       )}
       <NotitiesBlok id={id} notities={notities} onChange={setNotities} />
       <BijwerkenActies saving={saving} kanOpslaan={kanOpslaan} fout={fout} onCancel={onCancel}
@@ -1033,19 +1044,25 @@ function NotitiesBlok({ id, notities, onChange }: {
 
 /**
  * Voortgangsstatus with its explanation, for an active subdoel or the
- * hoofddoel. During an evaluation a changed explanation becomes the reason
- * of the recorded change.
+ * hoofddoel; the choices are the plan's voortgangsstatussen. A current status
+ * that was removed from the list stays selectable until it is changed.
+ * During an evaluation a changed explanation becomes the reason of the
+ * recorded change.
  */
-function VoortgangStatusBlok({ id, status, toelichting, heeftStatus, onStatus, onToelichting }: {
-  id: string; status: VoortgangStatus | ''; toelichting: string; heeftStatus: boolean;
-  onStatus: (status: VoortgangStatus | '') => void; onToelichting: (toelichting: string) => void;
+function VoortgangStatusBlok({ id, status, toelichting, huidig, opties, onStatus, onToelichting }: {
+  id: string; status: string; toelichting: string; huidig?: string; opties: VoortgangStatusOptie[];
+  onStatus: (status: string) => void; onToelichting: (toelichting: string) => void;
 }) {
+  const vervallen = huidig && !opties.some(o => o.code === huidig) ? huidig : null;
   return (
     <div className="pdca-form-grid">
       <Select id={`voortgang-${id}`} labelText="Voortgang" value={status}
         onChange={(e: any) => onStatus(e.target.value)}>
-        <SelectItem value="" text="Geen status" disabled hidden={heeftStatus} />
-        {VOORTGANG_STATUSSEN.map(st => <SelectItem key={st} value={st} text={voortgangStatusLabel(st)} />)}
+        <SelectItem value="" text="Geen status" disabled hidden={!!huidig} />
+        {opties.map(o => <SelectItem key={o.code} value={o.code} text={o.naam} />)}
+        {vervallen && (
+          <SelectItem value={vervallen} text={`${voortgangStatus(vervallen, opties).label} (niet meer in gebruik)`} />
+        )}
       </Select>
       <TextArea id={`voortgang-toelichting-${id}`} rows={2} labelText="Toelichting" helperText="Waarom gaat het zo?"
         value={toelichting} onChange={(e: any) => onToelichting(e.target.value)} />

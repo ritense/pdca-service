@@ -22,7 +22,8 @@ import java.util.UUID
 
 /**
  * PDCA case configuration: evaluation types, configurable plan display
- * statuses, the positietypen register (de positie per domein) —
+ * statuses, the voortgangsstatussen of doelen ({code, naam, betekenis}
+ * objects), the positietypen register (de positie per domein) —
  * all JSON arrays — plus two JSON objects: the subdoelmapping (hoofddoeltype
  * -> subdoeltypen that may be chosen under it) and the prefill mapping
  * (prefill-veld -> documentpad) that drives how the create-plan task form is
@@ -32,6 +33,7 @@ data class CreatePhaseConfigRequest(
     val caseDefinitionKey: String,
     val evaluationTypes: String,
     val planStatussen: String? = null,
+    val voortgangStatussen: String? = null,
     val positieTypen: String? = null,
     val subdoelMapping: String? = null,
     val prefillMapping: String? = null,
@@ -41,6 +43,7 @@ data class CreatePhaseConfigRequest(
 data class UpdatePhaseConfigRequest(
     val evaluationTypes: String? = null,
     val planStatussen: String? = null,
+    val voortgangStatussen: String? = null,
     val positieTypen: String? = null,
     val subdoelMapping: String? = null,
     val prefillMapping: String? = null,
@@ -52,6 +55,7 @@ data class PhaseConfigResponse(
     val caseDefinitionKey: String,
     val evaluationTypes: String,
     val planStatussen: String?,
+    val voortgangStatussen: String?,
     val positieTypen: String?,
     val subdoelMapping: String?,
     val prefillMapping: String?,
@@ -64,6 +68,7 @@ data class PhaseConfigResponse(
         caseDefinitionKey = config.caseDefinitionKey,
         evaluationTypes = config.evaluationTypes,
         planStatussen = config.planStatussen,
+        voortgangStatussen = config.voortgangStatussen,
         positieTypen = config.positieTypen,
         subdoelMapping = config.subdoelMapping,
         prefillMapping = config.prefillMapping,

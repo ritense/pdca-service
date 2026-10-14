@@ -29,7 +29,8 @@ statuses `actief`/`afgerond`/`geannuleerd`, resultaat `behaald`/`gefaald`, pagin
 The Spring Boot backend itself only keeps what the registers don't model, keyed by register uuid
 (`/api/v1/pdca/*`): the **direct dossier link** (`plan_details.dossier_id`, plan = dossier
 1:1), uitvoeringsstatus (gepland/gestart) + voortgangsstatus + internal/external note per doel,
-configurable plan display statuses (Concept, Vastgesteld, ...), positie + subdoelgroep (W&P
+configurable plan display statuses (Concept, Vastgesteld, ...) and voortgangsstatussen per plan
+case type, positie + subdoelgroep (W&P
 segmentation, advised by the intake DMN) + hoofddoel reference per
 plan, uitvoeringsstatus/hours/effectiveness/notes/abort reason per instrument, evaluation type +
 planned date + doel progress + action points per contactmoment, evaluation sessions with the plan

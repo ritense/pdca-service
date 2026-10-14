@@ -51,7 +51,10 @@ data class ContactmomentDetails(
     @Column(columnDefinition = "TEXT")
     var deelnemers: String? = null,
 
-    /** JSON: [{"doelUuid": "...", "score": 80, "toelichting": "..."}] */
+    /**
+     * JSON: [{"doelUuid": "...", "status": "OP_KOERS", "statusNaam": "Op koers", "toelichting": "..."}]
+     * — the voortgangsstatus per subdoel as recorded then (code and name).
+     */
     @Column(name = "doel_voortgang", columnDefinition = "TEXT")
     var doelVoortgang: String? = null,
 

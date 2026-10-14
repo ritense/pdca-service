@@ -17,7 +17,6 @@
 package com.ritense.pdca.web.rest.dto
 
 import com.ritense.pdca.domain.UitvoeringsStatus
-import com.ritense.pdca.domain.VoortgangStatus
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import java.time.LocalDate
@@ -38,9 +37,9 @@ data class PlanDetailsRequest(
 data class DoelDetailsRequest(
     val planUuid: UUID? = null,
     val uitvoeringsStatus: UitvoeringsStatus? = null,
-    val voortgangScore: Int? = null,
     val voortgangToelichting: String? = null,
-    val voortgangStatus: VoortgangStatus? = null,
+    /** Code of one of the plan's voortgangsstatussen; only for a doel that is actief in Open Plan. */
+    val voortgangStatus: String? = null,
     val interneNotitie: String? = null,
     val externeNotitie: String? = null,
     val sortering: Int? = null
