@@ -12,6 +12,10 @@ class StartupInfoPrinter(private val env: Environment) {
     fun onReady() {
         val port = env.getProperty("server.port", "7500")
         val base = "http://localhost:$port"
+        val openPlanMode = when (env.getProperty("pdca.openplan.mode", "contract").lowercase()) {
+            "direct" -> "direct to ${env.getProperty("pdca.openplan.base-url")}"
+            else -> "contract nl.ritense.openplan@1 via GZAC and the openplan plugin"
+        }
 
         println("""
 
@@ -21,6 +25,7 @@ class StartupInfoPrinter(private val env: Environment) {
             │
             │  Registers (Maykin, via docker compose):
             │    Open Plan API:     $base/openplan/plannen/api/v0/plan
+            │                       (app → Open Plan: $openPlanMode)
             │                       (direct: http://localhost:7501, admin/admin)
             │    Open Product API:  $base/openproduct/producttypen/api/v1/producttypen
             │                       (direct: http://localhost:7502, admin/admin)

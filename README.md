@@ -18,13 +18,20 @@ Maykin's Common Ground registers**:
 
 The frontend consumes the register APIs **in their native shape** (camelCase Dutch fields,
 statuses `actief`/`afgerond`/`geannuleerd`, resultaat `behaald`/`gefaald`, paginated
-`{count, results}`) through a thin token-injecting proxy in the backend:
+`{count, results}`) through a thin same-origin proxy in the backend:
 
 ```
-/openplan/plannen/api/v0/...          -> Open Plan     (localhost:7501)
+/openplan/plannen/api/v0/...          -> Open Plan     (via GZAC + the openplan plugin, or localhost:7501 in direct mode)
 /openproduct/producttypen/api/v1/...  -> Open Product  (localhost:7502)
 /openklant/klantinteracties/api/v1/... -> Open Klant    (localhost:7504)
 ```
+
+Open Product and Open Klant are called with the app's own tokens. **Open Plan is reached
+through GZAC**: the app calls the contract `nl.ritense.openplan@1`, and GZAC forwards each call
+to the [`openplan` plugin](./plugins/openplan/README.md), which runs on a Valtimo plugin host and
+holds the Open Plan URL and token (ARCHITECTURE §6.3). Paths, bodies and status codes are the
+same either way. For standalone development without GZAC, run with `PDCA_OPENPLAN_MODE=direct`
+and the app calls Open Plan itself.
 
 The Spring Boot backend itself only keeps what the registers don't model, keyed by register uuid
 (`/api/v1/pdca/*`): the **direct dossier link** (`plan_details.dossier_id`, plan = dossier
@@ -96,6 +103,9 @@ instance by URL.
 - **JDK 21** (Gradle toolchain)
 - **Docker** (registers + PostgreSQL via docker compose)
 - **Node.js 18+** — only needed to rebuild the frontend bundles
+- **Node.js 22+** and a checkout of the [Valtimo monorepo](https://github.com/valtimo-platform/valtimo)
+  next to this repository (`../valtimo`, with the plugin SDK built in
+  `plugin-host/plugin-sdk`) — only needed to build the `openplan` plugin
 
 ## Boot
 
@@ -113,6 +123,15 @@ check during a demo what landed in the registers. Skip the tabs with
 
 Or in two steps: `docker compose up -d` then `./gradlew bootRun`. To run the app itself as a
 container too, see [Docker](#docker): `docker compose --profile app up -d --build`.
+
+By default the app reaches Open Plan through GZAC (contract mode), so Open Plan data only shows
+once the app runs in GZAC with the `openplan` plugin bound (see
+[Using it from Valtimo/GZAC](#using-it-from-valtimogzac)); until then Open Plan requests answer
+503 *"Open Plan is niet gekoppeld: …"*. To work on the app without GZAC, call Open Plan directly:
+
+```bash
+PDCA_OPENPLAN_MODE=direct ./gradlew bootRunWithDocker
+```
 
 The compose file runs four stacks:
 
@@ -139,7 +158,8 @@ dossier.
 
 Quick checks once running:
 
-- Open Plan through the proxy: <http://localhost:7500/openplan/plannen/api/v0/plan>
+- Open Plan through the proxy: <http://localhost:7500/openplan/plannen/api/v0/plan> (contract
+  mode: only once the Open Plan contract is bound)
 - Producttypen: <http://localhost:7500/openproduct/producttypen/api/v1/producttypen>
 - Klantcontacten: <http://localhost:7500/openklant/klantinteracties/api/v1/klantcontacten>
 - PDCA overlay: <http://localhost:7500/api/v1/pdca/plandetails>
@@ -219,12 +239,29 @@ start menu; starting happens from the plan page (see
 
 The setup is the standard GZAC admin flow — a few manual steps in the GZAC UI, nothing else
 is needed (the PDCA side seeds itself: reference data in the registers and the case
-configurations including prefill mapping and intake→plan reference):
+configurations including prefill mapping and intake→plan reference). It needs a GZAC with
+plugin contracts and a plugin host registered in it.
 
+0. **Install the Open Plan plugin** — build it once (`./gradlew buildOpenPlanPlugin`, see [`plugins/openplan/README.md`](./plugins/openplan/README.md)) and
+   upload `plugins/openplan/dist/openplan-1.0.0.zip` onto the plugin host (*Admin → Plugins →
+   Upload plugin*). Configure it, accepting `http_request` and `log`; its configuration screen
+   starts with the local development values (`http://host.docker.internal:7501` and the dev
+   token).
+
+   `openPlanUrl` is the address the **plugin host** reaches Open Plan on —
+   `http://host.docker.internal:7501` for a plugin host in Docker on the same machine as this
+   compose stack; the token is the dev token the compose init provisions. Plain http to a
+   private address only works on a plugin host that allows it (`HOST_ALLOW_HTTP`, and
+   `HOST_ALLOWED_INTERNAL_CIDRS` or `HOST_ALLOW_PRIVATE_NETWORK`), as the Valtimo dev compose
+   does.
 1. **Register the app** — register the external-plugin host at `http://localhost:7500`; the
-   plugin "PDCA Planbeheer" is discovered. Create a **plugin configuration** for it and
-   accept the requested endpoints/capability (GZAC then automatically pushes the
-   serviceToken to the app).
+   plugin "PDCA Planbeheer" is discovered. Create a **plugin configuration** for it, accept
+   the requested endpoints/capabilities and, under *Required plugins*, bind
+   `nl.ritense.openplan@1` to the Open Plan configuration (preselected when it is the only
+   one). GZAC then pushes the serviceToken and the granted contract to the app. An existing
+   PDCA configuration from before the contract keeps working: GZAC asks the administrator to
+   review and accept the changed manifest and binds the contract itself when exactly one Open
+   Plan configuration exists — otherwise bind it in the configuration's edit screen.
 2. **Import the zips** — the five case zips; the PDCA case tabs and the `create-plan`
    task-form links ship inside them with a placeholder configuration id, so in the import
    wizard's mapping step **pick your "PDCA Planbeheer" configuration** for plugin `pdca`
@@ -284,7 +321,8 @@ All routes yield a dossier (plan = dossier 1:1):
   planId/planTitel/planStatus) and links the plan to it.
   The call is idempotent: an already-linked plan returns its existing dossier.
 
-The app's manifest declares this GZAC-API footprint (capability `gzac_api` plus
+The app's manifest declares the contract it calls (`permissions.contracts`:
+`nl.ritense.openplan@1`) and this GZAC-API footprint (capability `gzac_api` plus
 `permissions.endpoints`, see
 [`PluginHostController`](./src/main/kotlin/com/ritense/pdca/plugin/PluginHostController.kt)):
 
@@ -328,6 +366,11 @@ service tokens on granted endpoints). Credentials are resolved in this order (se
    when no plugin configuration was pushed; the service account then needs the realm roles
    `ROLE_USER` + `ROLE_ADMIN` to pass GZAC's PBAC for document creation.
 
+Open Plan contract calls (`POST {gzacBaseUrl}/api/v1/plugin-contract/call`) only use option 1:
+GZAC finds the bound Open Plan configuration through the calling configuration's
+serviceToken. Without a pushed configuration, or one without the granted contract, Open Plan
+requests answer 503 with the reason.
+
 ## Docker
 
 The `Dockerfile` is fully self-contained: it builds the frontend bundles (Node) and the jar
@@ -342,7 +385,9 @@ docker compose --profile app up -d --build   # or: ./gradlew dockerUpAll
 ```
 
 Without `--profile app` the compose file starts the dependencies only (the
-`./gradlew bootRunWithDocker` dev flow is unchanged).
+`./gradlew bootRunWithDocker` dev flow is unchanged). The containerized app also runs in
+contract mode by default; `PDCA_OPENPLAN_MODE=direct docker compose --profile app up -d` makes
+it call the compose Open Plan (`http://openplan:8000`) itself.
 
 **Build the image** (for the local development cluster or elsewhere):
 
@@ -365,7 +410,8 @@ them with in-network hostnames):
 | `SERVER_PORT` | `7500` | HTTP port of the app (healthcheck follows it) |
 | `PDCA_DB_HOST` / `PDCA_DB_PORT` | `localhost` / `7503` | PostgreSQL for the PDCA overlay |
 | `PDCA_DB_NAME` / `PDCA_DB_USER` / `PDCA_DB_PASS` | `pdca` (all three) | Overlay database name/credentials |
-| `OPENPLAN_URL` / `OPENPLAN_TOKEN` | `http://localhost:7501` / dev token | Open Plan register |
+| `PDCA_OPENPLAN_MODE` | `contract` | `contract`: Open Plan through GZAC and the `openplan` plugin; `direct`: Open Plan with `OPENPLAN_URL`/`OPENPLAN_TOKEN` |
+| `OPENPLAN_URL` / `OPENPLAN_TOKEN` | `http://localhost:7501` / dev token | Open Plan register — direct mode only (the app refuses to start in direct mode without them) |
 | `OPENPRODUCT_URL` / `OPENPRODUCT_TOKEN` | `http://localhost:7502` / dev token | Open Product register |
 | `OPENKLANT_URL` / `OPENKLANT_TOKEN` | `http://localhost:7504` / dev token | Open Klant register |
 | `GZAC_URL` | _(empty: the pushed callback URL is used)_ | Override of the GZAC API URL pushed by GZAC; required for the static-token/Keycloak fallbacks |
@@ -394,6 +440,8 @@ other direction, when GZAC itself runs in Docker, register the plugin URL as
 ```bash
 ./gradlew build          # full build -> build/libs/pdca-app-0.1.0.jar
 ./gradlew buildGzacZips  # rebuild the importable GZAC zips (case definitions + building blocks)
+./gradlew buildOpenPlanPlugin
+                         # the openplan plugin -> plugins/openplan/dist/openplan-1.0.0.zip (Node 22+)
 ```
 
 Resetting data: `docker compose down -v` wipes all four databases; the init containers and

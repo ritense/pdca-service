@@ -25,7 +25,8 @@ import java.time.LocalDateTime
 /**
  * Plugin configuration pushed by GZAC (URL-app contract), persisted so the
  * serviceToken + gzacBaseUrl survive an app restart. The serviceToken is what
- * lets this app call GZAC back, e.g. to create a dossier for a plan.
+ * lets this app call GZAC back, e.g. to create a dossier for a plan or to
+ * reach Open Plan through a granted contract.
  */
 @Entity
 @Table(name = "plugin_configuration")
@@ -51,6 +52,10 @@ data class StoredPluginConfiguration(
     /** JSON array of subscribed event types. */
     @Column(name = "event_subscriptions", columnDefinition = "TEXT", nullable = false)
     var eventSubscriptions: String = "[]",
+
+    /** JSON array of the contracts GZAC bound for this configuration (`grantedContracts` of the push). */
+    @Column(name = "granted_contracts", columnDefinition = "TEXT", nullable = false)
+    var grantedContracts: String = "[]",
 
     @Column(name = "updated_at", nullable = false)
     var updatedAt: LocalDateTime = LocalDateTime.now()

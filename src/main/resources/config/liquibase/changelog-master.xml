@@ -14,5 +14,6 @@
     <include file="config/liquibase/007-evaluation-content.xml"/>
     <include file="config/liquibase/008-status-procesbegeleider-gepland-contactmoment.xml"/>
     <include file="config/liquibase/009-configureerbare-voortgangsstatussen.xml"/>
+    <include file="config/liquibase/010-plugin-configuration-granted-contracts.xml"/>
 
 </databaseChangeLog>

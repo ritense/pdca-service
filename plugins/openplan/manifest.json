@@ -1,0 +1,147 @@
+{
+  "pluginId": "openplan",
+  "version": "1.0.0",
+  "provider": "Ritense",
+  "translations": {
+    "en": {
+      "name": "Open Plan",
+      "description": "Gives other plugins access to an Open Plan instance (Plannen API v0) through the contract nl.ritense.openplan@1.",
+      "contracts.nl.ritense.openplan@1.title": "Open Plan Plannen API v0",
+      "contracts.nl.ritense.openplan@1.operations.list.title": "List resources",
+      "contracts.nl.ritense.openplan@1.operations.get.title": "Get a resource",
+      "contracts.nl.ritense.openplan@1.operations.create.title": "Create a resource",
+      "contracts.nl.ritense.openplan@1.operations.update.title": "Update a resource",
+      "contracts.nl.ritense.openplan@1.operations.delete.title": "Delete a resource",
+      "config.title.label": "Configuration name",
+      "config.title.placeholder": "e.g. Open Plan production",
+      "config.title.required": "Enter a name for this configuration",
+      "config.connection.heading": "Connection to Open Plan",
+      "config.connection.intro": "The plugin calls the Plannen API v0 of this Open Plan instance on behalf of the plugins bound to it.",
+      "config.openPlanUrl.label": "Open Plan URL",
+      "config.openPlanUrl.help": "Base URL without /plannen/api/v0, as seen from the plugin host.",
+      "config.openPlanUrl.invalid": "Enter an absolute http(s) URL",
+      "config.openPlanToken.label": "API token",
+      "config.openPlanToken.help": "Token of an Open Plan API user; sent as 'Authorization: Token <token>'.",
+      "config.openPlanToken.keep": "Leave empty to keep the current token.",
+      "config.openPlanToken.required": "Enter the API token",
+      "config.openPlanToken.show": "Show token",
+      "config.openPlanToken.hide": "Hide token",
+      "config.localDefaults.button": "Use local development values",
+      "config.egress.title": "Outbound access",
+      "config.egress.subtitle": "The plugin may only call the URL entered here; it is listed as a destination on the permissions step."
+    },
+    "nl": {
+      "name": "Open Plan",
+      "description": "Geeft andere plugins toegang tot een Open Plan-omgeving (Plannen API v0) via het contract nl.ritense.openplan@1.",
+      "contracts.nl.ritense.openplan@1.title": "Open Plan Plannen API v0",
+      "contracts.nl.ritense.openplan@1.operations.list.title": "Registerobjecten opvragen",
+      "contracts.nl.ritense.openplan@1.operations.get.title": "Registerobject opvragen",
+      "contracts.nl.ritense.openplan@1.operations.create.title": "Registerobject aanmaken",
+      "contracts.nl.ritense.openplan@1.operations.update.title": "Registerobject bijwerken",
+      "contracts.nl.ritense.openplan@1.operations.delete.title": "Registerobject verwijderen",
+      "config.title.label": "Configuratienaam",
+      "config.title.placeholder": "bijv. Open Plan productie",
+      "config.title.required": "Geef deze configuratie een naam",
+      "config.connection.heading": "Verbinding met Open Plan",
+      "config.connection.intro": "De plugin roept de Plannen API v0 van deze Open Plan-omgeving aan namens de plugins die eraan gekoppeld zijn.",
+      "config.openPlanUrl.label": "Open Plan-URL",
+      "config.openPlanUrl.help": "Basis-URL zonder /plannen/api/v0, zoals de pluginhost die bereikt.",
+      "config.openPlanUrl.invalid": "Vul een absolute http(s)-URL in",
+      "config.openPlanToken.label": "API-token",
+      "config.openPlanToken.help": "Token van een Open Plan API-gebruiker; wordt meegestuurd als 'Authorization: Token <token>'.",
+      "config.openPlanToken.keep": "Laat leeg om het huidige token te behouden.",
+      "config.openPlanToken.required": "Vul het API-token in",
+      "config.openPlanToken.show": "Token tonen",
+      "config.openPlanToken.hide": "Token verbergen",
+      "config.localDefaults.button": "Lokale ontwikkelwaarden gebruiken",
+      "config.egress.title": "Uitgaande toegang",
+      "config.egress.subtitle": "De plugin mag alleen de hier ingevulde URL aanroepen; die staat als bestemming bij de stap met rechten."
+    }
+  },
+  "configurationSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "openPlanUrl": {
+        "type": "string",
+        "format": "uri",
+        "title": "Open Plan URL",
+        "description": "Base URL of the Open Plan instance, without /plannen/api/v0 (e.g. http://host.docker.internal:7501 for the local dev stack).",
+        "x-egress-target": true,
+        "default": "http://host.docker.internal:7501"
+      },
+      "openPlanToken": {
+        "type": "string",
+        "title": "Open Plan API token",
+        "description": "API token of an Open Plan user; sent as 'Authorization: Token <token>'.",
+        "x-secret": true
+      }
+    },
+    "required": [
+      "openPlanUrl",
+      "openPlanToken"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "capabilities": [
+      "http_request",
+      "log"
+    ]
+  },
+  "actions": [],
+  "provides": [
+    {
+      "contract": "nl.ritense.openplan@1",
+      "title": "Open Plan Plannen API v0",
+      "operations": [
+        {
+          "key": "list",
+          "title": "List resources",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        },
+        {
+          "key": "get",
+          "title": "Get a resource",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        },
+        {
+          "key": "create",
+          "title": "Create a resource",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        },
+        {
+          "key": "update",
+          "title": "Update a resource",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        },
+        {
+          "key": "delete",
+          "title": "Delete a resource",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        }
+      ]
+    }
+  ],
+  "frontendBundles": [
+    {
+      "type": "config",
+      "path": "/bundles/config.html"
+    }
+  ]
+}

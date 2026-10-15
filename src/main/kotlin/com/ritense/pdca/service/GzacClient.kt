@@ -18,6 +18,7 @@ package com.ritense.pdca.service
 
 import com.ritense.pdca.config.PdcaProperties
 import com.ritense.pdca.plugin.ConfigurationStore
+import com.ritense.pdca.plugin.PushedGzacAccess
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
@@ -35,7 +36,8 @@ import java.time.Instant
  * order of preference:
  *
  *  1. the serviceToken + gzacBaseUrl pushed with the plugin configuration
- *     (URL-app contract, persisted in [ConfigurationStore]). The manifest
+ *     (URL-app contract, persisted in [ConfigurationStore], resolved by
+ *     [PushedGzacAccess]). The manifest
  *     declares capability `gzac_api` plus the required endpoints under
  *     `permissions.endpoints`; GZAC enforces that allowlist for the
  *     serviceToken (PBAC does not apply there) once the administrator has
@@ -48,6 +50,7 @@ import java.time.Instant
 @Service
 class GzacClient(
     private val configurationStore: ConfigurationStore,
+    private val pushedGzacAccess: PushedGzacAccess,
     private val properties: PdcaProperties,
     private val restClientBuilder: RestClient.Builder
 ) {
@@ -518,27 +521,22 @@ class GzacClient(
         }
 
     private fun baseUrlFor(configurationId: String): String {
-        val configured = properties.gzac?.baseUrl?.trimEnd('/')?.takeIf { it.isNotBlank() }
+        val configured = pushedGzacAccess.configuredBaseUrl()
         val pushed = configurationStore.get(configurationId)?.gzacBaseUrl?.trimEnd('/')?.takeIf { it.isNotBlank() }
         return configured ?: pushed
             ?: throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Geen GZAC-adres bekend voor configuratie $configurationId")
     }
 
     private fun resolveAccess(): Pair<String, String> {
+        pushedGzacAccess.latest()?.let { return it.baseUrl to it.serviceToken }
         val gzac = properties.gzac
-        // The pushed gzacBaseUrl is the host's server-to-server callback URL
-        // entered in GZAC. An explicitly configured base URL (GZAC_URL, no
-        // default) overrides it for setups where the app sees GZAC under a
-        // different address, e.g. the compose container reaching a GZAC on
-        // the host via host.docker.internal (see docker-compose.yml).
-        val configuredBaseUrl = gzac?.baseUrl?.trimEnd('/')?.takeIf { it.isNotBlank() }
-        val pushed = configurationStore.latestWithGzacAccess()
-        pushed?.let { return (configuredBaseUrl ?: it.gzacBaseUrl.trimEnd('/')) to it.serviceToken }
-        val baseUrl = configuredBaseUrl
-            ?: throw ResponseStatusException(
+        val baseUrl = pushedGzacAccess.configuredBaseUrl()
+        if (gzac == null || baseUrl == null) {
+            throw ResponseStatusException(
                 HttpStatus.SERVICE_UNAVAILABLE,
                 "Geen GZAC-toegang: geen pluginconfiguratie gepusht en geen pdca.gzac.base-url geconfigureerd"
             )
+        }
         gzac.staticToken?.takeIf { it.isNotBlank() }?.let { return baseUrl to it }
         if (!gzac.tokenUrl.isNullOrBlank()) return baseUrl to clientCredentialsToken(gzac)
         throw ResponseStatusException(

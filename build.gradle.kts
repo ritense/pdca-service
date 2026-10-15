@@ -193,3 +193,97 @@ tasks.register("buildGzacZips") {
     description = "Build all importable GZAC zips (case definitions + building blocks)"
     dependsOn(caseZipTasks + bouwblokZipTasks)
 }
+
+// ---------------------------------------------------------------------------
+// The Open Plan external plugin (plugins/openplan): one task builds the
+// uploadable package dist/openplan-<version>.zip. It needs Node >= 22 and the
+// Valtimo checkout whose plugin SDK the plugin depends on (default: a
+// sibling `valtimo` directory, override with -PvaltimoDir=...). Node is taken
+// from -PnodeDir=<dir with bin/node>, else the newest nvm-installed Node 22+,
+// else the `node` on PATH.
+
+val openPlanPluginDir = layout.projectDirectory.dir("plugins/openplan")
+val valtimoDir = providers.gradleProperty("valtimoDir")
+    .map { file(it) }
+    .orElse(provider { projectDir.resolve("../valtimo").canonicalFile })
+val pluginSdkDir = valtimoDir.map { it.resolve("plugin-host/plugin-sdk") }
+
+val nodeBinDir: Provider<String> = providers.gradleProperty("nodeDir")
+    .map { File(it, "bin").path }
+    .orElse(provider {
+        File(System.getProperty("user.home"), ".nvm/versions/node")
+            .listFiles { f -> f.isDirectory && f.name.startsWith("v") }
+            ?.mapNotNull { dir ->
+                val parts = dir.name.removePrefix("v").split(".").mapNotNull { it.toIntOrNull() }
+                if (parts.size == 3 && parts[0] >= 22) parts to dir else null
+            }
+            ?.maxWithOrNull { a, b ->
+                a.first.zip(b.first).map { (x, y) -> x.compareTo(y) }.firstOrNull { it != 0 } ?: 0
+            }
+            ?.second?.resolve("bin")?.path
+            ?: ""
+    })
+
+fun Exec.useNode(vararg npmArgs: String) {
+    val bin = nodeBinDir.get()
+    val npm = if (bin.isEmpty()) "npm" else "$bin/npm"
+    commandLine(listOf(npm) + npmArgs)
+    val path = System.getenv("PATH") ?: "/usr/local/bin:/usr/bin:/bin"
+    environment("PATH", if (bin.isEmpty()) path else "$bin${File.pathSeparator}$path")
+    doFirst {
+        val node = if (bin.isEmpty()) "node" else "$bin/node"
+        val version = try {
+            ProcessBuilder(node, "--version").start().inputStream.bufferedReader().readText().trim()
+        } catch (e: Exception) {
+            throw GradleException("Node not found ($node). Install Node 22+ or pass -PnodeDir=<node install dir>.")
+        }
+        val major = version.removePrefix("v").substringBefore(".").toIntOrNull() ?: 0
+        if (major < 22) {
+            throw GradleException("The plugin build needs Node 22+, found $version ($node). Pass -PnodeDir=<node install dir>.")
+        }
+    }
+}
+
+tasks.register<Exec>("openPlanPluginSdkBuild") {
+    group = "plugin"
+    description = "Build the Valtimo plugin SDK the Open Plan plugin depends on"
+    workingDir(pluginSdkDir)
+    inputs.dir(pluginSdkDir.map { it.resolve("src") })
+    inputs.file(pluginSdkDir.map { it.resolve("package.json") })
+    outputs.dir(pluginSdkDir.map { it.resolve("dist") })
+    doFirst {
+        if (!pluginSdkDir.get().resolve("package.json").exists()) {
+            throw GradleException(
+                "Valtimo plugin SDK not found at ${pluginSdkDir.get()}. Check out the valtimo repository next to " +
+                    "this one, or pass -PvaltimoDir=<path to the valtimo checkout>."
+            )
+        }
+    }
+    useNode("run", "build")
+}
+
+tasks.register<Exec>("openPlanPluginInstall") {
+    group = "plugin"
+    description = "Install the Open Plan plugin's npm dependencies"
+    workingDir(openPlanPluginDir)
+    inputs.files(openPlanPluginDir.file("package.json"), openPlanPluginDir.file("package-lock.json"))
+    outputs.dir(openPlanPluginDir.dir("node_modules"))
+    useNode("install", "--no-audit", "--no-fund")
+}
+
+tasks.register<Exec>("buildOpenPlanPlugin") {
+    group = "plugin"
+    description = "Build the uploadable Open Plan plugin package (plugins/openplan/dist/openplan-<version>.zip)"
+    dependsOn("openPlanPluginSdkBuild", "openPlanPluginInstall")
+    workingDir(openPlanPluginDir)
+    inputs.dir(openPlanPluginDir.dir("src"))
+    inputs.files(fileTree(openPlanPluginDir.dir("frontend")) { exclude("*.bundle.*") })
+    inputs.files(openPlanPluginDir.file("manifest.json"), openPlanPluginDir.file("tsconfig.json"))
+    inputs.dir(pluginSdkDir.map { it.resolve("dist") })
+    outputs.dir(openPlanPluginDir.dir("dist"))
+    useNode("run", "build:pack")
+    doLast {
+        openPlanPluginDir.dir("dist").asFile.listFiles { f -> f.name.endsWith(".zip") }
+            ?.forEach { logger.lifecycle("Open Plan plugin package: ${it.path}") }
+    }
+}

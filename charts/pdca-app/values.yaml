@@ -42,6 +42,9 @@ database:
 
 externalServices:
   openplan:
+    # contract: Open Plan through GZAC's nl.ritense.openplan@1 contract and the
+    # openplan plugin (url and token unused); direct: url + token below.
+    mode: "contract"
     url: ""
     existingSecret: ""
     existingSecretKey: "openplan-token"

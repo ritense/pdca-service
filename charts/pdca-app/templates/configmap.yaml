@@ -13,6 +13,7 @@ data:
   PDCA_DB_PORT: {{ .Values.database.port | quote }}
   PDCA_DB_NAME: {{ .Values.database.name | quote }}
   PDCA_DB_USER: {{ .Values.database.user | quote }}
+  PDCA_OPENPLAN_MODE: {{ .Values.externalServices.openplan.mode | default "contract" | quote }}
   {{- if .Values.externalServices.openplan.url }}
   OPENPLAN_URL: {{ .Values.externalServices.openplan.url | quote }}
   {{- end }}

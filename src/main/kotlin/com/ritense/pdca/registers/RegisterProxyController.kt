@@ -32,9 +32,10 @@ import java.net.URI
 /**
  * Transparent pass-through to the Maykin registers. The frontend consumes the
  * register APIs directly (identical paths, bodies and status codes); this
- * proxy only adds the API token and provides a same-origin URL:
+ * proxy provides a same-origin URL and forwards through the register's
+ * RestClient, which carries the credentials:
  *
- *   /openplan/plannen/api/v0/...        -> Open Plan
+ *   /openplan/plannen/api/v0/...        -> Open Plan (via the GZAC contract, or directly)
  *   /openproduct/producttypen/api/v1/...-> Open Product
  *   /openklant/klantinteracties/api/v1/...-> Open Klant
  */
@@ -49,7 +50,7 @@ class RegisterProxyController(
 
     @RequestMapping("/openplan/**")
     fun openplan(request: HttpServletRequest, @RequestBody(required = false) body: ByteArray?): ResponseEntity<ByteArray> =
-        forward(openPlanRestClient, properties.openplan.baseUrl, "/openplan", request, body)
+        forward(openPlanRestClient, properties.openplan.clientBaseUrl, "/openplan", request, body)
 
     @RequestMapping("/openproduct/**")
     fun openproduct(request: HttpServletRequest, @RequestBody(required = false) body: ByteArray?): ResponseEntity<ByteArray> =

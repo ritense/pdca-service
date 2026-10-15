@@ -16,7 +16,9 @@ data class PluginConfiguration(
     val properties: Map<String, Any>,
     val serviceToken: String,
     val gzacBaseUrl: String,
-    val eventSubscriptions: List<String> = emptyList()
+    val eventSubscriptions: List<String> = emptyList(),
+    /** Contracts GZAC bound for this configuration (`name@major`); empty when none is bound. */
+    val grantedContracts: List<String> = emptyList()
 )
 
 /**
@@ -41,6 +43,7 @@ class ConfigurationStore(
                 serviceToken = configuration.serviceToken.ifBlank { null },
                 gzacBaseUrl = configuration.gzacBaseUrl.ifBlank { null },
                 eventSubscriptions = objectMapper.writeValueAsString(configuration.eventSubscriptions),
+                grantedContracts = objectMapper.writeValueAsString(configuration.grantedContracts),
                 updatedAt = LocalDateTime.now()
             )
         )
@@ -64,12 +67,13 @@ class ConfigurationStore(
     fun getAll(): Map<String, PluginConfiguration> =
         repository.findAll().associate { it.configId to toConfiguration(it) }
 
-    /** The most recently pushed configuration that can authenticate against GZAC. */
-    fun latestWithGzacAccess(): PluginConfiguration? =
+    /** The most recently pushed configuration that can authenticate against GZAC and matches [filter]. */
+    fun latestWithGzacAccess(filter: (PluginConfiguration) -> Boolean = { true }): PluginConfiguration? =
         repository.findAll()
             .filter { !it.serviceToken.isNullOrBlank() && !it.gzacBaseUrl.isNullOrBlank() }
-            .maxByOrNull { it.updatedAt }
-            ?.let { toConfiguration(it) }
+            .sortedByDescending { it.updatedAt }
+            .map { toConfiguration(it) }
+            .firstOrNull(filter)
 
     private fun toConfiguration(entity: StoredPluginConfiguration) = PluginConfiguration(
         configId = entity.configId,
@@ -77,6 +81,7 @@ class ConfigurationStore(
         properties = objectMapper.readValue(entity.properties, object : TypeReference<Map<String, Any>>() {}),
         serviceToken = entity.serviceToken ?: "",
         gzacBaseUrl = entity.gzacBaseUrl ?: "",
-        eventSubscriptions = objectMapper.readValue(entity.eventSubscriptions, object : TypeReference<List<String>>() {})
+        eventSubscriptions = objectMapper.readValue(entity.eventSubscriptions, object : TypeReference<List<String>>() {}),
+        grantedContracts = objectMapper.readValue(entity.grantedContracts, object : TypeReference<List<String>>() {})
     )
 }

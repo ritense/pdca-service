@@ -16,6 +16,7 @@
 
 package com.ritense.pdca.config
 
+import com.ritense.pdca.registers.OpenPlanContractRequestFactory
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -23,16 +24,38 @@ import org.springframework.http.HttpHeaders
 import org.springframework.web.client.RestClient
 
 /**
- * RestClient beans for the Maykin registers. All three APIs use token
- * authentication: `Authorization: Token <key>`.
+ * RestClient beans for the Maykin registers. Open Product and Open Klant are
+ * called directly with token authentication (`Authorization: Token <key>`).
+ * Open Plan depends on `pdca.openplan.mode`: `contract` (default) sends every
+ * request through GZAC's `nl.ritense.openplan@1` contract
+ * ([OpenPlanContractRequestFactory]), `direct` calls Open Plan with its own
+ * base URL and token.
  */
 @Configuration
 @EnableConfigurationProperties(PdcaProperties::class)
 class RegisterClientConfig {
 
     @Bean
-    fun openPlanRestClient(builder: RestClient.Builder, properties: PdcaProperties): RestClient =
-        registerRestClient(builder, properties.openplan)
+    fun openPlanRestClient(
+        builder: RestClient.Builder,
+        properties: PdcaProperties,
+        contractRequestFactory: OpenPlanContractRequestFactory
+    ): RestClient {
+        val openplan = properties.openplan
+        return when (openplan.mode) {
+            PdcaProperties.OpenPlanMode.CONTRACT -> builder.clone()
+                .baseUrl(openplan.clientBaseUrl)
+                .requestFactory(contractRequestFactory)
+                .build()
+            PdcaProperties.OpenPlanMode.DIRECT -> {
+                check(!openplan.baseUrl.isNullOrBlank() && !openplan.token.isNullOrBlank()) {
+                    "pdca.openplan.mode=direct requires pdca.openplan.base-url and pdca.openplan.token " +
+                        "(OPENPLAN_URL / OPENPLAN_TOKEN)"
+                }
+                registerRestClient(builder, PdcaProperties.RegisterApi(openplan.clientBaseUrl, openplan.token))
+            }
+        }
+    }
 
     @Bean
     fun openProductRestClient(builder: RestClient.Builder, properties: PdcaProperties): RestClient =

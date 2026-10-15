@@ -28,7 +28,13 @@ spring:
 pdca:
   # Maykin Open Plan — system of record for plannen, doelen, instrumenten
   # and personen. Runs locally via docker compose (port 7501).
+  # mode contract (default): every Open Plan request goes through GZAC's
+  # contract nl.ritense.openplan@1 to the bound openplan plugin, which holds
+  # the URL and token; base-url and token are not used. mode direct: the app
+  # calls Open Plan itself with base-url + token (standalone development
+  # without GZAC).
   openplan:
+    mode: ${PDCA_OPENPLAN_MODE:contract}
     base-url: ${OPENPLAN_URL:http://localhost:7501}
     token: ${OPENPLAN_TOKEN:pdca-openplan-dev-token-0123456789abcdef}
   # Maykin Open Product — producttypen catalog backing the instrument picker.

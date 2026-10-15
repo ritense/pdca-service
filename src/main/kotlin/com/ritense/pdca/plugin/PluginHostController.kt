@@ -29,14 +29,21 @@ class PluginHostController(
 
     companion object {
         const val PLUGIN_ID = "pdca"
-        // Deliberately keep the same version on manifest changes: this app
-        // ships no contentHash, so GZAC refreshes the manifest of an
-        // existing version in place at the next discovery poll. The
-        // administrator accepts new endpoints by updating the endpoint
-        // grants on the EXISTING configuration (edit screen). A version bump
-        // would instead create a parallel definition that needs a completely
-        // new configuration (and tabs/links to be moved over).
+        // Deliberately keep the same version on manifest changes. This app
+        // ships no contentHash, so GZAC pins a hash derived from the
+        // manifest: an in-place change freezes the definition (no pushes,
+        // no calls) until the administrator reviews and accepts the new
+        // footprint, after which the EXISTING configuration, its case tabs
+        // and process links keep working. On acceptance GZAC binds a newly
+        // declared contract itself when exactly one configuration provides
+        // it; otherwise the administrator binds it in the configuration's
+        // edit screen. A version bump would instead create a parallel
+        // definition that needs a completely new configuration (and
+        // tabs/links to be moved over).
         const val PLUGIN_VERSION = "0.2.0"
+
+        /** Open Plan is reached through this contract (see `OpenPlanContractRequestFactory`). */
+        const val OPENPLAN_CONTRACT = "nl.ritense.openplan@1"
 
         /**
          * This app's GZAC API footprint: capability gzac_api plus the
@@ -187,10 +194,13 @@ class PluginHostController(
         // The app calls GZAC's API with the pushed serviceToken (capability
         // gzac_api). For service tokens only this endpoint allowlist applies
         // (PBAC is skipped); the administrator confirms this footprint when
-        // creating or re-accepting the configuration.
+        // creating or re-accepting the configuration. `contracts` is what the
+        // app calls through GZAC's contract broker; the administrator binds
+        // each one to a providing configuration (the openplan plugin).
         "permissions" to mapOf(
             "capabilities" to CAPABILITIES,
-            "endpoints" to GRANTED_ENDPOINTS
+            "endpoints" to GRANTED_ENDPOINTS,
+            "contracts" to listOf(OPENPLAN_CONTRACT)
         ),
         "frontendBundles" to listOf(
             mapOf(
@@ -320,7 +330,8 @@ class PluginHostController(
             "pluginId" to PLUGIN_ID,
             "pluginVersion" to PLUGIN_VERSION,
             "properties" to it.properties,
-            "eventSubscriptions" to it.eventSubscriptions
+            "eventSubscriptions" to it.eventSubscriptions,
+            "grantedContracts" to it.grantedContracts
         )
     }
 
@@ -340,6 +351,7 @@ class PluginHostController(
 
         @Suppress("UNCHECKED_CAST")
         val eventSubscriptions = body["eventSubscriptions"] as? List<String> ?: emptyList()
+        val grantedContracts = (body["grantedContracts"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
 
         val configuration = PluginConfiguration(
             configId = configId,
@@ -347,7 +359,8 @@ class PluginHostController(
             properties = properties,
             serviceToken = serviceToken,
             gzacBaseUrl = gzacBaseUrl,
-            eventSubscriptions = eventSubscriptions
+            eventSubscriptions = eventSubscriptions,
+            grantedContracts = grantedContracts
         )
 
         configurationStore.store(configId, configuration)

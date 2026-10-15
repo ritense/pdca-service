@@ -20,7 +20,9 @@ connects two worlds:
 - **Valtimo/GZAC** — the case management system in which the app runs as an
   *external plugin*: case tabs, task forms and an admin page as sandboxed
   iframes, and process execution (dossiers, tasks, building blocks) through the
-  GZAC API.
+  GZAC API. GZAC also brokers the app's access to Open Plan: the app calls
+  the contract `nl.ritense.openplan@1`, which the `openplan` plugin
+  (`plugins/openplan/`, on a plugin host) serves (§6.3).
 
 The app itself is a single Spring Boot service (Kotlin, port 7500) with its own
 PostgreSQL database for the **overlay**: only what the registers do not model.
@@ -32,11 +34,15 @@ flowchart LR
     subgraph GZAC["GZAC (8080)"]
         UI["GZAC console<br/>(tabs / tasks / admin)"]
         ENGINE["Operaton engine<br/>+ building blocks"]
+        BROKER["contract broker<br/>/api/v1/plugin-contract"]
     end
     subgraph APP["pdca-app (7500)"]
         FE["React bundles + task-form html<br/>(iframes via /bundles/*)"]
         API["REST API /api/v1/pdca/*<br/>+ plugin host /api/host/*"]
         DB[("PostgreSQL overlay (7503)")]
+    end
+    subgraph HOST["Valtimo plugin host"]
+        OPP["openplan plugin (Wasm)<br/>Open Plan URL + token"]
     end
     OP["Open Plan (7501)"]
     OPR["Open Product (7502)"]
@@ -45,28 +51,41 @@ flowchart LR
     UI -- "iframe + postMessage" --> FE
     FE -- "same-origin fetch" --> API
     API --> DB
-    API -- "token proxy /openplan/*" --> OP
-    API -- "token proxy /openproduct/*" --> OPR
-    API -- "token proxy /openklant/*" --> OK
+    API -- "contract nl.ritense.openplan@1<br/>(serviceToken)" --> BROKER
+    BROKER -- "bound provider" --> OPP
+    OPP -- "http_request" --> OP
+    API -- "token /openproduct/*" --> OPR
+    API -- "token /openklant/*" --> OK
     API -- "serviceToken (endpoint grants)" --> GZAC
     ENGINE -- "plugin action update-actie<br/>+ configuration push" --> API
 ```
 
 - The frontend **never** talks to the registers or GZAC directly: everything
-  goes through the app's own backend (token injection, allowlists).
+  goes through the app's own backend (same-origin proxy, allowlists).
+- **Open Plan is reached through GZAC.** The backend sends every Open Plan
+  request as a call of the contract `nl.ritense.openplan@1`; GZAC delivers it
+  to the configuration of the `openplan` plugin the administrator bound, and
+  that plugin, which holds the Open Plan URL and token, calls the register
+  (§6.3); in this default contract mode the app holds no Open Plan
+  credentials. Open Product and Open Klant the backend calls directly with
+  their tokens. For development without GZAC, `pdca.openplan.mode=direct`
+  calls Open Plan directly as well.
 - GZAC talks to the app in both directions: it **fetches** the manifest and
-  bundles, and it **pushes** plugin configurations (serviceToken) and plugin
-  action calls to the app.
+  bundles, and it **pushes** plugin configurations (serviceToken, granted
+  contracts) and plugin action calls to the app.
 
 ## 3. Design principles
 
 1. **The registers are the source of truth.** The frontend consumes the
    register APIs in their *native* shape (Dutch camelCase, statuses
    `actief`/`afgerond`/`geannuleerd`, `{count, results}` pagination) through a
-   thin token-injecting proxy (`/openplan/...`, `/openproduct/...`,
-   `/openklant/...`). Contactmomenten are the one exception on the write
-   side: the backend creates them, because one contactmoment spans several
-   Open Klant resources (§5.1).
+   thin same-origin proxy (`/openplan/...`, `/openproduct/...`,
+   `/openklant/...`) that passes paths, bodies and status codes through
+   unchanged. The proxy holds no credentials itself: it forwards through the
+   backend's register clients, which add the Open Product and Open Klant
+   tokens or, for Open Plan, go through the contract (§6.3). Contactmomenten
+   are the one exception on the write side: the backend creates them,
+   because one contactmoment spans several Open Klant resources (§5.1).
 2. **The overlay is minimal** and keyed by register uuid. No copies of register
    data; only supplementary fields and links (see §5).
 3. **Cross-register references are URNs**, e.g.
@@ -92,8 +111,8 @@ flowchart LR
 | `repository/` | Spring Data repositories |
 | `service/` | Domain logic: `ActionService`, `IntakeService`, `DossierLinkService`, `PhaseConfigService`, `ActieBouwblokService`, `KlantcontactService` (§5.1), `GzacClient` |
 | `web/rest/` | REST resources under `/api/v1/pdca/*` and `/api/v1/admin/*` |
-| `plugin/` | The external-plugin host contract towards GZAC (§6): manifest, bundles, configuration push, plugin actions |
-| `registers/` | Token proxy to Open Plan/Open Product/Open Klant and display-only stubs (`/api/v1/registers/*`) for registers out of scope (BRP, objects) |
+| `plugin/` | The external-plugin host contract towards GZAC (§6): manifest, bundles, configuration push (`ConfigurationStore`, `PushedGzacAccess`), plugin actions |
+| `registers/` | Same-origin proxy to Open Plan/Open Product/Open Klant, the Open Plan contract transport (`OpenPlanContractRequestFactory`, §6.3) and display-only stubs (`/api/v1/registers/*`) for registers out of scope (BRP, objects) |
 
 ### API surface (outline)
 
@@ -107,7 +126,7 @@ flowchart LR
 | `DossierResource` | `/api/v1/pdca/dossiers/...`, `/plan-intake`, `/plans/{uuid}/dossier`, `/case-definitions` | Plan↔dossier link, prefill and creation routes (§7, §8) |
 | `PhaseConfigResource` | `/api/v1/admin/phase-configs` | Case configuration per case definition (§10) |
 | `ActieBouwblokResource` | `/api/v1/admin/actie-bouwblokken` (admin) and `/api/v1/pdca/actie-bouwblokken` (+ `/{id}/start`) | Action building blocks (§9) |
-| `RegisterProxyController` | `/openplan/**`, `/openproduct/**`, `/openklant/**` | Native register proxy with token injection |
+| `RegisterProxyController` | `/openplan/**`, `/openproduct/**`, `/openklant/**` | Native register proxy through the register clients (Open Plan via the contract, §6.3) |
 | `PluginHostController` et al. | `/api/host/*`, `/bundles/*`, `/health`, `/plugins/{id}/{version}/...` | Plugin host contract (§6) |
 | `PluginDataController` | `POST /plugins/pdca/{version}/data` | The contract's `/data` route: user-verified calls proxied by GZAC; evaluation sessions (§6.1) |
 
@@ -118,8 +137,9 @@ All tables via Liquibase (`src/main/resources/config/liquibase/`:
 demo case configs, `003-subdoel-mapping.xml` for the subdoelmapping,
 `004-drop-doelpositie.xml`, `005-plan-details-intake-dossier.xml`,
 `006-evaluation-session.xml`, `007-evaluation-content.xml`,
-`008-status-procesbegeleider-gepland-contactmoment.xml` and
-`009-configureerbare-voortgangsstatussen.xml`; new changes continue the
+`008-status-procesbegeleider-gepland-contactmoment.xml`,
+`009-configureerbare-voortgangsstatussen.xml` and
+`010-plugin-configuration-granted-contracts.xml`; new changes continue the
 numbering). Core:
 
 | Entity | Key | Holds |
@@ -132,7 +152,7 @@ numbering). Core:
 | `Action` | own id | actions per doel, optionally attached to an instrument (`instrumentUuid`; W&P: instrument → 0..n taken, shown in the instrument block): title/description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED), `Uitvoering` (LOKAAL or BOUWBLOK), and for building block actions `bouwblokKoppelingId` + `gzacProcessInstanceId` + result |
 | `ActieBouwblokKoppeling` | own id | admin link case type→process (§9): `soort` (ACTIE or PRODUCT), `uitvoeringsvorm` (BOUWBLOK or DOSSIER), name, `caseDefinitionKey`, building block key/version + `processDefinitionKey` (BOUWBLOK) or `productCaseDefinitionKey` (DOSSIER), `pluginConfigId`, doeltype uuids (JSON) |
 | `PhaseConfig` | `caseDefinitionKey` | case configuration (§10) |
-| `StoredPluginConfiguration` | `configId` | plugin configurations pushed by GZAC: serviceToken, gzacBaseUrl, title, properties |
+| `StoredPluginConfiguration` | `configId` | plugin configurations pushed by GZAC: serviceToken, gzacBaseUrl, title, properties, event subscriptions, `grantedContracts` (the contracts GZAC bound, §6.3) |
 | `EvaluationSession` | own id | an evaluation a user runs on a plan (§6.1): `dossierId`, `planUuid`, `caseDefinitionKey`, owner `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED or CANCELLED), start/end time, the contactmoment fields (`evaluatieType`, `deelnemers`, `verslag`), the planned contactmoment it carries out (`geplandContactmomentUuid`) and, once completed, `contactmomentUuid`; at most one RUNNING per user (partial unique index) |
 | `EvaluationChange` | own id | one plan change recorded in a session (§6.1): `subjectType` (PLAN, HOOFDDOEL, SUBDOEL, INSTRUMENT, ACTIE) + `subjectUuid` + `subjectTitel`, `soort`, `vanWaarde`/`naarWaarde` (display values), `toelichting` (the reason given in the evaluation) |
 
@@ -260,16 +280,22 @@ same way.
 The app implements the Valtimo **"URL app" contract** (`plugin/`):
 
 - **Discovery** — `GET /api/host/plugins` returns the manifest: plugin `pdca`
-  ("PDCA Planbeheer"), version, configuration schema, capabilities, views and
-  actions. GZAC discovers the app by URL registration.
+  ("PDCA Planbeheer"), version, configuration schema, capabilities, granted
+  endpoints, the contract it calls (`permissions.contracts`:
+  `nl.ritense.openplan@1`, §6.3), views and actions. GZAC discovers the app
+  by URL registration.
 - **Views** — 3 case tabs (`plan-overview`, `plan-goals`, `plan-evaluations`),
   1 admin page (`pdca-admin`), 3 task forms (`create-plan`, `update-goals`,
   `evaluate`) and 1 side panel (`evaluation`, §6.1). Each view is an html
   bundle under `/bundles/*` that GZAC loads as a sandboxed iframe.
-- **Configuration push** — when a plugin configuration is created/saved, GZAC
-  pushes `configId` + `serviceToken` + `gzacBaseUrl` to
+- **Configuration push** — when a plugin configuration is created/saved (and
+  on every discovery poll), GZAC pushes `configId` + `serviceToken` +
+  `gzacBaseUrl` + `grantedContracts` to
   `POST /api/host/configurations/{configId}`; the app persists this
   (`StoredPluginConfiguration`) so restarts need no re-linking.
+  `grantedContracts` lists the contracts the administrator bound to a
+  provider; the app uses it to tell "Open Plan not bound" from "GZAC
+  unreachable" (§6.3).
 - **Capability `frontend_data` + the `/data` route** — `POST
   /plugins/pdca/{version}/data` (`PluginDataController`) serves the iframe
   calls GZAC proxies with the user's downscoped token (bridge
@@ -299,11 +325,14 @@ The app implements the Valtimo **"URL app" contract** (`plugin/`):
   process variables through the contract's `variables` channel — this is how
   `aanmaak-instrument` hands the new `instrumentUuid` back to the process.
 - **Credential order** of `GzacClient` towards GZAC: (1) pushed serviceToken +
-  gzacBaseUrl, (2) `pdca.gzac.static-token`, (3) Keycloak client-credentials
-  fallback. The pushed gzacBaseUrl is the host's server-to-server callback
-  URL entered in GZAC; `GZAC_URL` (no default) only overrides it where the
-  app sees GZAC under a different address (the compose container via
-  `host.docker.internal`), and is required for options (2) and (3).
+  gzacBaseUrl (`PushedGzacAccess`, the most recently pushed configuration),
+  (2) `pdca.gzac.static-token`, (3) Keycloak client-credentials fallback. The
+  pushed gzacBaseUrl is the host's server-to-server callback URL entered in
+  GZAC; `GZAC_URL` (no default) only overrides it where the app sees GZAC
+  under a different address (the compose container via
+  `host.docker.internal`), and is required for options (2) and (3). Contract
+  calls (§6.3) only use option (1): GZAC resolves the binding from the
+  calling configuration, which a static or Keycloak token does not identify.
 - **Reading dossier content** — GZAC serializes a document's `content` on
   `GET /api/v1/document/{id}` only when it runs with
   `valtimo.includeDocumentContentInResponse: true` (default off; the local
@@ -488,6 +517,83 @@ fields.
   overdue) or *Niet gepland*, with the number completed.
 - During an evaluation, the explanation of a voortgang becomes the reason of
   the recorded change (§6.1).
+
+### 6.3 Open Plan through the `nl.ritense.openplan@1` contract
+
+In contract mode (the default) the app does not hold Open Plan's URL or
+token. It declares the contract
+`nl.ritense.openplan@1` under `permissions.contracts` in its manifest, and
+GZAC's contract broker forwards each call to the configuration the
+administrator bound to it: a configuration of the `openplan` plugin
+(`plugins/openplan/`), a Wasm plugin on a Valtimo plugin host that holds
+`openPlanUrl` (an egress target) and the secret `openPlanToken` and makes
+the actual HTTP request. The app never learns which plugin or host serves
+the contract.
+
+```mermaid
+sequenceDiagram
+    participant S as PDCA service / proxy
+    participant F as OpenPlanContractRequestFactory
+    participant G as GZAC /api/v1/plugin-contract/call
+    participant P as openplan plugin (plugin host)
+    participant O as Open Plan
+
+    S->>F: openPlanRestClient GET /plannen/api/v0/doel?plannen__uuid=…
+    F->>G: {contract, operation: "list", payload: {resource: "doel", query}}<br/>Bearer serviceToken
+    G->>P: bound configuration, HMAC-signed
+    P->>O: GET {openPlanUrl}/plannen/api/v0/doel?… (Token)
+    O-->>P: 200 {count, results}
+    P-->>G: {status: "completed", result: {status: 200, body}}
+    G-->>F: {status: "completed", result}
+    F-->>S: HTTP 200, application/json, body
+```
+
+- **Binding** — the administrator binds the contract when activating the
+  PDCA configuration in GZAC (*Required plugins*; preselected when exactly
+  one Open Plan configuration exists) or later in its edit screen. GZAC
+  then pushes `grantedContracts: ["nl.ritense.openplan@1"]`. The manifest
+  keeps version `0.2.0` when its footprint changes: GZAC pins a hash of the
+  manifest, so an in-place change waits for the administrator to review and
+  accept it, after which the existing configuration, tabs and links keep
+  working and GZAC binds the contract itself if exactly one provider exists.
+- **One transport for all Open Plan access** — every service and the
+  `/openplan/**` proxy use the `openPlanRestClient` bean. In contract mode
+  that client has the placeholder base URL `http://openplan.contract` and
+  `OpenPlanContractRequestFactory` as its request factory, so callers keep
+  writing ordinary Plannen API requests.
+- **Request → operation** — only path and query count, so absolute URLs
+  (Open Plan's `next` links) map the same way: `/plannen/api/v0/<resource>`
+  with GET is `list`, `/<resource>/<uuid>` with GET is `get`, POST on the
+  collection is `create`, PATCH on an object `update`, PUT on an object
+  `update` with `replace: true`, DELETE on an object `delete`. The payload is
+  `{resource, uuid?, query?, body?, replace?}`; the query string becomes the
+  `query` map. Any other shape (deeper paths, POST on an object, other
+  methods or APIs) is answered locally with 400 "wordt niet ondersteund via
+  het Open Plan-contract". The plugin accepts the resources `plan`, `doel`,
+  `instrument`, `persoon`, `doeltype`, `instrumenttype`, `relatietype`,
+  `plantype` and `overkoepelendplan`.
+- **Responses are reproduced** — the plugin answers `{status, body}` with
+  Open Plan's own status and JSON body, also for 4xx/5xx, and the factory
+  turns that back into an HTTP response with that status and
+  `application/json`. Open Plan's validation errors (`invalidParams`) and
+  404s therefore reach the services and the frontend exactly as with a
+  direct connection; `next` links point at the address the plugin uses and
+  only serve as "more pages" markers (the app pages with `page=N`).
+- **Errors** — failures of the contract chain become a JSON
+  `{"detail": "…"}` response, the shape the frontend shows, with the error
+  code in the Dutch message: 503 when there is no pushed configuration or
+  the contract is not in its `grantedContracts` (*"Open Plan is niet
+  gekoppeld: …"*, without calling GZAC), when GZAC is unreachable or refuses
+  the serviceToken, and for `NO_PROVIDER_BOUND`, `PROVIDER_UNAVAILABLE` and
+  `PROVIDER_UNREACHABLE`; 502 for every other contract error, such as
+  `PROVIDER_ERROR` (the plugin's own code, e.g. `OPENPLAN_UNREACHABLE` or
+  `REQUEST_REFUSED`, travels in the message). A GZAC without the contract
+  endpoint answers 404, reported as 503 with a pointer to direct mode.
+- **Mode** — `pdca.openplan.mode` (`PDCA_OPENPLAN_MODE`) is `contract` by
+  default. `direct` builds `openPlanRestClient` with `pdca.openplan.base-url`
+  + `token` (`OPENPLAN_URL`/`OPENPLAN_TOKEN`, `Authorization: Token …`) for
+  development without GZAC; the app refuses to start in direct mode when
+  either is missing. Both properties are ignored in contract mode.
 
 ## 7. Plan ↔ dossier
 
@@ -1064,6 +1170,19 @@ field once the register owns the catalog.
   visitor in as `admin` (off with `PDCA_ADMIN_AUTOLOGIN=false`), honour
   `DISABLE_2FA` and give each register its own CSRF cookie, since all share
   `localhost`. Entire stack in Docker: `docker compose --profile app up`.
+- **Open Plan access at runtime** (§6.3): in the default contract mode the app
+  needs a GZAC with plugin contracts, a plugin host with the `openplan`
+  plugin uploaded and configured, and the PDCA configuration bound to it.
+  The plugin host must reach Open Plan itself: on the local stack that is
+  `http://host.docker.internal:7501` (the register's host port) from a plugin
+  host in Docker, which also has to allow plain http and private addresses
+  (the Valtimo dev compose does). Standalone development without GZAC runs
+  with `PDCA_OPENPLAN_MODE=direct`.
+- **The `openplan` plugin** (`plugins/openplan/`) is built separately with the
+  Valtimo plugin SDK (Node 22+, a sibling `valtimo` checkout for the SDK
+  dependency): `./gradlew buildOpenPlanPlugin` builds the SDK, installs the
+  plugin's dependencies and produces `dist/openplan-1.0.0.zip` for upload.
+  It is not part of `./gradlew build` or the app image.
 - **Dockerfile** is self-contained (builds frontend + jar inside the image).
 - **CI/CD**: a push to `main` builds and publishes the image to GHCR
   (`.github/workflows/release.yaml`); Helm chart via `helm-publish.yaml`.

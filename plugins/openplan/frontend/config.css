@@ -1,0 +1,31 @@
+html,
+body {
+  margin: 0;
+  background: transparent;
+}
+
+.openplan-config {
+  padding: 0.25rem 0.125rem 1rem;
+}
+
+.openplan-config__connection {
+  padding: 1.5rem;
+}
+
+.openplan-config__heading {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.openplan-config__intro {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.openplan-config .cds--inline-notification {
+  max-inline-size: none;
+}
