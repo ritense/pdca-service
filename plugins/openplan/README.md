@@ -52,6 +52,8 @@ plugin:
 ./gradlew buildOpenPlanPlugin   # -> plugins/openplan/dist/openplan-1.0.0.zip
 ```
 
+`./gradlew buildPlugins` builds this plugin together with the other register plugins.
+
 Node is taken from `-PnodeDir=<node install dir>`, else the newest nvm-installed Node 22+, else
 `node` on the PATH; `-PvaltimoDir=<path>` points at a Valtimo checkout elsewhere. By hand:
 
@@ -74,8 +76,8 @@ npm run build:pack     # -> dist/openplan-1.0.0.zip
 
    `openPlanUrl` is the address **the plugin host** uses to reach Open Plan, without
    `/plannen/api/v0`. For the PDCA dev stack (Open Plan on host port 7501, plugin host in Docker)
-   that is `http://host.docker.internal:7501` with the dev token from
-   `src/main/resources/application.yml` (`pdca.openplan.token`). The URL is an egress target:
+   that is `http://host.docker.internal:7501` with the dev token the compose init provisions
+   (`docker/openplan/init.py`). The URL is an egress target:
    entering it is what allows the plugin to call it. Plain `http` and private addresses need a
    plugin host that allows them (`HOST_ALLOW_HTTP`, and `HOST_ALLOWED_INTERNAL_CIDRS` or
    `HOST_ALLOW_PRIVATE_NETWORK`); the Valtimo dev compose stack does.

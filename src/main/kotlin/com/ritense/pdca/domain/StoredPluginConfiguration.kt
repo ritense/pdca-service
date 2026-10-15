@@ -26,7 +26,7 @@ import java.time.LocalDateTime
  * Plugin configuration pushed by GZAC (URL-app contract), persisted so the
  * serviceToken + gzacBaseUrl survive an app restart. The serviceToken is what
  * lets this app call GZAC back, e.g. to create a dossier for a plan or to
- * reach Open Plan through a granted contract.
+ * reach the registers through their granted contracts.
  */
 @Entity
 @Table(name = "plugin_configuration")

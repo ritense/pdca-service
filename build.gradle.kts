@@ -195,14 +195,19 @@ tasks.register("buildGzacZips") {
 }
 
 // ---------------------------------------------------------------------------
-// The Open Plan external plugin (plugins/openplan): one task builds the
-// uploadable package dist/openplan-<version>.zip. It needs Node >= 22 and the
-// Valtimo checkout whose plugin SDK the plugin depends on (default: a
-// sibling `valtimo` directory, override with -PvaltimoDir=...). Node is taken
-// from -PnodeDir=<dir with bin/node>, else the newest nvm-installed Node 22+,
-// else the `node` on PATH.
+// The register plugins (plugins/<name>): external Valtimo plugins that serve
+// the register contracts. build<Name>Plugin builds one uploadable package
+// plugins/<name>/dist/<name>-<version>.zip, buildPlugins builds all of them.
+// They need Node >= 22 and the Valtimo checkout whose plugin SDK they depend
+// on (default: a sibling `valtimo` directory, override with
+// -PvaltimoDir=...). Node is taken from -PnodeDir=<dir with bin/node>, else
+// the newest nvm-installed Node 22+, else the `node` on PATH.
 
-val openPlanPluginDir = layout.projectDirectory.dir("plugins/openplan")
+val registerPlugins = mapOf(
+    "openplan" to "OpenPlan",
+    "openproduct" to "OpenProduct",
+    "openklant" to "OpenKlant"
+)
 val valtimoDir = providers.gradleProperty("valtimoDir")
     .map { file(it) }
     .orElse(provider { projectDir.resolve("../valtimo").canonicalFile })
@@ -244,9 +249,9 @@ fun Exec.useNode(vararg npmArgs: String) {
     }
 }
 
-tasks.register<Exec>("openPlanPluginSdkBuild") {
+tasks.register<Exec>("pluginSdkBuild") {
     group = "plugin"
-    description = "Build the Valtimo plugin SDK the Open Plan plugin depends on"
+    description = "Build the Valtimo plugin SDK the register plugins depend on"
     workingDir(pluginSdkDir)
     inputs.dir(pluginSdkDir.map { it.resolve("src") })
     inputs.file(pluginSdkDir.map { it.resolve("package.json") })
@@ -262,28 +267,36 @@ tasks.register<Exec>("openPlanPluginSdkBuild") {
     useNode("run", "build")
 }
 
-tasks.register<Exec>("openPlanPluginInstall") {
-    group = "plugin"
-    description = "Install the Open Plan plugin's npm dependencies"
-    workingDir(openPlanPluginDir)
-    inputs.files(openPlanPluginDir.file("package.json"), openPlanPluginDir.file("package-lock.json"))
-    outputs.dir(openPlanPluginDir.dir("node_modules"))
-    useNode("install", "--no-audit", "--no-fund")
+val pluginBuildTasks = registerPlugins.map { (name, taskName) ->
+    val pluginDir = layout.projectDirectory.dir("plugins/$name")
+    val install = tasks.register<Exec>("${taskName.replaceFirstChar { it.lowercase() }}PluginInstall") {
+        group = "plugin"
+        description = "Install the $name plugin's npm dependencies"
+        workingDir(pluginDir)
+        inputs.files(pluginDir.file("package.json"), pluginDir.file("package-lock.json"))
+        outputs.dir(pluginDir.dir("node_modules"))
+        useNode("install", "--no-audit", "--no-fund")
+    }
+    tasks.register<Exec>("build${taskName}Plugin") {
+        group = "plugin"
+        description = "Build the uploadable $name plugin package (plugins/$name/dist/$name-<version>.zip)"
+        dependsOn("pluginSdkBuild", install)
+        workingDir(pluginDir)
+        inputs.dir(pluginDir.dir("src"))
+        inputs.files(fileTree(pluginDir.dir("frontend")) { exclude("*.bundle.*") })
+        inputs.files(pluginDir.file("manifest.json"), pluginDir.file("tsconfig.json"))
+        inputs.dir(pluginSdkDir.map { it.resolve("dist") })
+        outputs.dir(pluginDir.dir("dist"))
+        useNode("run", "build:pack")
+        doLast {
+            pluginDir.dir("dist").asFile.listFiles { f -> f.name.endsWith(".zip") }
+                ?.forEach { logger.lifecycle("$name plugin package: ${it.path}") }
+        }
+    }
 }
 
-tasks.register<Exec>("buildOpenPlanPlugin") {
+tasks.register("buildPlugins") {
     group = "plugin"
-    description = "Build the uploadable Open Plan plugin package (plugins/openplan/dist/openplan-<version>.zip)"
-    dependsOn("openPlanPluginSdkBuild", "openPlanPluginInstall")
-    workingDir(openPlanPluginDir)
-    inputs.dir(openPlanPluginDir.dir("src"))
-    inputs.files(fileTree(openPlanPluginDir.dir("frontend")) { exclude("*.bundle.*") })
-    inputs.files(openPlanPluginDir.file("manifest.json"), openPlanPluginDir.file("tsconfig.json"))
-    inputs.dir(pluginSdkDir.map { it.resolve("dist") })
-    outputs.dir(openPlanPluginDir.dir("dist"))
-    useNode("run", "build:pack")
-    doLast {
-        openPlanPluginDir.dir("dist").asFile.listFiles { f -> f.name.endsWith(".zip") }
-            ?.forEach { logger.lifecycle("Open Plan plugin package: ${it.path}") }
-    }
+    description = "Build the uploadable packages of all register plugins (plugins/*/dist/*.zip)"
+    dependsOn(pluginBuildTasks)
 }

@@ -18,7 +18,6 @@ package com.ritense.pdca.registers
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.ritense.pdca.plugin.PluginHostController.Companion.OPENPLAN_CONTRACT
 import com.ritense.pdca.plugin.PushedGzacAccess
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpHeaders
@@ -30,7 +29,6 @@ import org.springframework.http.client.AbstractClientHttpRequest
 import org.springframework.http.client.ClientHttpRequest
 import org.springframework.http.client.ClientHttpRequestFactory
 import org.springframework.http.client.ClientHttpResponse
-import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
 import org.springframework.web.util.UriUtils
 import java.io.ByteArrayInputStream
@@ -42,24 +40,24 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets.UTF_8
 
 /**
- * Transport of `openPlanRestClient` in contract mode: every Open Plan request
- * becomes a call of GZAC's contract broker (`POST /api/v1/plugin-contract/call`,
- * contract `nl.ritense.openplan@1`) with the pushed serviceToken, and GZAC
- * forwards it to the configuration the administrator bound (the openplan
- * plugin). The register's status code and body come back unchanged, so
- * callers of the RestClient see the same responses as with a direct
- * connection.
+ * Transport of a register's RestClient: every request to
+ * [register] becomes a call of GZAC's contract broker
+ * (`POST /api/v1/plugin-contract/call`, contract [Register.contract]) with
+ * the pushed serviceToken, and GZAC forwards it to the configuration the
+ * administrator bound (the register's plugin). The register's status code and
+ * body come back unchanged, so callers of the RestClient see the same
+ * responses as the register API itself.
  *
  * Only the path and query of the request URI count — any base URL works,
- * including Open Plan's own absolute `next` links:
- * `/plannen/api/v0/<resource>[/<uuid>]` + method → operation (GET → list or
- * get, POST → create, PATCH → update, PUT → update with replace, DELETE →
+ * including the register's own absolute `next` links:
+ * `<apiPath>/<resource>[/<uuid>]` + method → operation (GET → list or get,
+ * POST → create, PATCH → update, PUT → update with replace, DELETE →
  * delete). Contract and transport failures become a JSON `{"detail": ...}`
- * response (502, or 503 when Open Plan is not bound or its provider is
+ * response (502, or 503 when the register is not bound or its provider is
  * unavailable), the shape the frontend shows.
  */
-@Component
-class OpenPlanContractRequestFactory(
+class RegisterContractRequestFactory(
+    private val register: Register,
     private val pushedGzacAccess: PushedGzacAccess,
     private val objectMapper: ObjectMapper,
     restClientBuilder: RestClient.Builder
@@ -67,6 +65,8 @@ class OpenPlanContractRequestFactory(
 
     private val log = LoggerFactory.getLogger(javaClass)
     private val gzac = restClientBuilder.clone().build()
+    private val path = Regex("""^(?:.*)?${Regex.escape(register.apiPath)}/([a-z][a-z-]*)(?:/([^/]+))?/?$""")
+    private val name = register.displayName
 
     data class ContractCall(val operation: String, val payload: Map<String, Any>)
 
@@ -85,14 +85,14 @@ class OpenPlanContractRequestFactory(
         val requestBody = try {
             body.takeIf { it.isNotEmpty() }?.let { objectMapper.readTree(it) }
         } catch (e: Exception) {
-            return detail(HttpStatus.BAD_REQUEST, "Ongeldige JSON in het verzoek aan Open Plan: ${e.message}")
+            return detail(HttpStatus.BAD_REQUEST, "Ongeldige JSON in het verzoek aan $name: ${e.message}")
         }
         val call = toContractCall(uri, method, requestBody)
             ?: return detail(
                 HttpStatus.BAD_REQUEST,
-                "$method ${uri.rawPath} wordt niet ondersteund via het Open Plan-contract ($OPENPLAN_CONTRACT)"
+                "$method ${uri.rawPath} wordt niet ondersteund via het $name-contract (${register.contract})"
             )
-        val access = pushedGzacAccess.latest { OPENPLAN_CONTRACT in it.grantedContracts }
+        val access = pushedGzacAccess.latest { register.contract in it.grantedContracts }
             ?: return notBound()
 
         val (status, responseBody) = try {
@@ -102,33 +102,33 @@ class OpenPlanContractRequestFactory(
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(
                     objectMapper.writeValueAsBytes(
-                        mapOf("contract" to OPENPLAN_CONTRACT, "operation" to call.operation, "payload" to call.payload)
+                        mapOf("contract" to register.contract, "operation" to call.operation, "payload" to call.payload)
                     )
                 )
                 .exchange { _, response -> response.statusCode.value() to response.body.readAllBytes() }!!
         } catch (e: Exception) {
-            log.warn("Open Plan contract call to GZAC at {} failed: {}", access.baseUrl, e.message)
-            return detail(HttpStatus.SERVICE_UNAVAILABLE, "GZAC is niet bereikbaar voor Open Plan: ${e.message}")
+            log.warn("{} contract call to GZAC at {} failed: {}", name, access.baseUrl, e.message)
+            return detail(HttpStatus.SERVICE_UNAVAILABLE, "GZAC is niet bereikbaar voor $name: ${e.message}")
         }
         return when (status) {
             in 200..299 -> fromContractResponse(responseBody)
             401, 403 -> detail(
                 HttpStatus.SERVICE_UNAVAILABLE,
-                "GZAC weigert de Open Plan-aanroep (HTTP $status): het servicetoken van de PDCA-configuratie " +
+                "GZAC weigert de $name-aanroep (HTTP $status): het servicetoken van de PDCA-configuratie " +
                     "is verlopen of ongeldig. Controleer of PDCA in GZAC actief en geaccepteerd is."
             )
             404 -> detail(
                 HttpStatus.SERVICE_UNAVAILABLE,
-                "Deze GZAC-versie ondersteunt geen plugincontracten (HTTP 404 op /api/v1/plugin-contract/call); " +
-                    "gebruik pdca.openplan.mode=direct"
+                "Deze GZAC-versie ondersteunt geen plugincontracten (HTTP 404 op /api/v1/plugin-contract/call), " +
+                    "die PDCA nodig heeft voor $name"
             )
-            else -> detail(HttpStatus.BAD_GATEWAY, "GZAC gaf HTTP $status op de Open Plan-aanroep: ${String(responseBody, UTF_8)}")
+            else -> detail(HttpStatus.BAD_GATEWAY, "GZAC gaf HTTP $status op de $name-aanroep: ${String(responseBody, UTF_8)}")
         }
     }
 
-    /** The contract operation and payload for a Plannen API request, or null when the contract has none. */
+    /** The contract operation and payload for a request to the register API, or null when the contract has none. */
     fun toContractCall(uri: URI, method: HttpMethod, body: JsonNode?): ContractCall? {
-        val match = PATH.matchEntire(uri.rawPath ?: return null) ?: return null
+        val match = path.matchEntire(uri.rawPath ?: return null) ?: return null
         val resource = match.groupValues[1]
         val uuid = match.groupValues[2].takeIf { it.isNotEmpty() }?.let { UriUtils.decode(it, UTF_8) }
         val operation = when (method) {
@@ -159,49 +159,49 @@ class OpenPlanContractRequestFactory(
         val response = try {
             objectMapper.readTree(bytes)
         } catch (e: Exception) {
-            return detail(HttpStatus.BAD_GATEWAY, "GZAC gaf een onleesbaar antwoord op de Open Plan-aanroep")
+            return detail(HttpStatus.BAD_GATEWAY, "GZAC gaf een onleesbaar antwoord op de $name-aanroep")
         }
         return when (response.path("status").asText()) {
             "completed" -> {
                 val result = response.path("result")
                 val status = result.path("status").takeIf { it.isInt }?.asInt()?.takeIf { it in 100..599 }
-                    ?: return detail(HttpStatus.BAD_GATEWAY, "De Open Plan plugin gaf geen geldige HTTP-status terug")
+                    ?: return detail(HttpStatus.BAD_GATEWAY, "De $name plugin gaf geen geldige HTTP-status terug")
                 val body = result.path("body").takeUnless { it.isMissingNode || it.isNull }
                 JsonResponse(HttpStatusCode.valueOf(status), body?.let { objectMapper.writeValueAsBytes(it) } ?: ByteArray(0))
             }
             "error" -> contractError(response.path("errorCode").asText("ONBEKEND"), response.path("errorMessage").asText(""))
-            else -> detail(HttpStatus.BAD_GATEWAY, "GZAC gaf een onbekend antwoord op de Open Plan-aanroep")
+            else -> detail(HttpStatus.BAD_GATEWAY, "GZAC gaf een onbekend antwoord op de $name-aanroep")
         }
     }
 
     private fun contractError(errorCode: String, errorMessage: String): ClientHttpResponse {
-        log.warn("Open Plan contract call failed: [{}] {}", errorCode, errorMessage)
+        log.warn("{} contract call failed: [{}] {}", name, errorCode, errorMessage)
         val reason = errorMessage.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
         return when (errorCode) {
             "NO_PROVIDER_BOUND" -> detail(
                 HttpStatus.SERVICE_UNAVAILABLE,
-                "Open Plan is niet gekoppeld: koppel in GZAC de PDCA-configuratie aan de Open Plan plugin ($errorCode)"
+                "$name is niet gekoppeld: koppel in GZAC de PDCA-configuratie aan de $name plugin ($errorCode)"
             )
             "PROVIDER_UNAVAILABLE" -> detail(
                 HttpStatus.SERVICE_UNAVAILABLE,
-                "De Open Plan plugin is in GZAC niet beschikbaar ($errorCode)$reason"
+                "De $name plugin is in GZAC niet beschikbaar ($errorCode)$reason"
             )
             "PROVIDER_UNREACHABLE" -> detail(
                 HttpStatus.SERVICE_UNAVAILABLE,
-                "De plugin host van de Open Plan plugin is niet bereikbaar ($errorCode)$reason"
+                "De plugin host van de $name plugin is niet bereikbaar ($errorCode)$reason"
             )
-            "PROVIDER_ERROR" -> detail(HttpStatus.BAD_GATEWAY, "De Open Plan plugin meldt een fout ($errorCode)$reason")
-            else -> detail(HttpStatus.BAD_GATEWAY, "Open Plan-aanroep via GZAC mislukt ($errorCode)$reason")
+            "PROVIDER_ERROR" -> detail(HttpStatus.BAD_GATEWAY, "De $name plugin meldt een fout ($errorCode)$reason")
+            else -> detail(HttpStatus.BAD_GATEWAY, "$name-aanroep via GZAC mislukt ($errorCode)$reason")
         }
     }
 
     private fun notBound(): ClientHttpResponse {
         val reason = if (pushedGzacAccess.latest() == null) {
-            "activeer PDCA in GZAC en koppel de Open Plan plugin"
+            "activeer PDCA in GZAC en koppel de $name plugin"
         } else {
-            "koppel in GZAC de PDCA-configuratie aan de Open Plan plugin"
+            "koppel in GZAC de PDCA-configuratie aan de $name plugin"
         }
-        return detail(HttpStatus.SERVICE_UNAVAILABLE, "Open Plan is niet gekoppeld: $reason")
+        return detail(HttpStatus.SERVICE_UNAVAILABLE, "$name is niet gekoppeld: $reason")
     }
 
     private fun detail(status: HttpStatus, message: String): ClientHttpResponse =
@@ -216,9 +216,5 @@ class OpenPlanContractRequestFactory(
         }
         override fun getBody(): InputStream = ByteArrayInputStream(bytes)
         override fun close() {}
-    }
-
-    companion object {
-        private val PATH = Regex("""^(?:.*)?/plannen/api/v0/([a-z]+)(?:/([^/]+))?/?$""")
     }
 }

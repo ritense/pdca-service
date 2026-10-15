@@ -21,17 +21,19 @@ statuses `actief`/`afgerond`/`geannuleerd`, resultaat `behaald`/`gefaald`, pagin
 `{count, results}`) through a thin same-origin proxy in the backend:
 
 ```
-/openplan/plannen/api/v0/...          -> Open Plan     (via GZAC + the openplan plugin, or localhost:7501 in direct mode)
-/openproduct/producttypen/api/v1/...  -> Open Product  (localhost:7502)
-/openklant/klantinteracties/api/v1/... -> Open Klant    (localhost:7504)
+/openplan/plannen/api/v0/...          -> Open Plan     (via GZAC + the openplan plugin)
+/openproduct/producttypen/api/v1/...  -> Open Product  (via GZAC + the openproduct plugin)
+/openklant/klantinteracties/api/v1/... -> Open Klant    (via GZAC + the openklant plugin)
 ```
 
-Open Product and Open Klant are called with the app's own tokens. **Open Plan is reached
-through GZAC**: the app calls the contract `nl.ritense.openplan@1`, and GZAC forwards each call
-to the [`openplan` plugin](./plugins/openplan/README.md), which runs on a Valtimo plugin host and
-holds the Open Plan URL and token (ARCHITECTURE §6.3). Paths, bodies and status codes are the
-same either way. For standalone development without GZAC, run with `PDCA_OPENPLAN_MODE=direct`
-and the app calls Open Plan itself.
+**The registers are reached through GZAC**: for each register the app calls a contract
+(`nl.ritense.openplan@1`, `nl.ritense.openproduct@1`, `nl.ritense.openklant@1`), and GZAC
+forwards each call to the bound register plugin — [`openplan`](./plugins/openplan/README.md),
+[`openproduct`](./plugins/openproduct/README.md) or [`openklant`](./plugins/openklant/README.md)
+— which runs on a Valtimo plugin host and holds the register's URL and token (ARCHITECTURE
+§6.3). Paths, bodies and status codes are those of the register APIs. The app holds no register
+URLs or tokens and has no other route to the registers: it always depends on GZAC and the three
+register plugins.
 
 The Spring Boot backend itself only keeps what the registers don't model, keyed by register uuid
 (`/api/v1/pdca/*`): the **direct dossier link** (`plan_details.dossier_id`, plan = dossier
@@ -105,7 +107,7 @@ instance by URL.
 - **Node.js 18+** — only needed to rebuild the frontend bundles
 - **Node.js 22+** and a checkout of the [Valtimo monorepo](https://github.com/valtimo-platform/valtimo)
   next to this repository (`../valtimo`, with the plugin SDK built in
-  `plugin-host/plugin-sdk`) — only needed to build the `openplan` plugin
+  `plugin-host/plugin-sdk`) — only needed to build the register plugins
 
 ## Boot
 
@@ -124,14 +126,11 @@ check during a demo what landed in the registers. Skip the tabs with
 Or in two steps: `docker compose up -d` then `./gradlew bootRun`. To run the app itself as a
 container too, see [Docker](#docker): `docker compose --profile app up -d --build`.
 
-By default the app reaches Open Plan through GZAC (contract mode), so Open Plan data only shows
-once the app runs in GZAC with the `openplan` plugin bound (see
-[Using it from Valtimo/GZAC](#using-it-from-valtimogzac)); until then Open Plan requests answer
-503 *"Open Plan is niet gekoppeld: …"*. To work on the app without GZAC, call Open Plan directly:
-
-```bash
-PDCA_OPENPLAN_MODE=direct ./gradlew bootRunWithDocker
-```
+The app reaches the registers only through GZAC, so register data only shows once the app runs
+in GZAC with the register plugins bound (see
+[Using it from Valtimo/GZAC](#using-it-from-valtimogzac)); until then the requests of an unbound
+register answer 503 *"Open Klant is niet gekoppeld: …"* (with that register's name). The
+compose stack still runs the registers themselves: the register plugins call them.
 
 The compose file runs four stacks:
 
@@ -143,8 +142,8 @@ The compose file runs four stacks:
 | Open Klant | <http://localhost:7504> | `maykinmedia/open-klant:2.19.1` from Docker Hub (linux/amd64 only, emulated on Apple silicon). Admin: `admin`/`admin`. |
 
 The `openplan-init` / `openproduct-init` / `openklant-init` one-shot containers migrate, create
-the admin users, provision **fixed dev API tokens** (matching `application.yml`, in
-`docker/*/init.py`; Open Klant keeps its tokens in its own *token authorizations* admin, not as
+the admin users, provision **fixed dev API tokens** (matching the local development values of the register
+plugins, in `docker/*/init.py`; Open Klant keeps its tokens in its own *token authorizations* admin, not as
 DRF tokens) and seed the **reference data** (`docker/*/reference_data.py`; Open Klant has none):
 producttypen in Open Product (`docker/openproduct/reference_data.py`; the W&P producten carry the
 five portfolio themes Perspectief / Randvoorwaarden / Persoonlijke vermogens / Kansen /
@@ -158,8 +157,9 @@ dossier.
 
 Quick checks once running:
 
-- Open Plan through the proxy: <http://localhost:7500/openplan/plannen/api/v0/plan> (contract
-  mode: only once the Open Plan contract is bound)
+These answer only once the register's contract is bound:
+
+- Open Plan through the proxy: <http://localhost:7500/openplan/plannen/api/v0/plan>
 - Producttypen: <http://localhost:7500/openproduct/producttypen/api/v1/producttypen>
 - Klantcontacten: <http://localhost:7500/openklant/klantinteracties/api/v1/klantcontacten>
 - PDCA overlay: <http://localhost:7500/api/v1/pdca/plandetails>
@@ -242,26 +242,31 @@ is needed (the PDCA side seeds itself: reference data in the registers and the c
 configurations including prefill mapping and intake→plan reference). It needs a GZAC with
 plugin contracts and a plugin host registered in it.
 
-0. **Install the Open Plan plugin** — build it once (`./gradlew buildOpenPlanPlugin`, see [`plugins/openplan/README.md`](./plugins/openplan/README.md)) and
-   upload `plugins/openplan/dist/openplan-1.0.0.zip` onto the plugin host (*Admin → Plugins →
-   Upload plugin*). Configure it, accepting `http_request` and `log`; its configuration screen
-   starts with the local development values (`http://host.docker.internal:7501` and the dev
-   token).
+0. **Install the register plugins** — build them once (`./gradlew buildPlugins`, see the
+   READMEs of [`openplan`](./plugins/openplan/README.md),
+   [`openproduct`](./plugins/openproduct/README.md) and
+   [`openklant`](./plugins/openklant/README.md)) and upload
+   `plugins/openplan/dist/openplan-1.0.0.zip`, `plugins/openproduct/dist/openproduct-1.0.0.zip`
+   and `plugins/openklant/dist/openklant-1.0.0.zip` onto the plugin host (*Admin → Plugins →
+   Upload plugin*). Configure each, accepting `http_request` and `log`; their configuration
+   screens start with the local development values (`http://host.docker.internal:7501`,
+   `:7502` and `:7504` with the dev tokens).
 
-   `openPlanUrl` is the address the **plugin host** reaches Open Plan on —
-   `http://host.docker.internal:7501` for a plugin host in Docker on the same machine as this
-   compose stack; the token is the dev token the compose init provisions. Plain http to a
+   The URL is the address the **plugin host** reaches the register on —
+   `http://host.docker.internal:<port>` for a plugin host in Docker on the same machine as this
+   compose stack; the tokens are the dev tokens the compose init provisions. Plain http to a
    private address only works on a plugin host that allows it (`HOST_ALLOW_HTTP`, and
    `HOST_ALLOWED_INTERNAL_CIDRS` or `HOST_ALLOW_PRIVATE_NETWORK`), as the Valtimo dev compose
    does.
 1. **Register the app** — register the external-plugin host at `http://localhost:7500`; the
    plugin "PDCA Planbeheer" is discovered. Create a **plugin configuration** for it, accept
    the requested endpoints/capabilities and, under *Required plugins*, bind
-   `nl.ritense.openplan@1` to the Open Plan configuration (preselected when it is the only
-   one). GZAC then pushes the serviceToken and the granted contract to the app. An existing
-   PDCA configuration from before the contract keeps working: GZAC asks the administrator to
-   review and accept the changed manifest and binds the contract itself when exactly one Open
-   Plan configuration exists — otherwise bind it in the configuration's edit screen.
+   `nl.ritense.openplan@1`, `nl.ritense.openproduct@1` and `nl.ritense.openklant@1` to the
+   configurations of the matching plugins (each preselected when it is the only one). GZAC
+   then pushes the serviceToken and the granted contracts to the app. An existing PDCA
+   configuration keeps working when contracts are added: GZAC asks the administrator to
+   review and accept the changed manifest and binds each new contract itself when exactly one
+   configuration provides it — otherwise bind it in the configuration's edit screen.
 2. **Import the zips** — the five case zips; the PDCA case tabs and the `create-plan`
    task-form links ship inside them with a placeholder configuration id, so in the import
    wizard's mapping step **pick your "PDCA Planbeheer" configuration** for plugin `pdca`
@@ -321,8 +326,9 @@ All routes yield a dossier (plan = dossier 1:1):
   planId/planTitel/planStatus) and links the plan to it.
   The call is idempotent: an already-linked plan returns its existing dossier.
 
-The app's manifest declares the contract it calls (`permissions.contracts`:
-`nl.ritense.openplan@1`) and this GZAC-API footprint (capability `gzac_api` plus
+The app's manifest declares the contracts it calls (`permissions.contracts`:
+`nl.ritense.openplan@1`, `nl.ritense.openproduct@1`, `nl.ritense.openklant@1`) and this GZAC-API
+footprint (capability `gzac_api` plus
 `permissions.endpoints`, see
 [`PluginHostController`](./src/main/kotlin/com/ritense/pdca/plugin/PluginHostController.kt)):
 
@@ -366,10 +372,10 @@ service tokens on granted endpoints). Credentials are resolved in this order (se
    when no plugin configuration was pushed; the service account then needs the realm roles
    `ROLE_USER` + `ROLE_ADMIN` to pass GZAC's PBAC for document creation.
 
-Open Plan contract calls (`POST {gzacBaseUrl}/api/v1/plugin-contract/call`) only use option 1:
-GZAC finds the bound Open Plan configuration through the calling configuration's
-serviceToken. Without a pushed configuration, or one without the granted contract, Open Plan
-requests answer 503 with the reason.
+Register contract calls (`POST {gzacBaseUrl}/api/v1/plugin-contract/call`) only use option 1:
+GZAC finds the bound register configuration through the calling configuration's
+serviceToken. Without a pushed configuration, or one without the register's granted contract,
+that register's requests answer 503 with the reason.
 
 ## Docker
 
@@ -385,9 +391,8 @@ docker compose --profile app up -d --build   # or: ./gradlew dockerUpAll
 ```
 
 Without `--profile app` the compose file starts the dependencies only (the
-`./gradlew bootRunWithDocker` dev flow is unchanged). The containerized app also runs in
-contract mode by default; `PDCA_OPENPLAN_MODE=direct docker compose --profile app up -d` makes
-it call the compose Open Plan (`http://openplan:8000`) itself.
+`./gradlew bootRunWithDocker` dev flow is unchanged). The containerized app also reaches the
+registers through GZAC and the register plugins only.
 
 **Build the image** (for the local development cluster or elsewhere):
 
@@ -403,17 +408,14 @@ instead of building from source:
 
 Everything external is configured through environment variables (defaults in
 `application.yml` target the localhost dev setup; the compose `pdca-app` service overrides
-them with in-network hostnames):
+them with in-network hostnames). The registers have none: their URLs and tokens live in the
+register plugin configurations in GZAC.
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `SERVER_PORT` | `7500` | HTTP port of the app (healthcheck follows it) |
 | `PDCA_DB_HOST` / `PDCA_DB_PORT` | `localhost` / `7503` | PostgreSQL for the PDCA overlay |
 | `PDCA_DB_NAME` / `PDCA_DB_USER` / `PDCA_DB_PASS` | `pdca` (all three) | Overlay database name/credentials |
-| `PDCA_OPENPLAN_MODE` | `contract` | `contract`: Open Plan through GZAC and the `openplan` plugin; `direct`: Open Plan with `OPENPLAN_URL`/`OPENPLAN_TOKEN` |
-| `OPENPLAN_URL` / `OPENPLAN_TOKEN` | `http://localhost:7501` / dev token | Open Plan register — direct mode only (the app refuses to start in direct mode without them) |
-| `OPENPRODUCT_URL` / `OPENPRODUCT_TOKEN` | `http://localhost:7502` / dev token | Open Product register |
-| `OPENKLANT_URL` / `OPENKLANT_TOKEN` | `http://localhost:7504` / dev token | Open Klant register |
 | `GZAC_URL` | _(empty: the pushed callback URL is used)_ | Override of the GZAC API URL pushed by GZAC; required for the static-token/Keycloak fallbacks |
 | `GZAC_TOKEN_URL` / `GZAC_CLIENT_ID` / `GZAC_CLIENT_SECRET` | standard gzac-docker-compose m2m client | Keycloak client-credentials fallback |
 | `PDCA_SEED_DEMO_DATA` | `true` | Seed demo plans into an empty Open Plan on boot |
@@ -440,8 +442,8 @@ other direction, when GZAC itself runs in Docker, register the plugin URL as
 ```bash
 ./gradlew build          # full build -> build/libs/pdca-app-0.1.0.jar
 ./gradlew buildGzacZips  # rebuild the importable GZAC zips (case definitions + building blocks)
-./gradlew buildOpenPlanPlugin
-                         # the openplan plugin -> plugins/openplan/dist/openplan-1.0.0.zip (Node 22+)
+./gradlew buildPlugins   # the register plugins -> plugins/<register>/dist/<register>-1.0.0.zip (Node 22+)
+                         # one at a time: buildOpenPlanPlugin, buildOpenProductPlugin, buildOpenKlantPlugin
 ```
 
 Resetting data: `docker compose down -v` wipes all four databases; the init containers and

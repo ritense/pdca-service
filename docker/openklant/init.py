@@ -4,8 +4,9 @@
 #
 # 1. Creates the `admin`/`admin` superuser (Open Klant's createinitialsuperuser
 #    generates and mails a password instead of taking one).
-# 2. Creates an API token with a fixed key (must match `pdca.openklant.token`
-#    in src/main/resources/application.yml). Open Klant does not use DRF
+# 2. Creates an API token with a fixed key (the local development token the
+#    openklant plugin's configuration screen starts with,
+#    plugins/openklant/frontend/config.tsx). Open Klant does not use DRF
 #    tokens but its own TokenAuth model; the header is the same
 #    `Authorization: Token <key>`.
 from django.contrib.auth import get_user_model

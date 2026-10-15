@@ -18,14 +18,15 @@
 #
 # Open Plan has no published Docker image yet, so it is built from GitHub source
 # (pinned commit) on first `docker compose up`; subsequent runs use the cached
-# image. Open Product and Open Klant are pulled from Docker Hub. In contract
-# mode (the default) the app reaches Open Plan through GZAC and the openplan
-# plugin: a plugin host running in Docker on this machine reaches the register
-# at http://host.docker.internal:7501 (the openPlanUrl of that plugin).
+# image. Open Product and Open Klant are pulled from Docker Hub. The app never
+# calls the registers itself: it reaches them through GZAC and the register
+# plugins (openplan, openproduct, openklant). A plugin host running in Docker
+# on this machine reaches the registers at http://host.docker.internal:7501,
+# :7502 and :7504 (the URLs configured in those plugins).
 #
 # The *-init one-shot services run migrations, create an `admin`/`admin`
 # superuser and provision fixed dev API tokens (see docker/*/init.py) that match
-# the defaults in src/main/resources/application.yml — no manual setup needed.
+# the local development values of the register plugins — no manual setup needed.
 #
 # Admin UIs: http://localhost:7501/admin/, http://localhost:7502/admin/ and
 # http://localhost:7504/admin/ (admin/admin). The registers run with the dev
@@ -48,12 +49,6 @@ services:
     environment:
       PDCA_DB_HOST: pdca-database
       PDCA_DB_PORT: "5432"
-      # contract (default): Open Plan through GZAC and the openplan plugin;
-      # direct: OPENPLAN_URL below (PDCA_OPENPLAN_MODE=direct docker compose ...).
-      PDCA_OPENPLAN_MODE: ${PDCA_OPENPLAN_MODE:-contract}
-      OPENPLAN_URL: http://openplan:8000
-      OPENPRODUCT_URL: http://openproduct:8000
-      OPENKLANT_URL: http://openklant:8000
       # GZAC runs outside this compose project (its own stack on the host).
       GZAC_URL: http://host.docker.internal:8080
       GZAC_TOKEN_URL: http://host.docker.internal:8081/auth/realms/valtimo/protocol/openid-connect/token
@@ -62,12 +57,6 @@ services:
     restart: unless-stopped
     depends_on:
       pdca-database:
-        condition: service_healthy
-      openplan:
-        condition: service_healthy
-      openproduct:
-        condition: service_healthy
-      openklant:
         condition: service_healthy
 
   pdca-database:

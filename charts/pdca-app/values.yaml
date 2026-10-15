@@ -41,21 +41,9 @@ database:
   existingSecretKey: "password"
 
 externalServices:
-  openplan:
-    # contract: Open Plan through GZAC's nl.ritense.openplan@1 contract and the
-    # openplan plugin (url and token unused); direct: url + token below.
-    mode: "contract"
-    url: ""
-    existingSecret: ""
-    existingSecretKey: "openplan-token"
-  openproduct:
-    url: ""
-    existingSecret: ""
-    existingSecretKey: "openproduct-token"
-  openklant:
-    url: ""
-    existingSecret: ""
-    existingSecretKey: "openklant-token"
+  # The registers are not configured here: the app reaches them only through
+  # GZAC's contracts and the register plugins, which hold their URLs and tokens.
+  #
   # Normally left disabled: the app then calls GZAC on the callback URL that
   # GZAC pushes with the plugin configuration. Enable only to override that URL
   # or to use the Keycloak client-credentials fallback.

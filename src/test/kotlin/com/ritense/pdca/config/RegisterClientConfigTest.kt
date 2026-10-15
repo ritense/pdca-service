@@ -18,7 +18,6 @@ package com.ritense.pdca.config
 
 import com.ritense.pdca.plugin.ConfigurationStore
 import com.ritense.pdca.plugin.PushedGzacAccess
-import com.ritense.pdca.registers.OpenPlanContractRequestFactory
 import com.ritense.pdca.repository.StoredPluginConfigurationRepository
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
@@ -29,8 +28,6 @@ import org.springframework.boot.autoconfigure.web.client.RestClientAutoConfigura
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
 import org.springframework.web.client.RestClient
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
 
 class RegisterClientConfigTest {
 
@@ -46,43 +43,21 @@ class RegisterClientConfigTest {
         .withBean(StoredPluginConfigurationRepository::class.java, { mock(StoredPluginConfigurationRepository::class.java) })
         .withBean(ConfigurationStore::class.java)
         .withBean(PushedGzacAccess::class.java)
-        .withBean(OpenPlanContractRequestFactory::class.java)
-        .withPropertyValues(
-            "pdca.openproduct.base-url=http://openproduct",
-            "pdca.openproduct.token=t",
-            "pdca.openklant.base-url=http://openklant",
-            "pdca.openklant.token=t"
-        )
 
     @Test
-    fun `contract mode routes Open Plan through the contract factory`() {
-        runner.withPropertyValues("pdca.openplan.mode=contract").run { context ->
-            val openPlan = context.getBean("openPlanRestClient", RestClient::class.java)
+    fun `every register goes through its contract`() {
+        runner.run { context ->
+            mapOf(
+                "openPlanRestClient" to "/plannen/api/v0/plan",
+                "openProductRestClient" to "/producttypen/api/v1/producttypen",
+                "openKlantRestClient" to "/klantinteracties/api/v1/klantcontacten"
+            ).forEach { (bean, path) ->
+                val client = context.getBean(bean, RestClient::class.java)
 
-            val status = openPlan.get().uri("/plannen/api/v0/plan")
-                .exchange { _, response -> response.statusCode.value() }
+                val status = client.get().uri(path).exchange { _, response -> response.statusCode.value() }
 
-            assertEquals(503, status)
-        }
-    }
-
-    @Test
-    fun `direct mode needs a base url and a token`() {
-        runner.withPropertyValues("pdca.openplan.mode=direct", "pdca.openplan.base-url=http://openplan").run { context ->
-            val failure = assertNotNull(context.startupFailure)
-            assertTrue(generateSequence(failure) { it.cause }.any { it.message?.contains("pdca.openplan.token") == true })
-        }
-    }
-
-    @Test
-    fun `direct mode starts with a base url and a token`() {
-        runner.withPropertyValues(
-            "pdca.openplan.mode=direct",
-            "pdca.openplan.base-url=http://openplan",
-            "pdca.openplan.token=t"
-        ).run { context ->
-            assertEquals(null, context.startupFailure)
-            assertNotNull(context.getBean("openPlanRestClient", RestClient::class.java))
+                assertEquals(503, status, bean)
+            }
         }
     }
 }

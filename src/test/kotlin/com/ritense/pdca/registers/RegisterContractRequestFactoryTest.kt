@@ -44,32 +44,25 @@ import java.time.LocalDateTime
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-class OpenPlanContractRequestFactoryTest {
+class RegisterContractRequestFactoryTest {
 
     private val objectMapper = jacksonObjectMapper()
     private val repository = mock(StoredPluginConfigurationRepository::class.java)
     private lateinit var gzac: MockRestServiceServer
     private lateinit var openPlan: RestClient
+    private lateinit var openKlant: RestClient
 
     private val callUrl = "http://gzac:8080/api/v1/plugin-contract/call"
     private val planUuid = "11111111-1111-1111-1111-111111111111"
 
     @BeforeEach
     fun setUp() {
-        val properties = PdcaProperties(
-            openproduct = PdcaProperties.RegisterApi("http://openproduct", "t"),
-            openklant = PdcaProperties.RegisterApi("http://openklant", "t"),
-            gzac = PdcaProperties.GzacApi()
-        )
-        val access = PushedGzacAccess(ConfigurationStore(repository, objectMapper), properties)
+        val access = PushedGzacAccess(ConfigurationStore(repository, objectMapper), PdcaProperties(gzac = PdcaProperties.GzacApi()))
         val gzacBuilder = RestClient.builder()
         gzac = MockRestServiceServer.bindTo(gzacBuilder).build()
-        val factory = OpenPlanContractRequestFactory(access, objectMapper, gzacBuilder)
-        openPlan = RestClient.builder()
-            .baseUrl(PdcaProperties.OpenPlanApi.CONTRACT_BASE_URL)
-            .requestFactory(factory)
-            .build()
-        pushed(grantedContracts = listOf("nl.ritense.openplan@1"))
+        openPlan = contractClient(Register.OPENPLAN, access, gzacBuilder)
+        openKlant = contractClient(Register.OPENKLANT, access, gzacBuilder)
+        pushed(grantedContracts = Register.entries.map { it.contract })
     }
 
     @Test
@@ -216,6 +209,35 @@ class OpenPlanContractRequestFactoryTest {
     }
 
     @Test
+    fun `another register uses its own contract, api path and kebab-case resources`() {
+        expectCall(
+            """{"contract":"nl.ritense.openklant@1","operation":"create",
+               "payload":{"resource":"maak-klantcontact","body":{"klantcontact":{"kanaal":"gesprek"}}}}""",
+            completed(201, """{"klantcontact":{"uuid":"$planUuid"}}""")
+        )
+
+        val (status, body) = send(
+            HttpMethod.POST, "/klantinteracties/api/v1/maak-klantcontact", """{"klantcontact":{"kanaal":"gesprek"}}""", openKlant
+        )
+
+        assertEquals(201, status)
+        assertEquals("""{"klantcontact":{"uuid":"$planUuid"}}""", body)
+        gzac.verify()
+    }
+
+    @Test
+    fun `a binding is checked per register`() {
+        pushed(grantedContracts = listOf("nl.ritense.openplan@1"))
+        gzac.expect(never(), requestTo(callUrl))
+
+        val (status, body) = send(HttpMethod.GET, "/klantinteracties/api/v1/klantcontacten", client = openKlant)
+
+        assertEquals(503, status)
+        assertTrue(detail(body).startsWith("Open Klant is niet gekoppeld: koppel in GZAC"))
+        gzac.verify()
+    }
+
+    @Test
     fun `requests outside the contract are refused locally`() {
         gzac.expect(never(), requestTo(callUrl))
 
@@ -224,6 +246,7 @@ class OpenPlanContractRequestFactoryTest {
         assertEquals(400, send(HttpMethod.GET, "/plannen/api/v0/plan/$planUuid/doelen").first)
         assertEquals(400, send(HttpMethod.GET, "/producttypen/api/v1/producttypen").first)
         assertEquals(400, send(HttpMethod.HEAD, "/plannen/api/v0/plan").first)
+        assertEquals(400, send(HttpMethod.GET, "/plannen/api/v0/plan", client = openKlant).first)
         gzac.verify()
     }
 
@@ -252,8 +275,14 @@ class OpenPlanContractRequestFactoryTest {
     private fun completed(status: Int, body: String) =
         """{"status":"completed","result":{"status":$status,"body":$body}}"""
 
-    private fun send(method: HttpMethod, path: String, body: String? = null): Pair<Int, String> =
-        openPlan.method(method)
+    private fun contractClient(register: Register, access: PushedGzacAccess, gzacBuilder: RestClient.Builder) =
+        RestClient.builder()
+            .baseUrl(register.contractBaseUrl)
+            .requestFactory(RegisterContractRequestFactory(register, access, objectMapper, gzacBuilder))
+            .build()
+
+    private fun send(method: HttpMethod, path: String, body: String? = null, client: RestClient = openPlan): Pair<Int, String> =
+        client.method(method)
             .uri(path)
             .apply { if (body != null) contentType(MediaType.APPLICATION_JSON).body(body) }
             .exchange { _, response -> response.statusCode.value() to String(response.body.readAllBytes()) }!!

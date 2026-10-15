@@ -1,5 +1,6 @@
 package com.ritense.pdca.plugin
 
+import com.ritense.pdca.registers.Register
 import org.slf4j.LoggerFactory
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -42,8 +43,8 @@ class PluginHostController(
         // tabs/links to be moved over).
         const val PLUGIN_VERSION = "0.2.0"
 
-        /** Open Plan is reached through this contract (see `OpenPlanContractRequestFactory`). */
-        const val OPENPLAN_CONTRACT = "nl.ritense.openplan@1"
+        /** The registers are reached through these contracts (see `RegisterContractRequestFactory`). */
+        val CONTRACTS = Register.entries.map { it.contract }
 
         /**
          * This app's GZAC API footprint: capability gzac_api plus the
@@ -196,11 +197,11 @@ class PluginHostController(
         // (PBAC is skipped); the administrator confirms this footprint when
         // creating or re-accepting the configuration. `contracts` is what the
         // app calls through GZAC's contract broker; the administrator binds
-        // each one to a providing configuration (the openplan plugin).
+        // each one to a providing configuration (the register plugins).
         "permissions" to mapOf(
             "capabilities" to CAPABILITIES,
             "endpoints" to GRANTED_ENDPOINTS,
-            "contracts" to listOf(OPENPLAN_CONTRACT)
+            "contracts" to CONTRACTS
         ),
         "frontendBundles" to listOf(
             mapOf(

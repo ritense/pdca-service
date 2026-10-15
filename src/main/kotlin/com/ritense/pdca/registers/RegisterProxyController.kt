@@ -16,7 +16,6 @@
 
 package com.ritense.pdca.registers
 
-import com.ritense.pdca.config.PdcaProperties
 import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpMethod
@@ -33,32 +32,31 @@ import java.net.URI
  * Transparent pass-through to the Maykin registers. The frontend consumes the
  * register APIs directly (identical paths, bodies and status codes); this
  * proxy provides a same-origin URL and forwards through the register's
- * RestClient, which carries the credentials:
+ * RestClient, which goes through the register's GZAC contract:
  *
- *   /openplan/plannen/api/v0/...        -> Open Plan (via the GZAC contract, or directly)
- *   /openproduct/producttypen/api/v1/...-> Open Product
+ *   /openplan/plannen/api/v0/...          -> Open Plan
+ *   /openproduct/producttypen/api/v1/...  -> Open Product
  *   /openklant/klantinteracties/api/v1/...-> Open Klant
  */
 @RestController
 class RegisterProxyController(
     private val openPlanRestClient: RestClient,
     private val openProductRestClient: RestClient,
-    private val openKlantRestClient: RestClient,
-    private val properties: PdcaProperties
+    private val openKlantRestClient: RestClient
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     @RequestMapping("/openplan/**")
     fun openplan(request: HttpServletRequest, @RequestBody(required = false) body: ByteArray?): ResponseEntity<ByteArray> =
-        forward(openPlanRestClient, properties.openplan.clientBaseUrl, "/openplan", request, body)
+        forward(openPlanRestClient, Register.OPENPLAN.contractBaseUrl, "/openplan", request, body)
 
     @RequestMapping("/openproduct/**")
     fun openproduct(request: HttpServletRequest, @RequestBody(required = false) body: ByteArray?): ResponseEntity<ByteArray> =
-        forward(openProductRestClient, properties.openproduct.baseUrl, "/openproduct", request, body)
+        forward(openProductRestClient, Register.OPENPRODUCT.contractBaseUrl, "/openproduct", request, body)
 
     @RequestMapping("/openklant/**")
     fun openklant(request: HttpServletRequest, @RequestBody(required = false) body: ByteArray?): ResponseEntity<ByteArray> =
-        forward(openKlantRestClient, properties.openklant.baseUrl, "/openklant", request, body)
+        forward(openKlantRestClient, Register.OPENKLANT.contractBaseUrl, "/openklant", request, body)
 
     private fun forward(
         client: RestClient,

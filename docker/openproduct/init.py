@@ -2,8 +2,9 @@
 # Executed via `manage.py shell -c "exec(open('/init/init.py').read())"` from the
 # openproduct-init service in docker-compose.yml, after migrate + createinitialsuperuser.
 #
-# 1. Creates a fixed DRF token for the admin superuser (must match
-#    `pdca.openproduct.token` in src/main/resources/application.yml).
+# 1. Creates a fixed DRF token for the admin superuser (the local development
+#    token the openproduct plugin's configuration screen starts with,
+#    plugins/openproduct/frontend/config.tsx).
 # 2. Seeds the producttypen catalog from reference_data.py (also runnable on
 #    its own on environments that keep their own tokens).
 from django.contrib.auth import get_user_model

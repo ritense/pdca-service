@@ -1,5 +1,6 @@
 package com.ritense.pdca.config
 
+import com.ritense.pdca.registers.Register
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.context.event.EventListener
 import org.springframework.core.env.Environment
@@ -12,10 +13,7 @@ class StartupInfoPrinter(private val env: Environment) {
     fun onReady() {
         val port = env.getProperty("server.port", "7500")
         val base = "http://localhost:$port"
-        val openPlanMode = when (env.getProperty("pdca.openplan.mode", "contract").lowercase()) {
-            "direct" -> "direct to ${env.getProperty("pdca.openplan.base-url")}"
-            else -> "contract nl.ritense.openplan@1 via GZAC and the openplan plugin"
-        }
+        fun via(register: Register) = "contract ${register.contract} via GZAC and the ${register.key} plugin"
 
         println("""
 
@@ -25,12 +23,14 @@ class StartupInfoPrinter(private val env: Environment) {
             │
             │  Registers (Maykin, via docker compose):
             │    Open Plan API:     $base/openplan/plannen/api/v0/plan
-            │                       (app → Open Plan: $openPlanMode)
-            │                       (direct: http://localhost:7501, admin/admin)
+            │                       (app → Open Plan: ${via(Register.OPENPLAN)})
+            │                       (register admin: http://localhost:7501/admin/, admin/admin)
             │    Open Product API:  $base/openproduct/producttypen/api/v1/producttypen
-            │                       (direct: http://localhost:7502, admin/admin)
+            │                       (app → Open Product: ${via(Register.OPENPRODUCT)})
+            │                       (register admin: http://localhost:7502/admin/, admin/admin)
             │    Open Klant API:    $base/openklant/klantinteracties/api/v1/klantcontacten
-            │                       (direct: http://localhost:7504, admin/admin)
+            │                       (app → Open Klant: ${via(Register.OPENKLANT)})
+            │                       (register admin: http://localhost:7504/admin/, admin/admin)
             │    Demo plan Erika:   $base/openplan/plannen/api/v0/plan/11111111-1111-1111-1111-111111111111
             │    Demo plan Binnenhof: .../plan/33333333-3333-3333-3333-333333333333
             │

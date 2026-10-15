@@ -20,41 +20,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 
 @ConfigurationProperties(prefix = "pdca")
 data class PdcaProperties(
-    val openplan: OpenPlanApi = OpenPlanApi(),
-    val openproduct: RegisterApi,
-    val openklant: RegisterApi,
     val gzac: GzacApi? = null
 ) {
-    data class RegisterApi(
-        val baseUrl: String,
-        val token: String
-    )
-
-    /**
-     * Open Plan is reached through GZAC's `nl.ritense.openplan@1` contract
-     * ([OpenPlanMode.CONTRACT]) or directly with [baseUrl] + [token]
-     * ([OpenPlanMode.DIRECT]); the latter two are only used in direct mode.
-     */
-    data class OpenPlanApi(
-        val mode: OpenPlanMode = OpenPlanMode.CONTRACT,
-        val baseUrl: String? = null,
-        val token: String? = null
-    ) {
-        /** Base URL of `openPlanRestClient`; a fixed placeholder in contract mode, where only path and query count. */
-        val clientBaseUrl: String
-            get() = when (mode) {
-                OpenPlanMode.CONTRACT -> CONTRACT_BASE_URL
-                OpenPlanMode.DIRECT -> baseUrl?.trimEnd('/')
-                    ?: error("pdca.openplan.base-url is required with pdca.openplan.mode=direct")
-            }
-
-        companion object {
-            const val CONTRACT_BASE_URL = "http://openplan.contract"
-        }
-    }
-
-    enum class OpenPlanMode { CONTRACT, DIRECT }
-
     /**
      * Fallback for calling GZAC itself (creating a dossier from the PDCA app).
      * The preferred source is the serviceToken + gzacBaseUrl that GZAC pushes
