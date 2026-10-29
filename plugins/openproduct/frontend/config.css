@@ -1,0 +1,31 @@
+html,
+body {
+  margin: 0;
+  background: transparent;
+}
+
+.openproduct-config {
+  padding: 0.25rem 0.125rem 1rem;
+}
+
+.openproduct-config__connection {
+  padding: 1.5rem;
+}
+
+.openproduct-config__heading {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.openproduct-config__intro {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.openproduct-config .cds--inline-notification {
+  max-inline-size: none;
+}

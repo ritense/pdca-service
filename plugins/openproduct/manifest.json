@@ -1,0 +1,147 @@
+{
+  "pluginId": "openproduct",
+  "version": "1.0.0",
+  "provider": "Ritense",
+  "translations": {
+    "en": {
+      "name": "Open Product",
+      "description": "Gives other plugins access to an Open Product instance (Producttypen API v1) through the contract nl.ritense.openproduct@1.",
+      "contracts.nl.ritense.openproduct@1.title": "Open Product Producttypen API v1",
+      "contracts.nl.ritense.openproduct@1.operations.list.title": "List resources",
+      "contracts.nl.ritense.openproduct@1.operations.get.title": "Get a resource",
+      "contracts.nl.ritense.openproduct@1.operations.create.title": "Create a resource",
+      "contracts.nl.ritense.openproduct@1.operations.update.title": "Update a resource",
+      "contracts.nl.ritense.openproduct@1.operations.delete.title": "Delete a resource",
+      "config.title.label": "Configuration name",
+      "config.title.placeholder": "e.g. Open Product production",
+      "config.title.required": "Enter a name for this configuration",
+      "config.connection.heading": "Connection to Open Product",
+      "config.connection.intro": "The plugin calls the Producttypen API v1 of this Open Product instance on behalf of the plugins bound to it.",
+      "config.openProductUrl.label": "Open Product URL",
+      "config.openProductUrl.help": "Base URL without /producttypen/api/v1, as seen from the plugin host.",
+      "config.openProductUrl.invalid": "Enter an absolute http(s) URL",
+      "config.openProductToken.label": "API token",
+      "config.openProductToken.help": "Token of an Open Product API user; sent as 'Authorization: Token <token>'.",
+      "config.openProductToken.keep": "Leave empty to keep the current token.",
+      "config.openProductToken.required": "Enter the API token",
+      "config.openProductToken.show": "Show token",
+      "config.openProductToken.hide": "Hide token",
+      "config.localDefaults.button": "Use local development values",
+      "config.egress.title": "Outbound access",
+      "config.egress.subtitle": "The plugin may only call the URL entered here; it is listed as a destination on the permissions step."
+    },
+    "nl": {
+      "name": "Open Product",
+      "description": "Geeft andere plugins toegang tot een Open Product-omgeving (Producttypen API v1) via het contract nl.ritense.openproduct@1.",
+      "contracts.nl.ritense.openproduct@1.title": "Open Product Producttypen API v1",
+      "contracts.nl.ritense.openproduct@1.operations.list.title": "Registerobjecten opvragen",
+      "contracts.nl.ritense.openproduct@1.operations.get.title": "Registerobject opvragen",
+      "contracts.nl.ritense.openproduct@1.operations.create.title": "Registerobject aanmaken",
+      "contracts.nl.ritense.openproduct@1.operations.update.title": "Registerobject bijwerken",
+      "contracts.nl.ritense.openproduct@1.operations.delete.title": "Registerobject verwijderen",
+      "config.title.label": "Configuratienaam",
+      "config.title.placeholder": "bijv. Open Product productie",
+      "config.title.required": "Geef deze configuratie een naam",
+      "config.connection.heading": "Verbinding met Open Product",
+      "config.connection.intro": "De plugin roept de Producttypen API v1 van deze Open Product-omgeving aan namens de plugins die eraan gekoppeld zijn.",
+      "config.openProductUrl.label": "Open Product-URL",
+      "config.openProductUrl.help": "Basis-URL zonder /producttypen/api/v1, zoals de pluginhost die bereikt.",
+      "config.openProductUrl.invalid": "Vul een absolute http(s)-URL in",
+      "config.openProductToken.label": "API-token",
+      "config.openProductToken.help": "Token van een Open Product API-gebruiker; wordt meegestuurd als 'Authorization: Token <token>'.",
+      "config.openProductToken.keep": "Laat leeg om het huidige token te behouden.",
+      "config.openProductToken.required": "Vul het API-token in",
+      "config.openProductToken.show": "Token tonen",
+      "config.openProductToken.hide": "Token verbergen",
+      "config.localDefaults.button": "Lokale ontwikkelwaarden gebruiken",
+      "config.egress.title": "Uitgaande toegang",
+      "config.egress.subtitle": "De plugin mag alleen de hier ingevulde URL aanroepen; die staat als bestemming bij de stap met rechten."
+    }
+  },
+  "configurationSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "openProductUrl": {
+        "type": "string",
+        "format": "uri",
+        "title": "Open Product URL",
+        "description": "Base URL of the Open Product instance, without /producttypen/api/v1 (e.g. http://host.docker.internal:7502 for the local dev stack).",
+        "x-egress-target": true,
+        "default": "http://host.docker.internal:7502"
+      },
+      "openProductToken": {
+        "type": "string",
+        "title": "Open Product API token",
+        "description": "API token of an Open Product user; sent as 'Authorization: Token <token>'.",
+        "x-secret": true
+      }
+    },
+    "required": [
+      "openProductUrl",
+      "openProductToken"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "capabilities": [
+      "http_request",
+      "log"
+    ]
+  },
+  "actions": [],
+  "provides": [
+    {
+      "contract": "nl.ritense.openproduct@1",
+      "title": "Open Product Producttypen API v1",
+      "operations": [
+        {
+          "key": "list",
+          "title": "List resources",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        },
+        {
+          "key": "get",
+          "title": "Get a resource",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        },
+        {
+          "key": "create",
+          "title": "Create a resource",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        },
+        {
+          "key": "update",
+          "title": "Update a resource",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        },
+        {
+          "key": "delete",
+          "title": "Delete a resource",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        }
+      ]
+    }
+  ],
+  "frontendBundles": [
+    {
+      "type": "config",
+      "path": "/bundles/config.html"
+    }
+  ]
+}

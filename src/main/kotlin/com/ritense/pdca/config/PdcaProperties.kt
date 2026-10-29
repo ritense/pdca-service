@@ -20,16 +20,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 
 @ConfigurationProperties(prefix = "pdca")
 data class PdcaProperties(
-    val openplan: RegisterApi,
-    val openproduct: RegisterApi,
-    val openklant: RegisterApi,
     val gzac: GzacApi? = null
 ) {
-    data class RegisterApi(
-        val baseUrl: String,
-        val token: String
-    )
-
     /**
      * Fallback for calling GZAC itself (creating a dossier from the PDCA app).
      * The preferred source is the serviceToken + gzacBaseUrl that GZAC pushes

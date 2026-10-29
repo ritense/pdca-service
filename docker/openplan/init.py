@@ -3,8 +3,9 @@
 # openplan-init service in docker-compose.yml, after migrate + createinitialsuperuser.
 #
 # Provisions:
-#   1. a fixed DRF token for the admin superuser (must match `pdca.openplan.token`
-#      in src/main/resources/application.yml);
+#   1. a fixed DRF token for the admin superuser (the local development token
+#      the openplan plugin's configuration screen starts with,
+#      plugins/openplan/frontend/config.tsx);
 #   2. the reference data in reference_data.py (also runnable on its own on
 #      environments that keep their own tokens).
 #

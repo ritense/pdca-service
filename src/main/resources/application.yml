@@ -26,21 +26,9 @@ spring:
     change-log: classpath:config/liquibase/changelog-master.xml
 
 pdca:
-  # Maykin Open Plan — system of record for plannen, doelen, instrumenten
-  # and personen. Runs locally via docker compose (port 7501).
-  openplan:
-    base-url: ${OPENPLAN_URL:http://localhost:7501}
-    token: ${OPENPLAN_TOKEN:pdca-openplan-dev-token-0123456789abcdef}
-  # Maykin Open Product — producttypen catalog backing the instrument picker.
-  # Runs locally via docker compose (port 7502).
-  openproduct:
-    base-url: ${OPENPRODUCT_URL:http://localhost:7502}
-    token: ${OPENPRODUCT_TOKEN:pdca-openproduct-dev-token-0123456789abc}
-  # Maykin Open Klant — klantinteracties register: the contactmomenten of a
-  # plan are klantcontacten here. Runs locally via docker compose (port 7504).
-  openklant:
-    base-url: ${OPENKLANT_URL:http://localhost:7504}
-    token: ${OPENKLANT_TOKEN:pdca-openklant-dev-token-0123456789abcde}
+  # The registers (Open Plan, Open Product, Open Klant) have no settings here:
+  # the app reaches them only through GZAC's contracts nl.ritense.<register>@1,
+  # served by the bound register plugins, which hold the URLs and tokens.
   # GZAC itself: dossier reads/creation and the bouwblok support calls. The
   # preferred credential is the serviceToken + gzacBaseUrl (the host's
   # server-to-server callback URL) GZAC pushes with the plugin configuration.

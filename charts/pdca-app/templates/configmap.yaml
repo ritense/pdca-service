@@ -13,15 +13,6 @@ data:
   PDCA_DB_PORT: {{ .Values.database.port | quote }}
   PDCA_DB_NAME: {{ .Values.database.name | quote }}
   PDCA_DB_USER: {{ .Values.database.user | quote }}
-  {{- if .Values.externalServices.openplan.url }}
-  OPENPLAN_URL: {{ .Values.externalServices.openplan.url | quote }}
-  {{- end }}
-  {{- if .Values.externalServices.openproduct.url }}
-  OPENPRODUCT_URL: {{ .Values.externalServices.openproduct.url | quote }}
-  {{- end }}
-  {{- if .Values.externalServices.openklant.url }}
-  OPENKLANT_URL: {{ .Values.externalServices.openklant.url | quote }}
-  {{- end }}
   {{- if .Values.externalServices.gzac.enabled }}
   GZAC_URL: {{ .Values.externalServices.gzac.url | quote }}
   GZAC_TOKEN_URL: {{ .Values.externalServices.gzac.tokenUrl | quote }}

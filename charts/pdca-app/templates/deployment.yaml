@@ -51,27 +51,6 @@ spec:
                   name: {{ .Values.database.existingSecret }}
                   key: {{ .Values.database.existingSecretKey }}
             {{- end }}
-            {{- if and .Values.externalServices.openplan.url .Values.externalServices.openplan.existingSecret }}
-            - name: OPENPLAN_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.externalServices.openplan.existingSecret }}
-                  key: {{ .Values.externalServices.openplan.existingSecretKey }}
-            {{- end }}
-            {{- if and .Values.externalServices.openproduct.url .Values.externalServices.openproduct.existingSecret }}
-            - name: OPENPRODUCT_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.externalServices.openproduct.existingSecret }}
-                  key: {{ .Values.externalServices.openproduct.existingSecretKey }}
-            {{- end }}
-            {{- if and .Values.externalServices.openklant.url .Values.externalServices.openklant.existingSecret }}
-            - name: OPENKLANT_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.externalServices.openklant.existingSecret }}
-                  key: {{ .Values.externalServices.openklant.existingSecretKey }}
-            {{- end }}
             {{- if and .Values.externalServices.gzac.enabled .Values.externalServices.gzac.existingSecret }}
             - name: GZAC_CLIENT_SECRET
               valueFrom:
