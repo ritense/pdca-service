@@ -42,3 +42,5 @@ pdca-database-data/
 # Local tooling, private context and dev notes (kept out of version control)
 .claude/
 .humanlayer/
+
+scratch
