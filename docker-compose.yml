@@ -176,6 +176,9 @@ services:
       OTEL_SDK_DISABLED: "true"
       PGHOST: openproduct-db
       PGPORT: "5432"
+      # Objecttype of the verzoek the StartInstrument acties point at (the
+      # Objecttypen API of the GZAC stack; environment-specific, see README).
+      PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE: ${PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE:-}
     volumes:
       - ./docker/register-dev/pdca_dev.py:/app/src/openproduct/conf/pdca_dev.py:ro
       - ./docker/openproduct/init.py:/init/init.py:ro

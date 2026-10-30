@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Actions are local to the plan tab again and a product request is a verzoek
+  that GZAC turns into an instrument dossier (see ARCHITECTURE.md §9). The
+  building block koppelingen and the building block bookkeeping on an action
+  have no consumer left.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="011-01-drop-actie-bouwblok-koppeling" author="pdca">
+        <dropTable tableName="actie_bouwblok_koppeling"/>
+    </changeSet>
+
+    <changeSet id="011-02-drop-action-bouwblok-columns" author="pdca">
+        <dropColumn tableName="action" columnName="uitvoering"/>
+        <dropColumn tableName="action" columnName="gzac_process_instance_id"/>
+        <dropColumn tableName="action" columnName="bouwblok_koppeling_id"/>
+    </changeSet>
+
+</databaseChangeLog>

@@ -4,15 +4,61 @@
 # Kansen, Werkgeversdienstverlening); the object-domain producten keep their
 # own themes. Idempotent.
 #
+# Every producttype also gets the actie "StartInstrument": that is what makes
+# it requestable from a plan (ARCHITECTURE.md §9). Its mapping is the start
+# recipe the PDCA app reads: soort "verzoek" and the objecttype of the
+# verzoek in the Objecten API. That objecttype URL is environment-specific
+# (the Objecttypen API of the GZAC stack), so it comes from the environment
+# variable PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE; without it the actie is
+# created without objecttype and the app refuses the request with a message
+# that says so — set the URL on the actie in the Open Product admin, or run
+# this script again with the variable set. The parameter "startStatus" is the
+# status the instrument starts with in the plan (actief or gepland).
+#
 # Runs in a Django shell of the Open Product container. Locally init.py
 # executes it after provisioning the dev token; on any other environment run
 # it on its own, so the existing API tokens stay untouched:
 #
-#   python src/manage.py shell < reference_data.py
+#   PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE=https://.../api/v2/objecttypes/<uuid> \
+#     python src/manage.py shell < reference_data.py
+import os
 from datetime import date
 
 from openproduct.locaties.models import Organisatie
-from openproduct.producttypen.models import Parameter, ProductType, Thema
+from openproduct.producttypen.models import Actie, Parameter, ProductType, Thema
+
+START_ACTIE = "StartInstrument"
+VERZOEK_OBJECTTYPE = os.environ.get("PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE", "").strip()
+# Where the verzoek lands; informational (the app reaches the Objecten API
+# through its GZAC contract), but an actie needs a url or a DMN table.
+OBJECTEN_URL = os.environ.get("PDCA_OBJECTEN_URL", "http://host.docker.internal:8010").rstrip("/")
+
+
+def start_mapping():
+    static = [{"name": "soort", "classType": "String", "value": "verzoek"}]
+    if VERZOEK_OBJECTTYPE:
+        static.append({"name": "type", "classType": "String", "value": VERZOEK_OBJECTTYPE})
+        static.append({"name": "typeVersion", "classType": "Integer", "value": "1"})
+    return {"static": static}
+
+
+def ensure_start_actie(pt):
+    actie = Actie.objects.filter(producttype=pt, naam=START_ACTIE).first()
+    if actie is None:
+        Actie.objects.create(
+            producttype=pt, naam=START_ACTIE, direct_url=f"{OBJECTEN_URL}/api/v2/objects", mapping=start_mapping()
+        )
+        return "created"
+    statics = {s.get("name"): s.get("value") for s in (actie.mapping or {}).get("static", [])}
+    if VERZOEK_OBJECTTYPE and statics.get("type") != VERZOEK_OBJECTTYPE:
+        actie.mapping = start_mapping()
+        actie.save()
+        return "objecttype updated"
+    return "present"
+
+
+def ensure_parameter(pt, naam, waarde):
+    Parameter.objects.get_or_create(producttype=pt, naam=naam, defaults={"waarde": waarde})
 
 
 def thema(naam):
@@ -140,5 +186,12 @@ for spec in PRODUCTTYPEN:
         print(f"[openproduct-reference-data] Producttype {spec['code']} created")
     else:
         print(f"[openproduct-reference-data] Producttype {spec['code']} already present")
+    ensure_parameter(pt, "startStatus", "actief")
+    print(f"[openproduct-reference-data] Producttype {spec['code']}: actie {START_ACTIE} {ensure_start_actie(pt)}")
 
+if not VERZOEK_OBJECTTYPE:
+    print(
+        "[openproduct-reference-data] PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE is not set: the StartInstrument acties "
+        "carry no objecttype yet; set it on the acties in the Open Product admin or rerun with the variable."
+    )
 print(f"[openproduct-reference-data] Done. {ProductType.objects.count()} producttypen in register.")

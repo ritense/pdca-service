@@ -1,0 +1,52 @@
+{
+    "$id": "instrument-verzoek.schema",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Instrumentaanvraag",
+    "type": "object",
+    "properties": {
+        "planUuid": {
+            "type": "string",
+            "description": "UUID van het PDCA-plan in Open Plan (uit het verzoek)"
+        },
+        "doelUuid": {
+            "type": "string",
+            "description": "UUID van het doel waarvoor het instrument is aangevraagd (uit het verzoek)"
+        },
+        "subjectId": {
+            "type": "string",
+            "description": "Subject van het plan: bsn (persoon) of object-id (uit het verzoek)"
+        },
+        "productTypeUuid": {
+            "type": "string",
+            "description": "UUID van het producttype in Open Product (uit het verzoek)"
+        },
+        "productTypeCode": {
+            "type": "string",
+            "description": "Code van het producttype in Open Product (uit het verzoek)"
+        },
+        "productTitel": {
+            "type": "string",
+            "description": "Naam van het producttype; wordt de titel van het instrument in het plan (uit het verzoek)"
+        },
+        "productUrn": {
+            "type": "string",
+            "description": "URN van het producttype (urn:pdca:openproduct:producttype:<code>); aanmaak-instrument zet hem als product op het instrument (uit het verzoek)"
+        },
+        "startStatus": {
+            "type": "string",
+            "description": "Startstatus van het instrument, actief of gepland (producttype-parameter startStatus, uit het verzoek)"
+        },
+        "instrumentUuid": {
+            "type": "string",
+            "description": "UUID van het instrument in Open Plan, geschreven door de result mapping van de plugin-action aanmaak-instrument"
+        },
+        "productResultaat": {
+            "type": "string",
+            "description": "Resultaat van het instrument (behaald/gefaald), vastgelegd met het formulier instrument-afronden; update-instrument leest dit als doc:/productResultaat"
+        },
+        "productToelichting": {
+            "type": "string",
+            "description": "Toelichting bij de afronding; komt via update-instrument in de PDCA-overlay terecht"
+        }
+    }
+}

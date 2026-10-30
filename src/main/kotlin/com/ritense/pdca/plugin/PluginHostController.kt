@@ -1,6 +1,7 @@
 package com.ritense.pdca.plugin
 
 import com.ritense.pdca.registers.Register
+import com.ritense.pdca.service.InstrumentAanvraagService
 import org.slf4j.LoggerFactory
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -23,7 +24,8 @@ import org.springframework.web.bind.annotation.RestController
  */
 @RestController
 class PluginHostController(
-    private val configurationStore: ConfigurationStore
+    private val configurationStore: ConfigurationStore,
+    private val instrumentAanvraagService: InstrumentAanvraagService
 ) {
 
     private val logger = LoggerFactory.getLogger(PluginHostController::class.java)
@@ -76,14 +78,15 @@ class PluginHostController(
             ),
             // Management variant of that list: the /api/v1 list is
             // PBAC-filtered per caller and hides case types without document
-            // permission rules (e.g. a freshly imported product dossier
-            // type); the beheer dropdowns need the full register.
+            // permission rules (e.g. a freshly imported case type); the
+            // beheer dropdowns need the full register.
             mapOf(
                 "method" to "GET",
                 "pattern" to "/api/management/v1/document-definition"
             ),
-            // Read a dossier for the intake prefill and to link a planId
-            // passed via the start form under water (direct link in the overlay).
+            // Read a dossier for the intake prefill, to link a planId passed
+            // via the start form under water (direct link in the overlay),
+            // and to learn the dossier type that calls aanmaak-instrument.
             mapOf(
                 "method" to "GET",
                 "pattern" to "/api/v1/document/*"
@@ -95,56 +98,19 @@ class PluginHostController(
                 "method" to "GET",
                 "pattern" to "/api/management/v1/case/*"
             ),
-            // Building blocks: list process definitions (bouwblok dropdown,
-            // recognised by versionTag "BB:<key>:<version>") and look up the
-            // latest version per key to find the start-form link.
-            mapOf(
-                "method" to "GET",
-                "pattern" to "/api/v1/process/definition"
-            ),
+            // Instrument dossier (§9): look up the latest version of its
+            // process and the pdca process links on it, and repair those
+            // dangling links to the pushed configuration (GZAC's
+            // plugin-configuration repair; zips ship no environment-specific
+            // configuration UUIDs).
             mapOf(
                 "method" to "GET",
                 "pattern" to "/api/v1/process/definition/*"
-            ),
-            // Start a building block process on the plan dossier via the
-            // building block's start-form link. The start-by-key endpoint
-            // cannot start blueprint-owned (BB:-tagged) processes; the form
-            // submission starts by process definition id and delivers the
-            // start payload to the dossier document (/bouwblokStart), from
-            // where the building-block link's input mappings copy it into
-            // the building block document.
-            mapOf(
-                "method" to "POST",
-                "pattern" to "/api/v1/process-link/*/form/submission"
             ),
             mapOf(
                 "method" to "GET",
                 "pattern" to "/api/v1/process-link"
             ),
-            // Maintain the pluginConfigurationMappings on the case type's
-            // building-block link (startable-item management API): the
-            // configuration chosen in PDCA Beheer is mapped there, so the
-            // building block's process links keep their portable
-            // BUILDING_BLOCK reference.
-            mapOf(
-                "method" to "GET",
-                "pattern" to "/api/management/v1/case-definition/*/version/*/startable-item/*/version/*/properties"
-            ),
-            mapOf(
-                "method" to "PUT",
-                "pattern" to "/api/management/v1/case-definition/*/version/*/startable-item/*/version/*"
-            ),
-            // DOSSIER products: write the aanvraagdossier's own URN into its
-            // document right after creation (the process passes it to
-            // aanmaak-instrument as doc:/dossierUrn).
-            mapOf(
-                "method" to "PUT",
-                "pattern" to "/api/v1/document"
-            ),
-            // DOSSIER products: repair the product case's dangling pdca
-            // process links to the configuration chosen in PDCA Beheer
-            // (GZAC's plugin-configuration repair; zips ship no
-            // environment-specific configuration UUIDs).
             mapOf(
                 "method" to "PUT",
                 "pattern" to "/api/management/v1/case-definition/*/version/*/plugin-configuration-mappings"
@@ -161,27 +127,43 @@ class PluginHostController(
                 "name" to "PDCA Plan Manager",
                 "description" to "Plan management with the PDCA cycle, backed by the Open Plan and Open Product registers.",
                 "pdca-admin.title" to "PDCA Management",
-                "action.actieId.label" to "Action id",
-                "action.actieId.help" to "UUID of the PDCA action (from the building block document, typically doc:/actieId).",
-                "action.gebeurtenis.label" to "Event",
-                "action.gebeurtenis.help" to "GESTART, TER_BEOORDELING, AFGEROND or AFGEWEZEN.",
+                "action.doelUuid.label" to "Doel",
+                "action.doelUuid.help" to "UUID of the doel in Open Plan the instrument belongs to (typically doc:/doelUuid).",
+                "action.titel.label" to "Title",
+                "action.titel.help" to "Title of the instrument in the plan (typically doc:/productTitel).",
+                "action.product.label" to "Product",
+                "action.product.help" to "URN of the producttype in Open Product (typically doc:/productUrn).",
+                "action.status.label" to "Status",
+                "action.status.help" to "On creation: actief (default) or gepland; on update: afgerond or geannuleerd.",
+                "action.planUuid.label" to "Plan",
+                "action.planUuid.help" to "UUID of the plan in Open Plan (typically doc:/planUuid); needed for the gepland start status and for an explanation.",
+                "action.instrumentUuid.label" to "Instrument",
+                "action.instrumentUuid.help" to "UUID of the instrument in Open Plan, as returned by aanmaak-instrument (typically doc:/instrumentUuid).",
                 "action.resultaat.label" to "Result",
-                "action.resultaat.help" to "Result text stored on the action (e.g. doc:/resultaat).",
+                "action.resultaat.help" to "behaald or gefaald when the instrument is completed (e.g. doc:/productResultaat).",
                 "action.toelichting.label" to "Explanation",
-                "action.toelichting.help" to "Optional explanation, stored as result on AFGEWEZEN."
+                "action.toelichting.help" to "Optional explanation, stored in the PDCA overlay of the instrument."
             ),
             "nl" to mapOf(
                 "name" to "PDCA Planbeheer",
                 "description" to "Planbeheer met de PDCA-cyclus, op basis van de registers Open Plan en Open Product.",
                 "pdca-admin.title" to "PDCA Beheer",
-                "action.actieId.label" to "Actie-id",
-                "action.actieId.help" to "UUID van de PDCA-actie (uit het bouwblokdocument, doorgaans doc:/actieId).",
-                "action.gebeurtenis.label" to "Gebeurtenis",
-                "action.gebeurtenis.help" to "GESTART, TER_BEOORDELING, AFGEROND of AFGEWEZEN.",
+                "action.doelUuid.label" to "Doel",
+                "action.doelUuid.help" to "UUID van het doel in Open Plan waar het instrument onder komt (doorgaans doc:/doelUuid).",
+                "action.titel.label" to "Titel",
+                "action.titel.help" to "Titel van het instrument in het plan (doorgaans doc:/productTitel).",
+                "action.product.label" to "Product",
+                "action.product.help" to "URN van het producttype in Open Product (doorgaans doc:/productUrn).",
+                "action.status.label" to "Status",
+                "action.status.help" to "Bij aanmaken: actief (standaard) of gepland; bij bijwerken: afgerond of geannuleerd.",
+                "action.planUuid.label" to "Plan",
+                "action.planUuid.help" to "UUID van het plan in Open Plan (doorgaans doc:/planUuid); nodig voor de startstatus gepland en voor een toelichting.",
+                "action.instrumentUuid.label" to "Instrument",
+                "action.instrumentUuid.help" to "UUID van het instrument in Open Plan, zoals aanmaak-instrument die teruggaf (doorgaans doc:/instrumentUuid).",
                 "action.resultaat.label" to "Resultaat",
-                "action.resultaat.help" to "Resultaattekst die op de actie komt (bv. doc:/resultaat).",
+                "action.resultaat.help" to "behaald of gefaald bij het afronden van het instrument (bv. doc:/productResultaat).",
                 "action.toelichting.label" to "Toelichting",
-                "action.toelichting.help" to "Optionele toelichting; bij AFGEWEZEN als resultaat vastgelegd."
+                "action.toelichting.help" to "Optionele toelichting; komt in de PDCA-overlay van het instrument."
             )
         ),
         "configurationSchema" to mapOf(
@@ -250,36 +232,22 @@ class PluginHostController(
             )
         ),
         // BPMN-bindable action handlers, executed by PluginActionController.
-        // Building block processes use these to report action progress and —
-        // for product building blocks — to manage the instrument in Open
-        // Plan themselves (see the building blocks in gzac/bouwblokken).
+        // The instrument dossier (gzac/case-definitions/instrument-verzoek,
+        // §9) uses these to manage the instrument in Open Plan itself.
         "actions" to listOf(
-            mapOf(
-                "key" to "update-actie",
-                "title" to "Actie bijwerken",
-                "description" to "Werkt een PDCA-actie bij vanuit een bouwblokproces: " +
-                    "GESTART, TER_BEOORDELING, AFGEROND (met resultaat) of AFGEWEZEN.",
-                "activityTypes" to listOf("SERVICE_TASK_START"),
-                "properties" to listOf(
-                    mapOf("key" to "actieId", "type" to "string", "required" to true),
-                    mapOf("key" to "gebeurtenis", "type" to "string", "required" to true),
-                    mapOf("key" to "resultaat", "type" to "string", "required" to false),
-                    mapOf("key" to "toelichting", "type" to "string", "required" to false)
-                )
-            ),
             mapOf(
                 "key" to "aanmaak-instrument",
                 "title" to "Instrument aanmaken",
-                "description" to "Maakt een instrument onder een doel aan in Open Plan " +
-                    "(bijv. na toekenning van een instrumentaanvraag) en geeft de instrumentUuid " +
-                    "terug als resultaat (via een result mapping in het bouwblokdocument te zetten).",
+                "description" to "Maakt een instrument onder een doel aan in Open Plan, met het " +
+                    "aanroepende dossier als zaakverwijzing, en geeft de instrumentUuid terug als " +
+                    "resultaat (via een result mapping in het dossierdocument te zetten).",
                 "activityTypes" to listOf("SERVICE_TASK_START"),
                 "properties" to listOf(
                     mapOf("key" to "doelUuid", "type" to "string", "required" to true),
                     mapOf("key" to "titel", "type" to "string", "required" to true),
                     mapOf("key" to "product", "type" to "string", "required" to false),
-                    mapOf("key" to "zaak", "type" to "string", "required" to false),
-                    mapOf("key" to "status", "type" to "string", "required" to false)
+                    mapOf("key" to "status", "type" to "string", "required" to false),
+                    mapOf("key" to "planUuid", "type" to "string", "required" to false)
                 ),
                 "outputs" to listOf("instrumentUuid")
             ),
@@ -365,6 +333,13 @@ class PluginHostController(
         )
 
         configurationStore.store(configId, configuration)
+
+        // The instrument dossier's pdca process links ship dangling; point
+        // them at the configuration that just arrived. Best effort: without
+        // the dossier type (not imported yet) or without the endpoint grant
+        // the next product request repeats the repair.
+        runCatching { instrumentAanvraagService.ensureProductCaseConfiguration() }
+            .onFailure { logger.info("Instrument dossier not configured on push of {}: {}", configId, it.message) }
 
         return ResponseEntity.ok().build()
     }

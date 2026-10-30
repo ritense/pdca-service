@@ -215,7 +215,7 @@ export function subdoelTypen(doeltypen: DoelTypeLike[]): DoelTypeLike[] {
  *
  * Unscoped — all subdoeltypen — when there is no mapping, no hoofddoel, or
  * no entry for this hoofddoel: the same "empty = always" convention as the
- * themas of a doeltype and the doeltypen of a bouwblokkoppeling.
+ * themas of a doeltype.
  */
 export function subdoelTypenVoorHoofddoel(
   doeltypen: DoelTypeLike[], hoofddoelNaam: string | null | undefined, subdoelMapping?: string | null,
@@ -247,8 +247,8 @@ export function doelTypeThemas(doelType: DoelTypeLike | undefined): string[] {
 /**
  * The producttypen that fit under a doel: thema overlap with the doeltype,
  * within the doelgroep of the plan subject. A doeltype without themas
- * scopes nothing and a producttype without doelgroep fits everywhere — the
- * same "empty = always" convention as the doeltypen of a bouwblokkoppeling.
+ * scopes nothing and a producttype without doelgroep fits everywhere
+ * ("empty = always").
  */
 export function producttypenVoorDoel<T extends ProductTypeLike>(
   producttypen: T[], doelType: DoelTypeLike | undefined, doelgroep?: string,
@@ -322,7 +322,6 @@ const WIJZIGING_LABELS: Record<string, string> = {
   INSTRUMENT_REGISTRATIE: 'Uren/effectiviteit',
   ACTIE_TOEGEVOEGD: 'Actie toegevoegd',
   ACTIE_STATUS: 'Actiestatus',
-  BOUWBLOK_GESTART: 'Bouwblok-actie gestart',
   PRODUCT_AANGEVRAAGD: 'Instrument aangevraagd',
   HOOFDDOEL_GEWISSELD: 'Hoofddoel gewisseld',
   HOOFDDOEL_TOELICHTING: 'Toelichting bij hoofddoel',

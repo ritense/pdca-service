@@ -17,11 +17,11 @@
 package com.ritense.pdca.registers
 
 /**
- * The Maykin registers the app uses. Each one is reached only through GZAC's
+ * The registers the app uses. Each one is reached only through GZAC's
  * contract broker ([contract], served by the external plugin [key] on a
  * plugin host); the app holds no register URL or token. [apiPath] is the
  * register API the contract covers; [key] is also the prefix of the
- * same-origin proxy (`/<key>/...`).
+ * same-origin proxy (`/<key>/...`) for the registers the frontend reads.
  */
 enum class Register(
     val key: String,
@@ -31,7 +31,10 @@ enum class Register(
 ) {
     OPENPLAN("openplan", "Open Plan", "nl.ritense.openplan@1", "/plannen/api/v0"),
     OPENPRODUCT("openproduct", "Open Product", "nl.ritense.openproduct@1", "/producttypen/api/v1"),
-    OPENKLANT("openklant", "Open Klant", "nl.ritense.openklant@1", "/klantinteracties/api/v1");
+    OPENKLANT("openklant", "Open Klant", "nl.ritense.openklant@1", "/klantinteracties/api/v1"),
+
+    /** The Objecten API that holds the verzoeken (product requests, §9); backend only. */
+    OBJECTEN("objecten", "Objecten API", "nl.ritense.objecten@1", "/api/v2");
 
     /** Placeholder base URL of the register's RestClient; only path and query count. */
     val contractBaseUrl: String

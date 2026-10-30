@@ -1,0 +1,8 @@
+{
+    "key": "instrument-verzoek",
+    "name": "Instrumentaanvraag",
+    "versionTag": "1.0.0",
+    "final": false,
+    "canHaveAssignee": true,
+    "autoAssignTasks": false
+}

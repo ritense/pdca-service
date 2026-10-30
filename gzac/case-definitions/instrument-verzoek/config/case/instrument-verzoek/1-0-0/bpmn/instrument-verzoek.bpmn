@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_instrument_verzoek"
+                  targetNamespace="http://bpmn.io/schema/bpmn"
+                  exporter="pdca-app" exporterVersion="0.2.0">
+    <!--
+      Instrument dossier "instrument-verzoek": the one dossier type for every
+      product requested from a PDCA plan. GZAC's Verzoek plugin creates the
+      dossier from the verzoek object the PDCA app filed in the Objecten API
+      (its data IS the dossier document: planUuid, doelUuid, subjectId,
+      productTypeUuid, productTypeCode, productTitel, productUrn, startStatus)
+      and starts this process on it. The process puts the instrument in the
+      plan at once (aanmaak-instrument, result mapping -> doc:/instrumentUuid;
+      the dossier itself becomes the instrument's zaak reference), lets the
+      behandelaar execute it, and completes it (update-instrument). All
+      product-specific knowledge comes from the verzoek, i.e. from Open
+      Product; this process knows no product.
+    -->
+    <bpmn:process camunda:versionTag="CD:instrument-verzoek:1.0.0" id="instrument-verzoek"
+                  isExecutable="true" name="Instrumentaanvraag">
+        <bpmn:startEvent id="start-event" name="Verzoek ontvangen vanuit het plan">
+            <bpmn:outgoing>flow-start-aanmaken</bpmn:outgoing>
+        </bpmn:startEvent>
+        <!-- Deliberately synchronous (no async-before): if the register call
+             fails, the incident is visible on the dossier at once. -->
+        <bpmn:serviceTask camunda:expression="${true}" id="instrument-aanmaken"
+                          name="Instrument in het plan zetten">
+            <bpmn:documentation>Plugin action aanmaak-instrument: creates the instrument under the
+                doel in Open Plan (doc:/doelUuid) with the titel, product URN and start status from
+                the verzoek and this dossier as zaak reference; the result mapping writes the
+                returned instrumentUuid to doc:/instrumentUuid.
+            </bpmn:documentation>
+            <bpmn:incoming>flow-start-aanmaken</bpmn:incoming>
+            <bpmn:outgoing>flow-aanmaken-uitvoeren</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:userTask camunda:candidateGroups="ROLE_USER" id="instrument-uitvoeren"
+                       name="Instrument uitvoeren en afronden">
+            <bpmn:documentation>Rond het instrument af met het formulier "instrument-afronden"
+                (documentvelden productResultaat + productToelichting).
+            </bpmn:documentation>
+            <bpmn:incoming>flow-aanmaken-uitvoeren</bpmn:incoming>
+            <bpmn:outgoing>flow-uitvoeren-afronden</bpmn:outgoing>
+        </bpmn:userTask>
+        <bpmn:serviceTask camunda:expression="${true}" id="instrument-afronden"
+                          name="Instrument afronden in het plan">
+            <bpmn:documentation>Plugin action update-instrument: sets the instrument
+                (doc:/instrumentUuid) to afgerond with resultaat behaald/gefaald from
+                doc:/productResultaat; the toelichting goes to the PDCA overlay.
+            </bpmn:documentation>
+            <bpmn:incoming>flow-uitvoeren-afronden</bpmn:incoming>
+            <bpmn:outgoing>flow-afronden-einde</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:endEvent id="einde-afgerond" name="Instrument afgerond">
+            <bpmn:incoming>flow-afronden-einde</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="flow-start-aanmaken" sourceRef="start-event" targetRef="instrument-aanmaken"/>
+        <bpmn:sequenceFlow id="flow-aanmaken-uitvoeren" sourceRef="instrument-aanmaken" targetRef="instrument-uitvoeren"/>
+        <bpmn:sequenceFlow id="flow-uitvoeren-afronden" sourceRef="instrument-uitvoeren" targetRef="instrument-afronden"/>
+        <bpmn:sequenceFlow id="flow-afronden-einde" sourceRef="instrument-afronden" targetRef="einde-afgerond"/>
+    </bpmn:process>
+    <bpmndi:BPMNDiagram id="BPMNDiagram_instrument_verzoek">
+        <bpmndi:BPMNPlane bpmnElement="instrument-verzoek" id="BPMNPlane_instrument_verzoek">
+            <bpmndi:BPMNShape bpmnElement="start-event" id="Shape_start-event">
+                <dc:Bounds height="36" width="36" x="152" y="152"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="instrument-aanmaken" id="Shape_instrument-aanmaken">
+                <dc:Bounds height="80" width="100" x="250" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="instrument-uitvoeren" id="Shape_instrument-uitvoeren">
+                <dc:Bounds height="80" width="100" x="410" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="instrument-afronden" id="Shape_instrument-afronden">
+                <dc:Bounds height="80" width="100" x="570" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="einde-afgerond" id="Shape_einde-afgerond">
+                <dc:Bounds height="36" width="36" x="732" y="152"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNEdge bpmnElement="flow-start-aanmaken" id="Edge_flow-start-aanmaken">
+                <di:waypoint x="188" y="170"/>
+                <di:waypoint x="250" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-aanmaken-uitvoeren" id="Edge_flow-aanmaken-uitvoeren">
+                <di:waypoint x="350" y="170"/>
+                <di:waypoint x="410" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-uitvoeren-afronden" id="Edge_flow-uitvoeren-afronden">
+                <di:waypoint x="510" y="170"/>
+                <di:waypoint x="570" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-afronden-einde" id="Edge_flow-afronden-einde">
+                <di:waypoint x="670" y="170"/>
+                <di:waypoint x="732" y="170"/>
+            </bpmndi:BPMNEdge>
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+</bpmn:definitions>

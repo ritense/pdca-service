@@ -26,10 +26,12 @@ spring:
     change-log: classpath:config/liquibase/changelog-master.xml
 
 pdca:
-  # The registers (Open Plan, Open Product, Open Klant) have no settings here:
-  # the app reaches them only through GZAC's contracts nl.ritense.<register>@1,
-  # served by the bound register plugins, which hold the URLs and tokens.
-  # GZAC itself: dossier reads/creation and the bouwblok support calls. The
+  # The registers (Open Plan, Open Product, Open Klant, Objecten API) have no
+  # settings here: the app reaches them only through GZAC's contracts
+  # nl.ritense.<register>@1, served by the bound register plugins, which hold
+  # the URLs and tokens.
+  # GZAC itself: dossier reads/creation and the process-link repair of the
+  # instrument dossier. The
   # preferred credential is the serviceToken + gzacBaseUrl (the host's
   # server-to-server callback URL) GZAC pushes with the plugin configuration.
   # GZAC_URL is an explicit override of that pushed URL, only set where the

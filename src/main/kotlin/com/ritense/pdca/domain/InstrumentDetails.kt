@@ -44,8 +44,8 @@ data class InstrumentDetails(
 
     /**
      * Refinement of the register status `actief`: gepland or al gestart. Null
-     * on an actief instrument means gestart (instruments from product
-     * building blocks and older data).
+     * on an actief instrument means gestart (instruments created by an
+     * instrument dossier without a gepland start status, and older data).
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "uitvoerings_status")

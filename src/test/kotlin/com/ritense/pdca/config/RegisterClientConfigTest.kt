@@ -50,7 +50,8 @@ class RegisterClientConfigTest {
             mapOf(
                 "openPlanRestClient" to "/plannen/api/v0/plan",
                 "openProductRestClient" to "/producttypen/api/v1/producttypen",
-                "openKlantRestClient" to "/klantinteracties/api/v1/klantcontacten"
+                "openKlantRestClient" to "/klantinteracties/api/v1/klantcontacten",
+                "objectenRestClient" to "/api/v2/objects"
             ).forEach { (bean, path) ->
                 val client = context.getBean(bean, RestClient::class.java)
 

@@ -1,0 +1,147 @@
+{
+  "pluginId": "objecten",
+  "version": "1.0.0",
+  "provider": "Ritense",
+  "translations": {
+    "en": {
+      "name": "Objecten API",
+      "description": "Gives other plugins access to an Objecten API (Objects API v2) through the contract nl.ritense.objecten@1.",
+      "contracts.nl.ritense.objecten@1.title": "Objecten API v2",
+      "contracts.nl.ritense.objecten@1.operations.list.title": "List resources",
+      "contracts.nl.ritense.objecten@1.operations.get.title": "Get a resource",
+      "contracts.nl.ritense.objecten@1.operations.create.title": "Create a resource",
+      "contracts.nl.ritense.objecten@1.operations.update.title": "Update a resource",
+      "contracts.nl.ritense.objecten@1.operations.delete.title": "Delete a resource",
+      "config.title.label": "Configuration name",
+      "config.title.placeholder": "e.g. Objecten API production",
+      "config.title.required": "Enter a name for this configuration",
+      "config.connection.heading": "Connection to Objecten API",
+      "config.connection.intro": "The plugin calls the Objects API v2 of this Objecten API on behalf of the plugins bound to it.",
+      "config.objectenUrl.label": "Objecten API URL",
+      "config.objectenUrl.help": "Base URL without /api/v2, as seen from the plugin host.",
+      "config.objectenUrl.invalid": "Enter an absolute http(s) URL",
+      "config.objectenToken.label": "API token",
+      "config.objectenToken.help": "Token of an Objecten API user; sent as 'Authorization: Token <token>'.",
+      "config.objectenToken.keep": "Leave empty to keep the current token.",
+      "config.objectenToken.required": "Enter the API token",
+      "config.objectenToken.show": "Show token",
+      "config.objectenToken.hide": "Hide token",
+      "config.localDefaults.button": "Use local development values",
+      "config.egress.title": "Outbound access",
+      "config.egress.subtitle": "The plugin may only call the URL entered here; it is listed as a destination on the permissions step."
+    },
+    "nl": {
+      "name": "Objecten API",
+      "description": "Geeft andere plugins toegang tot een Objecten API (Objects API v2) via het contract nl.ritense.objecten@1.",
+      "contracts.nl.ritense.objecten@1.title": "Objecten API v2",
+      "contracts.nl.ritense.objecten@1.operations.list.title": "Registerobjecten opvragen",
+      "contracts.nl.ritense.objecten@1.operations.get.title": "Registerobject opvragen",
+      "contracts.nl.ritense.objecten@1.operations.create.title": "Registerobject aanmaken",
+      "contracts.nl.ritense.objecten@1.operations.update.title": "Registerobject bijwerken",
+      "contracts.nl.ritense.objecten@1.operations.delete.title": "Registerobject verwijderen",
+      "config.title.label": "Configuratienaam",
+      "config.title.placeholder": "bijv. Objecten API productie",
+      "config.title.required": "Geef deze configuratie een naam",
+      "config.connection.heading": "Verbinding met Objecten API",
+      "config.connection.intro": "De plugin roept de Objects API v2 van deze Objecten API aan namens de plugins die eraan gekoppeld zijn.",
+      "config.objectenUrl.label": "Objecten API-URL",
+      "config.objectenUrl.help": "Basis-URL zonder /api/v2, zoals de pluginhost die bereikt.",
+      "config.objectenUrl.invalid": "Vul een absolute http(s)-URL in",
+      "config.objectenToken.label": "API-token",
+      "config.objectenToken.help": "Token van een Objecten API-gebruiker; wordt meegestuurd als 'Authorization: Token <token>'.",
+      "config.objectenToken.keep": "Laat leeg om het huidige token te behouden.",
+      "config.objectenToken.required": "Vul het API-token in",
+      "config.objectenToken.show": "Token tonen",
+      "config.objectenToken.hide": "Token verbergen",
+      "config.localDefaults.button": "Lokale ontwikkelwaarden gebruiken",
+      "config.egress.title": "Uitgaande toegang",
+      "config.egress.subtitle": "De plugin mag alleen de hier ingevulde URL aanroepen; die staat als bestemming bij de stap met rechten."
+    }
+  },
+  "configurationSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+      "objectenUrl": {
+        "type": "string",
+        "format": "uri",
+        "title": "Objecten API URL",
+        "description": "Base URL of the Objecten API instance, without /api/v2 (e.g. http://host.docker.internal:8010 for the local dev stack).",
+        "x-egress-target": true,
+        "default": "http://host.docker.internal:8010"
+      },
+      "objectenToken": {
+        "type": "string",
+        "title": "Objecten API token",
+        "description": "API token of an Objecten API user; sent as 'Authorization: Token <token>'.",
+        "x-secret": true
+      }
+    },
+    "required": [
+      "objectenUrl",
+      "objectenToken"
+    ],
+    "additionalProperties": false
+  },
+  "permissions": {
+    "capabilities": [
+      "http_request",
+      "log"
+    ]
+  },
+  "actions": [],
+  "provides": [
+    {
+      "contract": "nl.ritense.objecten@1",
+      "title": "Objecten API v2",
+      "operations": [
+        {
+          "key": "list",
+          "title": "List resources",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        },
+        {
+          "key": "get",
+          "title": "Get a resource",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        },
+        {
+          "key": "create",
+          "title": "Create a resource",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        },
+        {
+          "key": "update",
+          "title": "Update a resource",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        },
+        {
+          "key": "delete",
+          "title": "Delete a resource",
+          "outputs": [
+            "status",
+            "body"
+          ]
+        }
+      ]
+    }
+  ],
+  "frontendBundles": [
+    {
+      "type": "config",
+      "path": "/bundles/config.html"
+    }
+  ]
+}

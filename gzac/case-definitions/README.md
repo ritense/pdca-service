@@ -10,7 +10,7 @@ tabs show the dossier's plan as soon as the app has created the dossier.
 | `binnenhof-renovatie.zip` | Binnenhof-renovatie (PDCA) | Object | Plan case type |
 | `intake-werk-participatie.zip` | Intake werk en participatie | Persoon (bsn) | Realistic W&P intake incl. DVKM decision table (see below) |
 | `renovatie-intake.zip` | Intake renovatie (PDCA) | Object | Minimal intake (start form → plan task) |
-| `werkfit-aanvraag.zip` | Werkfit-aanvraag | — | Product dossier (see below) |
+| `instrument-verzoek.zip` | Instrumentaanvraag | — | Instrument dossier for every product requested from a plan, started by GZAC's Verzoek plugin (see below) |
 
 Each zip contains everything the case needs: document definition (JSON
 schema), BPMN process, process-document link, case list columns, search
@@ -24,15 +24,6 @@ the three PDCA tabs** — no standard Valtimo tabs — and all three set
 `showTasks`, so GZAC's task panel stays visible on every plan tab. In the
 other zips only the first tab sets `showTasks`, so GZAC's task panel shows
 next to the first tab and the other tabs use the full width.
-The plan-dossier zips additionally contain `building-block-link`s to the
-bundled building blocks (`pdca-actie`; for `inwonerplan` also
-`jobcoaching-aanvragen`) with `startableByUser: false` — normal building
-block behaviour, but no entry in the start menu (see below). The plan-dossier
-zips are **self-contained**: they bundle those building blocks
-(`config/building-block/**` next to `config/case/**`), so one import per zip
-suffices — GZAC imports the bundled building blocks first and skips any that
-already exist. The standalone zips in `../bouwblokken/` remain for
-importing/updating a building block on its own.
 
 ## Importing
 
@@ -103,9 +94,9 @@ so the case has no entry in the Start menu.
 The plan-dossier process has **no user tasks**: `start-event` →
 `einde` ("Plandossier aangemaakt"). There are no start form, task forms or
 process links. The plan is kept up to date in the PDCA tabs (Planoverzicht,
-Doelen & Acties, Evaluaties); actions and products run as building blocks
-on the dossier (see below), and their tasks appear in the dossier's task
-list.
+Doelen & Acties, Evaluaties); acties live in that tab, and a product
+requested there gets an instrument dossier of its own (see "The instrument
+dossier").
 
 The app fills the dossier document on creation:
 
@@ -117,8 +108,7 @@ The app fills the dossier document on creation:
 
 The case list shows **Onderwerp** (`doc:onderwerp`) as its first column,
 followed by BSN (`inwonerplan`) or Object-id (`binnenhof-renovatie`),
-*Aangemaakt op* and *Gewijzigd op*. `bouwblokStart` in the schema is the
-building-block start payload (see "Building blocks").
+*Aangemaakt op* and *Gewijzigd op*.
 
 ## The realistic intake: `intake-werk-participatie` with the DVKM decision table
 
@@ -264,165 +254,82 @@ longer resolvable for a widget.
 
 Rebuilding the zips after changes:
 `./gradlew buildGzacZips` (from the project root; per case also individually
-via `./gradlew caseZip-inwonerplan`, per building block via
-`./gradlew bouwblokZip-pdca-actie`), or `./build-zips.sh` here.
+via `./gradlew caseZip-inwonerplan`), or `./build-zips.sh` here.
 
-## Building blocks: executing actions with a GZAC building block
+## The instrument dossier: `instrument-verzoek`
 
-Next to the cases, the repo ships importable **building blocks** in
-`../bouwblokken/` (same import endpoint/button as the case zips). The bundled
-building block `pdca-actie.zip` executes an action of a plan:
+Every product requested from a PDCA plan becomes a dossier of this one type,
+whatever the product. The plan page never starts it: it files a **verzoek**
+— an object in the Objecten API — and GZAC's **Verzoek plugin** turns that
+object into the dossier (ARCHITECTURE §9). Which products can be requested
+is knowledge of Open Product (the actie `StartInstrument` on the producttype,
+see "Making a product requestable"); this dossier knows no product.
 
-`start` (start form `pdca-actie-start`, delivers the start payload) →
-service task **update-actie GESTART** → user task **Actie: ${actieTitel}**
-(form `pdca-actie-afronden`, result → document field `resultaat`) → service
-task **update-actie AFGEROND** → `einde`. The service tasks are
-external-plugin process links to the `update-actie` action of the PDCA
-plugin, reading their properties from the building block document
-(`doc:/actieId`, `doc:/resultaat`).
+The flow: verzoek object created → Open Notificaties notifies GZAC → the
+Verzoek plugin creates the dossier with the verzoek data as its document and
+starts `instrument-verzoek` → **aanmaak-instrument** puts the instrument in
+the plan at once (titel, product URN and start status from the document; the
+dossier's own URN lands in the instrument's `zaak` field in Open Plan, which
+gives the plan page its **Dossier** button; result mapping →
+`doc:/instrumentUuid`) → user task **Instrument uitvoeren en afronden**
+(form `instrument-afronden`: `productResultaat` + `productToelichting`) →
+**update-instrument** (afgerond + resultaat; the toelichting goes to the PDCA
+overlay) → end.
 
-**The building block document is the interface**: the app and the process
-exchange all data through it, so the contract is the building block's
-document schema and the state is visible in the dossier's Building blocks
-panel. The PDCA app starts the building block by **submitting its start
-form** on the plan dossier (`POST /api/v1/process-link/{id}/form/submission`)
-— the route GZAC's own UI also uses (the start-by-key endpoint cannot start
-blueprint-owned, BB:-tagged processes). The form's hidden `bouwblokStart.*`
-fields land on the **dossier document** under `/bouwblokStart`; the
-building-block link's **input mappings** (the standard case→bouwblok
-mapping, shipped in the plan-dossier zips) copy them into the building block
-document before the process runs. A custom building block must therefore
-keep that start-form link (or link its own form with the same
-`bouwblokStart.*` fields) and get matching input mappings on its
-building-block link.
+The document schema is the verzoek data (copy strategy *full*): `planUuid`,
+`doelUuid`, `subjectId`, `productTypeUuid`, `productTypeCode`, `productTitel`,
+`productUrn` and `startStatus`, plus `instrumentUuid`, `productResultaat` and
+`productToelichting`, written during the process.
 
-The workflow:
+The pdca process links ship **FIXED and dangling** (no configuration UUID;
+that is environment-specific). The app repairs them to the configuration
+GZAC pushed to it — when that push arrives and before every request — so
+this zip needs no mapping step at import. `startableByUser` is `false`: only
+the Verzoek plugin starts these dossiers.
 
-1. Import the plan-dossier zips into GZAC (they bundle `pdca-actie`; the
-   standalone `pdca-actie.zip` exists for importing/updating it separately).
-   Those contain a `building-block-link` to the building block with the
-   input mappings (`/bouwblokStart/...` → building block document, plus
-   `pv:actieTitel` for the task title) and `startableByUser: false`: the
-   building block gets the normal runtime behaviour (building block
-   instance, its own building block document, populated Building blocks
-   panel) but does **not** appear in the dossier's start menu. In case
-   management (Actions tab) this is the *Visibility* column (toggle *Visible
-   in start menu*).
-2. Open **PDCA Beheer → Actie-bouwblokken** and link the building block to a
-   plan case type: pick the building block (recognised by process version
-   tag `BB:<key>:<version>`), the PDCA plugin configuration and the
-   doeltype(s) under which the action is available. On save the app writes
-   the configuration into the building-block link's
-   `pluginConfigurationMappings` (key `external-plugin:pdca@<version>`) —
-   the standard GZAC route, so the process links keep their portable
-   BUILDING_BLOCK reference. The mapping stays empty in the zip
-   (configuration UUIDs are environment specific) and a re-import resets it;
-   the app restores it automatically before every start.
-3. On the plan page (*Doelen & Acties*) every doel has the **Actie kiezen**
-   button on the right (greyed out when no building blocks match the
-   doeltype); choosing one creates the action and starts the building block
-   process on the plan dossier. GZAC creates a building block document and
-   rewrites the business key to it; the task appears in the dossier's task
-   list through the building block resolution. Completing the task with a
-   result sets the action to *Afgerond* in the tab. Next to the dropdown is
-   **Handmatige actie** for a local action without a process.
+### Setting up the verzoek route in GZAC
 
-**The start payload** (fields the app always submits, written to the dossier
-document under `/bouwblokStart` and mapped into the building block document
-by the link's input mappings):
+One-time configuration in the GZAC stack (the local gzac-docker-compose has
+all the parts: Objecten API on 8010, Objecttypen API on 8011, Open
+Notificaties on 8002, Open Zaak on 8001):
 
-| Field | Meaning |
-|---|---|
-| `actieId` | Correlation key — required in every `update-actie` callback (`doc:/actieId`) |
-| `actieTitel`, `actieOmschrijving` | Label/description from the koppeling |
-| `planUuid`, `doelUuid` | Open Plan context |
-| `subjectId` | Subject of the plan: bsn (persoon) or object id, from `plan.domeinregister` |
+1. **Objecttype** — create the objecttype `InstrumentVerzoek` in the
+   Objecttypen API with
+   [`../objecttypen/instrument-verzoek.schema.json`](../objecttypen/instrument-verzoek.schema.json)
+   as its published version 1. Its URL
+   (`<objecttypen api>/api/v2/objecttypes/<uuid>`) is what the
+   StartInstrument acties in Open Product refer to.
+2. **Notifications** — the Objecten API must publish on the `objecten`
+   kanaal of Open Notificaties (Objecten API admin: the Notificaties API
+   service and the kanaal registration), and GZAC must be reachable for
+   Open Notificaties as webhook target; the Notificaties API plugin creates
+   the abonnement.
+3. **GZAC plugins** — configure the Objecttypen API, Objecten API and
+   Notificaties API plugins, and an **object management** configuration for
+   `InstrumentVerzoek`.
+4. **Zaaktype link** — the Verzoek plugin resolves the zaaktype of the case
+   it creates, so `instrument-verzoek` needs a *Connected zaak type* in case
+   management. Without *Automatically create for each case* no zaak is
+   created; with it every instrument dossier becomes a zaak.
+5. **Verzoek plugin** — one configuration: the Notificaties API plugin,
+   *Process to start* `instrument-verzoek`, the RSIN of the organisation, and
+   one verzoek type with `type` = `instrument`, case definition
+   `instrument-verzoek`, process definition key `instrument-verzoek`, the
+   object management of step 3, an initiator roltype URL and description,
+   copy strategy *full*.
+6. **Import and activate** `instrument-verzoek.zip` like any case zip; the
+   PDCA app repairs its process links itself.
 
-**Reporting back** can happen anywhere in a (custom) process with the action
-`update-actie` (properties: `actieId`, `gebeurtenis` = `GESTART` /
-`TER_BEOORDELING` / `AFGEROND` / `AFGEWEZEN`, optional
-`resultaat`/`toelichting` — read them from the building block document with
-`doc:` references).
+### Making a product requestable
 
-**Creating your own building block** = copy `pdca-actie`: new key +
-versionTag (directory, definition json AND
-`camunda:versionTag="BB:<key>:<version>"`), extend the document schema with
-your own fields, draw timers/gateways/extra tasks in between and reuse the
-`update-actie` links. One limitation: one PDCA plugin configuration per
-building block per case type (the mapping lives on the case type's
-building-block link).
-
-## Product building blocks: requesting an instrument with a GZAC building block
-
-Next to actie building blocks there are **product building blocks**
-("product X aanvragen"); bundled: `jobcoaching-aanvragen.zip`. All product
-logic lives in the building block itself — the PDCA app creates nothing at
-start and only determines (PDCA Beheer → Instrument-bouwblokken) under which
-plan case type and doeltype(s) it is available. On the plan page the
-instruments section has the **Instrument aanvragen** button (next to **Instrument
-toevoegen**), greyed out when no product building blocks match the doeltype.
-
-The bundled process: user task **Jobcoaching-aanvraag beoordelen** (form
-with a besluit toekennen/afwijzen — process variables, since the gateway
-condition cannot read the document) → on granting, the plugin action
-**aanmaak-instrument** puts the instrument in the plan (Open Plan) and its
-result mapping writes the returned `instrumentUuid` to
-`doc:/instrumentUuid` → user task **Jobcoaching: uitvoeren en afronden**
-(document fields `productResultaat`/`productToelichting`) → plugin action
-**update-instrument** sets the instrument to afgerond with resultaat
-behaald/gefaald (toelichting → PDCA overlay). On rejection the process ends
-without anything appearing in the plan.
-
-The start payload is the product subset of the table above: `planUuid`,
-`doelUuid`, `subjectId` (no actie fields). The **product identity** (titel +
-producttype URN) lives as literal actionProperties on the aanmaak link in
-the building block zip — a custom product building block is therefore a copy
-of `jobcoaching-aanvragen` with those two values (and the forms/task names)
-changed. Don't forget to also add the new building block as a
-`building-block-link` (with the input mappings and `startableByUser: false`)
-to the plan-dossier zips and to bundle it into those zips (the
-`caseZipBouwblokken` map in `build.gradle.kts` + `bouwblokken_for` in
-`build-zips.sh`).
-
-## Product dossiers: requesting a product as a full case
-
-Next to the product *building blocks* there are **product dossiers**
-(their own PDCA Beheer section, Instrument-dossiers); bundled:
-`werkfit-aanvraag.zip` (product Werkfit Traject WIO). Every request from the
-plan page becomes a **case of its own**: own dossier and task list, own
-PBAC roles, documents — and optionally a **zaak**: link the case type to a
-zaaktype in GZAC case management (*Connected zaak type* with *Automatically
-create for each case*) and every aanvraagdossier is created as a zaak. The
-zip deliberately ships no zaaktype-link (zaaktype URL and plugin
-configuration UUIDs are environment-specific), so it also works in
-environments without ZGW.
-
-Import `werkfit-aanvraag.zip` like any case zip and **activate the version**
-in case management — an inactive case type stays out of every list,
-including the productdossiertype dropdown in PDCA Beheer.
-
-The document schema is the contract (same fields as a product
-bouwblokdocument, plus `productTitel` and `dossierUrn` — the marker fields
-by which PDCA Beheer recognises product case types). The pdca process links
-ship **FIXED and dangling** (no configuration UUID); the app repairs them to
-the configuration chosen in PDCA Beheer on save and before every start, via
-GZAC's plugin-configuration repair. `startableByUser` is `false`: only the
-app starts these dossiers.
-
-The flow: the app creates the dossier (`new-document-and-start-process`,
-content = start payload) and writes the dossier's own URN
-(`urn:pdca:gzac:dossier:<dossiertype>:<documentId>`) into the document →
-user task **Werkfit-aanvraag beoordelen** → on granting,
-**aanmaak-instrument** puts the instrument in the plan with that URN in the
-instrument's **`zaak`** field in Open Plan (result mapping →
-`doc:/instrumentUuid`) → user task **uitvoeren en afronden** →
-**update-instrument** (afgerond + resultaat). The plan page reads the zaak
-URN from the register and shows a **Dossier** button on the instrument that
-jumps to the aanvraagdossier. On rejection the process ends without
-anything in the plan.
-
-**A new product dossier** = copy `werkfit-aanvraag`: new case key
-(directory, `case-definition.json`, BPMN id + `CD:<key>:<versie>` version
-tag, process-document-link), change the literal titel/product-URN in the
-`instrument-aanmaken` process link and adjust the forms; add the key to
-`caseZipBouwblokken` in `build.gradle.kts` and to `build-zips.sh`.
+A producttype can be requested from the plan page when it carries an actie
+named **`StartInstrument`** in Open Product. The actie's mapping is the start
+recipe: static item `soort` = `verzoek`, static item `type` = the objecttype
+URL of step 1 (optionally `typeVersion`); every other static item is copied
+into the verzoek data, and items under the keys `plan`, `doel` or
+`producttype` map a value of that register object (`regex` = its path, e.g.
+`$.uuid`) onto a field (`name`) of the verzoek data. The producttype
+parameter `startStatus` (`actief` or `gepland`) is the status the instrument
+starts with in the plan. The dev seed (`docker/openproduct/reference_data.py`)
+creates the actie and the parameter for every producttype and takes the
+objecttype URL from `PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE`.

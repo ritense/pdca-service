@@ -31,6 +31,8 @@ class StartupInfoPrinter(private val env: Environment) {
             │    Open Klant API:    $base/openklant/klantinteracties/api/v1/klantcontacten
             │                       (app → Open Klant: ${via(Register.OPENKLANT)})
             │                       (register admin: http://localhost:7504/admin/, admin/admin)
+            │    Objecten API:      verzoeken of product requests, backend only
+            │                       (app → Objecten API: ${via(Register.OBJECTEN)})
             │    Demo plan Erika:   $base/openplan/plannen/api/v0/plan/11111111-1111-1111-1111-111111111111
             │    Demo plan Binnenhof: .../plan/33333333-3333-3333-3333-333333333333
             │

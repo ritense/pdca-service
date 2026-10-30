@@ -1,0 +1,33 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "InstrumentVerzoek",
+    "description": "Verzoek om een instrument (product uit Open Product) voor een doel van een PDCA-plan. De PDCA-app maakt dit object aan; GZAC's Verzoek-plugin maakt er een instrumentdossier (instrument-verzoek) van.",
+    "type": "object",
+    "required": ["type", "data"],
+    "properties": {
+        "type": {
+            "type": "string",
+            "description": "Verzoektype waarop de Verzoek-plugin routeert; de PDCA-app vult altijd 'instrument'"
+        },
+        "bsn": {
+            "type": "string",
+            "description": "Bsn van de inwoner (initiator) wanneer het plan een persoon als subject heeft"
+        },
+        "data": {
+            "type": "object",
+            "description": "Wordt het dossierdocument van het instrumentdossier (copy strategy full)",
+            "required": ["planUuid", "doelUuid", "productTypeUuid", "productTypeCode", "productTitel"],
+            "properties": {
+                "planUuid": { "type": "string" },
+                "doelUuid": { "type": "string" },
+                "subjectId": { "type": "string" },
+                "productTypeUuid": { "type": "string" },
+                "productTypeCode": { "type": "string" },
+                "productTitel": { "type": "string" },
+                "productUrn": { "type": "string" },
+                "startStatus": { "type": "string" }
+            },
+            "additionalProperties": true
+        }
+    }
+}

@@ -1,6 +1,5 @@
 package com.ritense.pdca.plugin
 
-import com.ritense.pdca.service.ActieBouwblokService
 import com.ritense.pdca.service.InstrumentActionService
 import com.ritense.pdca.service.PluginActionException
 import org.slf4j.LoggerFactory
@@ -15,15 +14,14 @@ import org.springframework.web.bind.annotation.RestController
  * Execution of the manifest actions (URL-app contract): GZAC calls this
  * endpoint when an external-plugin process link on a service task fires.
  * Body: {configurationId, processInstanceId, documentId, activityId,
- * properties}; the properties are already resolved by GZAC (pv: values are
- * real process-variable values by then).
+ * properties}; the properties are already resolved by GZAC (doc: and pv:
+ * references are real values by then).
  *
  * Response: 200 {"status": "completed"} on success; 422 {"status": "error",
  * errorCode, errorMessage} on a business error (catchable in BPMN).
  */
 @RestController
 class PluginActionController(
-    private val actieBouwblokService: ActieBouwblokService,
     private val instrumentActionService: InstrumentActionService
 ) {
 
@@ -45,25 +43,20 @@ class PluginActionController(
 
         @Suppress("UNCHECKED_CAST")
         val properties = body["properties"] as? Map<String, Any?> ?: emptyMap()
-        val processInstanceId = body["processInstanceId"] as? String
+        val documentId = body["documentId"] as? String
         logger.info(
             "Plugin action '{}' invoked (processInstance={}, document={}, activity={})",
-            actionKey, processInstanceId, body["documentId"], body["activityId"]
+            actionKey, body["processInstanceId"], documentId, body["activityId"]
         )
 
         return when (actionKey) {
-            "update-actie" -> execute(actionKey) {
-                actieBouwblokService.handleUpdateActie(properties, processInstanceId)
-                emptyMap()
-            }
-
-            // Instrumenten/producten API for product building blocks: the
-            // create response returns the instrumentUuid as declared output
-            // (the result channel of the URL-app contract); the building
-            // block's result mapping writes it into the building block
-            // document.
+            // The instrument dossier manages the instrument in Open Plan with
+            // these two actions. The create response returns the
+            // instrumentUuid as declared output (the result channel of the
+            // URL-app contract); the dossier's result mapping writes it into
+            // the dossier document.
             "aanmaak-instrument" -> execute(actionKey) {
-                mapOf("result" to instrumentActionService.handleAanmaakInstrument(properties))
+                mapOf("result" to instrumentActionService.handleAanmaakInstrument(properties, documentId))
             }
 
             "update-instrument" -> execute(actionKey) {

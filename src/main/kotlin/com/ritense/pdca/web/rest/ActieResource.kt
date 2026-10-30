@@ -20,7 +20,6 @@ import com.ritense.pdca.domain.Action
 import com.ritense.pdca.domain.ActionStatus
 import com.ritense.pdca.domain.AssigneeType
 import com.ritense.pdca.domain.Priority
-import com.ritense.pdca.domain.Uitvoering
 import com.ritense.pdca.repository.DoelDetailsRepository
 import com.ritense.pdca.service.ActionService
 import jakarta.validation.Valid
@@ -108,18 +107,6 @@ class ActieResource(
 
     @DeleteMapping("/{id}")
     fun delete(@PathVariable(name = "id") id: UUID): ResponseEntity<Unit> {
-        val actie = actionService.getById(id)
-        // A bouwblok action with a running process: the Operaton task is
-        // the source of completion; deleting would leave an orphaned process
-        // (cancelling is a later refinement).
-        if (actie.uitvoering == Uitvoering.BOUWBLOK &&
-            actie.status != ActionStatus.COMPLETED && actie.status != ActionStatus.REJECTED
-        ) {
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "Deze actie wordt uitgevoerd door een lopend bouwblokproces in GZAC; rond de taak daar af (of wijs hem af)"
-            )
-        }
         actionService.delete(id)
         return ResponseEntity.noContent().build()
     }
