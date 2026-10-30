@@ -25,9 +25,12 @@
         <bpmn:startEvent id="start-event" name="Verzoek ontvangen vanuit het plan">
             <bpmn:outgoing>flow-start-aanmaken</bpmn:outgoing>
         </bpmn:startEvent>
-        <!-- Deliberately synchronous (no async-before): if the register call
-             fails, the incident is visible on the dossier at once. -->
-        <bpmn:serviceTask camunda:expression="${true}" id="instrument-aanmaken"
+        <!-- Asynchronous on purpose: the Verzoek plugin creates the dossier and
+             starts this process in one transaction, and aanmaak-instrument
+             reads the dossier back through the GZAC API. The job runs once
+             that transaction has committed; a failure is an incident on the
+             dossier, retried by the job executor. -->
+        <bpmn:serviceTask camunda:asyncBefore="true" camunda:expression="${true}" id="instrument-aanmaken"
                           name="Instrument in het plan zetten">
             <bpmn:documentation>Plugin action aanmaak-instrument: creates the instrument under the
                 doel in Open Plan (doc:/doelUuid) with the titel, product URN and start status from

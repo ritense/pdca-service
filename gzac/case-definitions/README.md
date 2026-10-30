@@ -289,9 +289,12 @@ the Verzoek plugin starts these dossiers.
 
 ### Setting up the verzoek route in GZAC
 
-One-time configuration in the GZAC stack (the local gzac-docker-compose has
-all the parts: Objecten API on 8010, Objecttypen API on 8011, Open
-Notificaties on 8002, Open Zaak on 8001):
+For the local gzac-docker-compose stack all of this is done at boot by the
+autodeployment set in [`../autodeployment/`](../autodeployment/README.md).
+The steps below are what it does, for any other environment. One-time
+configuration in the GZAC stack (the local gzac-docker-compose has all the
+parts: Objecten API on 8010, Objecttypen API on 8011, Open Notificaties on
+8002, Open Zaak on 8001):
 
 1. **Objecttype** — create the objecttype `InstrumentVerzoek` in the
    Objecttypen API with

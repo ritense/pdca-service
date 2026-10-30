@@ -1087,6 +1087,14 @@ field once the register owns the catalog.
 - Zips build reproducibly: `./gradlew buildGzacZips` (or individually
   `caseZip-<key>`, or `build-zips.sh`). **Changing source json ⇒ rebuild
   the zips and commit both.**
+- `gzac/autodeployment/` — the same configuration as GZAC **autodeployment
+  files** for the local GZAC dev stack: the external plugin descriptor (the
+  register plugin packages and configurations on the plugin host, the PDCA
+  app with its grants and contract bindings), the Verzoek plugin
+  configuration, the object management of the verzoek objecttype and the
+  dev zaaktype link of the instrument dossier, plus a Gradle init script
+  that puts all of it and the case definitions on the dev app's classpath
+  without touching the monorepo. Its README has the run order.
 
 ## 13. Runtime & deployment
 

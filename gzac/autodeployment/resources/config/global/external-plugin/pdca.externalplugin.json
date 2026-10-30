@@ -1,0 +1,103 @@
+{
+    "integrations": [
+        {
+            "id": "0f3c9a52-9b0c-4a53-9f2a-5f7b1c2d0001",
+            "name": "Local plugin host",
+            "kind": "PLUGIN_HOST",
+            "baseUrl": "http://localhost:8090",
+            "secret": "${VALTIMO_EXTERNAL_PLUGIN_ADMIN_TOKEN:dev-only-insecure-secret}",
+            "gzacCallbackBaseUrl": "http://host.docker.internal:8080",
+            "eventBrokerAmqpUrl": "amqp://guest:guest@gzac-rabbitmq:5672",
+            "eventBrokerExchange": "valtimo-events",
+            "frontendOrigins": ["http://localhost:4200"],
+            "packages": [
+                {"resource": "classpath:plugin-packages/openplan-1.0.0.zip"},
+                {"resource": "classpath:plugin-packages/openproduct-1.0.0.zip"},
+                {"resource": "classpath:plugin-packages/openklant-1.0.0.zip"},
+                {"resource": "classpath:plugin-packages/objecten-1.0.0.zip"}
+            ],
+            "configurations": [
+                {
+                    "id": "00000000-0000-4000-8000-0000dca00011",
+                    "title": "Open Plan (PDCA dev)",
+                    "pluginId": "openplan",
+                    "pluginVersion": "1.0.0",
+                    "properties": {
+                        "openPlanUrl": "${PDCA_OPENPLAN_URL:http://host.docker.internal:7501}",
+                        "openPlanToken": "${PDCA_OPENPLAN_TOKEN:pdca-openplan-dev-token-0123456789abcdef}"
+                    },
+                    "grantedCapabilities": ["http_request", "log"]
+                },
+                {
+                    "id": "00000000-0000-4000-8000-0000dca00012",
+                    "title": "Open Product (PDCA dev)",
+                    "pluginId": "openproduct",
+                    "pluginVersion": "1.0.0",
+                    "properties": {
+                        "openProductUrl": "${PDCA_OPENPRODUCT_URL:http://host.docker.internal:7502}",
+                        "openProductToken": "${PDCA_OPENPRODUCT_TOKEN:pdca-openproduct-dev-token-0123456789abc}"
+                    },
+                    "grantedCapabilities": ["http_request", "log"]
+                },
+                {
+                    "id": "00000000-0000-4000-8000-0000dca00013",
+                    "title": "Open Klant (PDCA dev)",
+                    "pluginId": "openklant",
+                    "pluginVersion": "1.0.0",
+                    "properties": {
+                        "openKlantUrl": "${PDCA_OPENKLANT_URL:http://host.docker.internal:7504}",
+                        "openKlantToken": "${PDCA_OPENKLANT_TOKEN:pdca-openklant-dev-token-0123456789abcde}"
+                    },
+                    "grantedCapabilities": ["http_request", "log"]
+                },
+                {
+                    "id": "00000000-0000-4000-8000-0000dca00014",
+                    "title": "Objecten API (PDCA dev)",
+                    "pluginId": "objecten",
+                    "pluginVersion": "1.0.0",
+                    "properties": {
+                        "objectenUrl": "${PDCA_OBJECTEN_URL:http://host.docker.internal:8010}",
+                        "objectenToken": "${VALTIMO_OBJECTEN_API_TOKEN:182c13e2209161852c53cef53a879f7a2f923430}"
+                    },
+                    "grantedCapabilities": ["http_request", "log"]
+                }
+            ]
+        },
+        {
+            "id": "00000000-0000-4000-8000-0000dca00010",
+            "name": "PDCA Planbeheer",
+            "kind": "APP",
+            "baseUrl": "${PDCA_APP_URL:http://localhost:7500}",
+            "secret": "${VALTIMO_EXTERNAL_PLUGIN_ADMIN_TOKEN:dev-only-insecure-secret}",
+            "gzacCallbackBaseUrl": "${PDCA_GZAC_CALLBACK_URL:http://localhost:8080}",
+            "frontendOrigins": ["http://localhost:4200"],
+            "configurations": [
+                {
+                    "id": "00000000-0000-4000-8000-00000000dca0",
+                    "title": "PDCA Planbeheer",
+                    "pluginId": "pdca",
+                    "pluginVersion": "0.2.0",
+                    "properties": {},
+                    "grantedCapabilities": ["gzac_api", "frontend_data"],
+                    "grantedEndpoints": [
+                        {"method": "POST", "pattern": "/api/v1/process-document/operation/new-document-and-start-process"},
+                        {"method": "GET", "pattern": "/api/v1/document-definition/*"},
+                        {"method": "GET", "pattern": "/api/v1/document-definition"},
+                        {"method": "GET", "pattern": "/api/management/v1/document-definition"},
+                        {"method": "GET", "pattern": "/api/v1/document/*"},
+                        {"method": "GET", "pattern": "/api/management/v1/case/*"},
+                        {"method": "GET", "pattern": "/api/v1/process/definition/*"},
+                        {"method": "GET", "pattern": "/api/v1/process-link"},
+                        {"method": "PUT", "pattern": "/api/management/v1/case-definition/*/version/*/plugin-configuration-mappings"}
+                    ],
+                    "contractBindings": [
+                        {"contract": "nl.ritense.openplan@1", "targetConfigurationId": "00000000-0000-4000-8000-0000dca00011"},
+                        {"contract": "nl.ritense.openproduct@1", "targetConfigurationId": "00000000-0000-4000-8000-0000dca00012"},
+                        {"contract": "nl.ritense.openklant@1", "targetConfigurationId": "00000000-0000-4000-8000-0000dca00013"},
+                        {"contract": "nl.ritense.objecten@1", "targetConfigurationId": "00000000-0000-4000-8000-0000dca00014"}
+                    ]
+                }
+            ]
+        }
+    ]
+}

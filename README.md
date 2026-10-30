@@ -289,6 +289,10 @@ plugin contracts and a plugin host registered in it.
    `StartInstrument` actie with that objecttype URL — the dev seed does this when
    `PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE` is set (see "Docker").
 
+For the local GZAC dev stack (the Valtimo monorepo's `gzac-docker-compose`) steps 0 to 4 are
+done at boot by the autodeployment set in [`gzac/autodeployment/`](./gzac/autodeployment/README.md):
+run GZAC with its init script and everything above is registered, uploaded, bound and configured.
+
 Open the "Plan aanmaken" task after the intake: the form is fully prefilled from the intake
 document; submitting creates — in a single `POST /api/v1/pdca/plan-intake` — the plan (incl.
 doelen/instrumenten/evaluaties/betrokkenen) **and its plan dossier** of the configured
