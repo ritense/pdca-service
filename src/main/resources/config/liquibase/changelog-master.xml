@@ -15,5 +15,6 @@
     <include file="config/liquibase/008-status-procesbegeleider-gepland-contactmoment.xml"/>
     <include file="config/liquibase/009-configureerbare-voortgangsstatussen.xml"/>
     <include file="config/liquibase/010-plugin-configuration-granted-contracts.xml"/>
+    <include file="config/liquibase/011-drop-actie-bouwblokken.xml"/>
 
 </databaseChangeLog>

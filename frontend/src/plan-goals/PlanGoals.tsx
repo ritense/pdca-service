@@ -12,9 +12,9 @@ import { EvaluatieBanner } from '../shared/EvaluatieBanner';
 import { useSubmit } from '../shared/useSubmit';
 import {
   openplan, openproduct, pdca, planVoorDossier, urn, deleteDoelCascade, afbreekDoelCascade, afbreekInstrument, productTypeByUrn,
-  parseDossierUrn,
+  parseDossierUrn, heeftStartActie,
   Plan, PlanDetails, Doel, DoelDetails, DoelType, InstrumentType, Instrument, InstrumentDetails, Actie, ProductType,
-  ActieBouwblokKoppeling, PhaseConfig, VoortgangStatusOptie,
+  PhaseConfig, VoortgangStatusOptie,
 } from '../shared/api';
 import {
   aantal, doelStatus, instrumentStatus, actieStatus, doelTypeNaam, subdoelTypen, subdoelTypenVoorHoofddoel, isHoofddoelType,
@@ -39,17 +39,12 @@ export function PlanGoals() {
   const [acties, setActies] = useState<Actie[]>([]);
   const [instrumenten, setInstrumenten] = useState<Instrument[]>([]);
   const [instrumentDetails, setInstrumentDetails] = useState<InstrumentDetails[]>([]);
-  const [actieBouwblokken, setActieBouwblokken] = useState<ActieBouwblokKoppeling[]>([]);
-  const [startingBouwblok, setStartingBouwblok] = useState<string | null>(null);
-  /** DoelUuid whose "Actie kiezen" dropdown is open. */
-  const [actieMenuOpen, setActieMenuOpen] = useState<string | null>(null);
+  /** Producttype + doel of the product request under way. */
+  const [startingProduct, setStartingProduct] = useState<string | null>(null);
   /** DoelUuid whose "Instrument aanvragen" dropdown is open. */
   const [productMenuOpen, setProductMenuOpen] = useState<string | null>(null);
-  /** Confirmation after starting a product request; for a DOSSIER product
-   *  it carries the created aanvraagdossier for a direct link. */
-  const [productStarted, setProductStarted] = useState<
-    { message: string; dossier?: { caseDefinitionKey: string; documentId: string } } | null
-  >(null);
+  /** Confirmation after filing a product request. */
+  const [productStarted, setProductStarted] = useState<string | null>(null);
   const [doeltypen, setDoeltypen] = useState<DoelType[]>([]);
   /** Case configuration; carries the subdoelmapping that scopes the subdoel choice list. */
   const [phaseConfig, setPhaseConfig] = useState<PhaseConfig | null>(null);
@@ -126,11 +121,6 @@ export function PlanGoals() {
       setDoeltypen(dt); setInstrumenttypen(it); setProducttypen(pt); setVoortgangOpties(vo);
 
       if (pDetails?.caseDefinitionKey) {
-        // Bouwblok koppelingen of this case type (PDCA Beheer): startable
-        // GZAC building blocks under doelen with a matching doeltype.
-        try {
-          setActieBouwblokken(await pdca.actieBouwblokken.listByCaseDefinition(pDetails.caseDefinitionKey));
-        } catch { setActieBouwblokken([]); }
         // Subdoelmapping: which subdoeltypen this hoofddoel allows.
         try {
           setPhaseConfig(await pdca.phaseConfigs.get(pDetails.caseDefinitionKey));
@@ -219,55 +209,33 @@ export function PlanGoals() {
   const actiesForInstrument = (instrumentUuid: string) => acties.filter(a => a.instrumentUuid === instrumentUuid);
   const instrumentenFor = (doelUuid: string) => instrumenten.filter(i => i.doelen.some(d => d.uuid === doelUuid));
 
-  /** Koppelingen of one kind available under this doel (doeltype match; empty = always). */
-  const koppelingenFor = (doel: Doel, soort: 'ACTIE' | 'PRODUCT') => actieBouwblokken.filter(k => {
-    if ((k.soort ?? 'ACTIE') !== soort) return false;
-    try {
-      const uuids: string[] = JSON.parse(k.doeltypeUuids || '[]');
-      return uuids.length === 0 || (doel.doeltype && uuids.includes(doel.doeltype.uuid));
-    } catch { return false; }
-  });
-  const actieBouwblokkenFor = (doel: Doel) => koppelingenFor(doel, 'ACTIE');
-  const productBouwblokkenFor = (doel: Doel) => koppelingenFor(doel, 'PRODUCT');
-
-  const handleStartBouwblok = async (koppeling: ActieBouwblokKoppeling, doelUuid: string) => {
-    setActieMenuOpen(null);
-    setStartingBouwblok(koppeling.id + doelUuid);
-    try {
-      await pdca.actieBouwblokken.start(koppeling.id, doelUuid);
-      rec({ subjectType: 'SUBDOEL', subjectUuid: doelUuid, subjectTitel: doelTitel(doelUuid), soort: 'BOUWBLOK_GESTART', naarWaarde: koppeling.naam });
-      await reload();
-    } catch (e: any) {
-      setError(`Actie "${koppeling.naam}" starten mislukt: ` + e.message);
-    } finally {
-      setStartingBouwblok(null);
-    }
-  };
+  /**
+   * The producttypen that can be requested under a doel: the catalog scoped
+   * to the subdoel (themas of the doeltype, doelgroep of the plan subject),
+   * narrowed to the producttypen Open Product marks as requestable with a
+   * StartInstrument actie. Nothing is configured in the app for this.
+   */
+  const aanvraagbareProducttypen = (doel: Doel) =>
+    producttypenVoorDoel(producttypen, doeltypeVan(doel), doelgroepVoorSubject(plan?.domeinregister)).filter(heeftStartActie);
 
   /**
-   * Starts a product request. The app creates nothing in the plan itself:
-   * the process manages the instrument (it only appears in the plan once
-   * the request is granted) — hence the confirmation message instead of a
-   * visible new instrument. A DOSSIER product returns its fresh
-   * aanvraagdossier, offered as a direct link.
+   * Requests a product: the app files a verzoek and creates nothing in the
+   * plan itself. GZAC's instrument dossier picks the verzoek up and creates
+   * the instrument — hence the confirmation instead of a visible new
+   * instrument, and the delayed reload that usually already shows it.
    */
-  const handleStartProduct = async (koppeling: ActieBouwblokKoppeling, doelUuid: string) => {
+  const handleStartProduct = async (producttype: ProductType, doelUuid: string) => {
     setProductMenuOpen(null);
-    setStartingBouwblok(koppeling.id + doelUuid);
+    setStartingProduct(producttype.uuid + doelUuid);
     try {
-      const result = await pdca.actieBouwblokken.start(koppeling.id, doelUuid);
-      rec({ subjectType: 'SUBDOEL', subjectUuid: doelUuid, subjectTitel: doelTitel(doelUuid), soort: 'PRODUCT_AANGEVRAAGD', naarWaarde: koppeling.naam });
-      setProductStarted(result.dossier
-        ? {
-            message: `Aanvraag "${koppeling.naam}" gestart in een eigen dossier — de beoordelingstaak staat in de takenlijst van dat dossier.`,
-            dossier: result.dossier,
-          }
-        : { message: `Aanvraag "${koppeling.naam}" gestart — de beoordelingstaak staat in de takenlijst van het dossier.` });
-      await reload();
+      const verzoek = await pdca.instrumenten.start(doelUuid, producttype.uuid);
+      rec({ subjectType: 'SUBDOEL', subjectUuid: doelUuid, subjectTitel: doelTitel(doelUuid), soort: 'PRODUCT_AANGEVRAAGD', naarWaarde: verzoek.productTitel });
+      setProductStarted(`Verzoek voor "${verzoek.productTitel}" ingediend — het instrument verschijnt zodra GZAC het instrumentdossier heeft aangemaakt.`);
+      window.setTimeout(() => { reload().catch(() => undefined); }, 3000);
     } catch (e: any) {
-      setError(`Instrument "${koppeling.naam}" aanvragen mislukt: ` + e.message);
+      setError(`Instrument "${producttype.naam}" aanvragen mislukt: ` + e.message);
     } finally {
-      setStartingBouwblok(null);
+      setStartingProduct(null);
     }
   };
 
@@ -509,16 +477,8 @@ export function PlanGoals() {
         {error && <InlineNotification className="pdca-notification" kind="error" title="Fout" subtitle={error} lowContrast onCloseButtonClick={() => setError(null)} />}
         {evaluatieLoopt && <EvaluatieBanner />}
         {productStarted && (
-          <div className="pdca-row pdca-notification-row">
-            <InlineNotification className="pdca-notification" kind="success" title="Instrument aangevraagd" subtitle={productStarted.message}
-              lowContrast onCloseButtonClick={() => setProductStarted(null)} style={{flex: '1 1 16rem'}} />
-            {productStarted.dossier && (
-              <Button size="sm" kind="tertiary" renderIcon={Launch}
-                onClick={() => openDossier(productStarted.dossier!.caseDefinitionKey, productStarted.dossier!.documentId)}>
-                Open aanvraagdossier
-              </Button>
-            )}
-          </div>
+          <InlineNotification className="pdca-notification" kind="success" title="Instrument aangevraagd" subtitle={productStarted}
+            lowContrast onCloseButtonClick={() => setProductStarted(null)} />
         )}
         {/* The plan's hoofddoel (strategy) as a fixed card; switching it on the
             overview tab completes the old doel, which stays here as history.
@@ -586,8 +546,7 @@ export function PlanGoals() {
           const actief = doel.status === 'actief';
           const gestart = dd?.uitvoeringsStatus === 'GESTART';
           const aantalActies = alleActiesFor(doel.uuid).length;
-          const actieKoppelingen = actieBouwblokkenFor(doel);
-          const productKoppelingen = productBouwblokkenFor(doel);
+          const aanvraagbaar = aanvraagbareProducttypen(doel);
           return (
             <Layer key={doel.uuid} className={`pdca-goal-card status-${doel.status}`}>
               <div className="pdca-goal-header" onClick={() => toggle(doel.uuid, setExpanded)}>
@@ -634,17 +593,7 @@ export function PlanGoals() {
                     <div className="pdca-section-title">
                       <span>Acties ({da.length})</span>
                       <div className="pdca-row-actions">
-                        <Button size="sm" kind="ghost" renderIcon={Add} onClick={() => setActionModal({ doelUuid: doel.uuid })}>Handmatige actie</Button>
-                        {/* Actie building blocks (PDCA Beheer) with a matching doeltype:
-                            choosing one creates the action and starts the building block
-                            process on the dossier. Without matching blocks there is no picker. */}
-                        {actieKoppelingen.length > 0 && (
-                          <KoppelingMenu label="Actie kiezen" koppelingen={actieKoppelingen} disabled={!actief}
-                            open={actieMenuOpen === doel.uuid}
-                            onToggle={() => setActieMenuOpen(actieMenuOpen === doel.uuid ? null : doel.uuid)}
-                            startingKey={startingBouwblok} doelUuid={doel.uuid}
-                            onKies={k => handleStartBouwblok(k, doel.uuid)} />
-                        )}
+                        <Button size="sm" kind="ghost" renderIcon={Add} onClick={() => setActionModal({ doelUuid: doel.uuid })}>Actie toevoegen</Button>
                       </div>
                     </div>
                     {da.map(actie => <ActieRow key={actie.id} actie={actie} busy={!!busy} onStatus={handleActieStatus} />)}
@@ -656,16 +605,16 @@ export function PlanGoals() {
                       <span>Instrumenten ({di.length})</span>
                       <div className="pdca-row-actions">
                         <Button size="sm" kind="ghost" renderIcon={Add} onClick={() => setInstrumentModal(doel.uuid)}>Instrument toevoegen</Button>
-                        {/* Product building blocks (PDCA Beheer) with a matching doeltype:
-                            choosing one starts the request building block on the dossier.
-                            The instrument only appears in the plan once the request is
-                            granted in the dossier's task list — the block manages it. */}
-                        {productKoppelingen.length > 0 && (
-                          <KoppelingMenu label="Instrument aanvragen" koppelingen={productKoppelingen} disabled={!actief}
+                        {/* Producttypen with a StartInstrument actie in Open Product that fit
+                            this subdoel: choosing one files a verzoek. The instrument appears
+                            in the plan once GZAC's instrument dossier has created it. Without
+                            requestable producttypen there is no picker. */}
+                        {aanvraagbaar.length > 0 && (
+                          <ProductMenu producttypen={aanvraagbaar} disabled={!actief}
                             open={productMenuOpen === doel.uuid}
                             onToggle={() => setProductMenuOpen(productMenuOpen === doel.uuid ? null : doel.uuid)}
-                            startingKey={startingBouwblok} doelUuid={doel.uuid}
-                            onKies={k => handleStartProduct(k, doel.uuid)} />
+                            startingKey={startingProduct} doelUuid={doel.uuid}
+                            onKies={p => handleStartProduct(p, doel.uuid)} />
                         )}
                       </div>
                     </div>
@@ -676,8 +625,8 @@ export function PlanGoals() {
                       const instActief = inst.status === 'actief';
                       const instGepland = instActief && idet?.uitvoeringsStatus === 'GEPLAND';
                       const instActies = actiesForInstrument(inst.uuid);
-                      // Instrument created by a DOSSIER product: the zaak
-                      // register field carries the aanvraagdossier's URN.
+                      // Instrument created by an instrument dossier: the zaak
+                      // register field carries that dossier's URN.
                       const dossierRef = parseDossierUrn(inst.zaak);
                       return (
                         <div key={inst.uuid} style={{borderBottom: '1px solid var(--cds-border-subtle)'}}>
@@ -692,7 +641,7 @@ export function PlanGoals() {
                               <Tag size="sm" type={instStatus.tag}>{instStatus.label}</Tag>
                               {dossierRef && (
                                 <Button size="sm" kind="ghost" renderIcon={Launch}
-                                  title="Open het aanvraagdossier van dit instrument"
+                                  title="Open het instrumentdossier van dit instrument"
                                   onClick={() => openDossier(dossierRef.caseDefinitionKey, dossierRef.documentId)}>
                                   Dossier
                                 </Button>
@@ -779,29 +728,31 @@ export function PlanGoals() {
   );
 }
 
-/** "Actie kiezen" / "Instrument aanvragen": a dropdown of the building block koppelingen available under a doel. */
-function KoppelingMenu({ label, koppelingen, disabled, open, onToggle, startingKey, doelUuid, onKies }: {
-  label: string; koppelingen: ActieBouwblokKoppeling[]; disabled: boolean; open: boolean; onToggle: () => void;
-  startingKey: string | null; doelUuid: string; onKies: (koppeling: ActieBouwblokKoppeling) => void;
+/** "Instrument aanvragen": a dropdown of the producttypen that can be requested under a doel. */
+function ProductMenu({ producttypen, disabled, open, onToggle, startingKey, doelUuid, onKies }: {
+  producttypen: ProductType[]; disabled: boolean; open: boolean; onToggle: () => void;
+  startingKey: string | null; doelUuid: string; onKies: (producttype: ProductType) => void;
 }) {
   return (
     <div style={{position: 'relative'}}>
       <Button size="sm" kind="tertiary" renderIcon={ChevronDown} disabled={disabled}
         title={disabled ? 'Alleen bij een actief doel' : undefined} onClick={onToggle}>
-        {label}
+        Instrument aanvragen
       </Button>
       {open && !disabled && (
         <div className="pdca-menu">
-          {koppelingen.map(k => (
-            <button key={k.id} type="button"
-              disabled={startingKey === k.id + doelUuid}
-              onClick={() => onKies(k)}
+          {producttypen.map(p => (
+            <button key={p.uuid} type="button"
+              disabled={startingKey === p.uuid + doelUuid}
+              onClick={() => onKies(p)}
               className="pdca-menu-item">
               <span style={{fontSize: 13, fontWeight: 500}}>
-                {startingKey === k.id + doelUuid ? 'Starten…' : k.naam}
+                {startingKey === p.uuid + doelUuid ? 'Aanvragen…' : p.naam}
               </span>
-              {k.omschrijving && (
-                <span style={{display: 'block', fontSize: 11, color: 'var(--cds-text-secondary)'}}>{k.omschrijving}</span>
+              {(p.organisaties[0] || p.samenvatting) && (
+                <span style={{display: 'block', fontSize: 11, color: 'var(--cds-text-secondary)'}}>
+                  {[p.organisaties[0]?.naam, p.samenvatting].filter(Boolean).join(' · ')}
+                </span>
               )}
             </button>
           ))}
@@ -811,14 +762,8 @@ function KoppelingMenu({ label, koppelingen, disabled, open, onToggle, startingK
   );
 }
 
-/**
- * One actie/taak row with the local status flow. With a running building
- * block process the Operaton task is the source of completion; the local
- * status buttons stay hidden. Used under a doel and under an instrument.
- */
+/** One actie/taak row with the local status flow. Used under a doel and under an instrument. */
 function ActieRow({ actie, busy, onStatus }: { actie: Actie; busy: boolean; onStatus: (id: string, action: string) => void }) {
-  const isBouwblok = actie.uitvoering === 'BOUWBLOK';
-  const loopt = isBouwblok && actie.status !== 'COMPLETED' && actie.status !== 'REJECTED';
   const status = actieStatus(actie.status);
   return (
     <div className="pdca-action-row">
@@ -833,15 +778,13 @@ function ActieRow({ actie, busy, onStatus }: { actie: Actie; busy: boolean; onSt
         )}
       </div>
       <div className="pdca-row-actions">
-        {actie.priority && !isBouwblok && <Tag size="sm" type={actie.priority === 'HIGH' ? 'red' : 'gray'}>{priorityLabel(actie.priority)}</Tag>}
+        {actie.priority && <Tag size="sm" type={actie.priority === 'HIGH' ? 'red' : 'gray'}>{priorityLabel(actie.priority)}</Tag>}
         <Tag size="sm" type={status.tag}>{status.label}</Tag>
-        {!loopt && !isBouwblok && <>
-          {actie.status === 'PLANNED' && <Button size="sm" kind="ghost" disabled={busy} onClick={() => onStatus(actie.id, 'IN_PROGRESS')}>Starten</Button>}
-          {actie.status === 'IN_PROGRESS' && <Button size="sm" kind="ghost" disabled={busy} onClick={() => onStatus(actie.id, 'PENDING_REVIEW')}>Ter beoordeling</Button>}
-          {actie.status === 'PENDING_REVIEW' && <>
-            <Button size="sm" kind="primary" renderIcon={Checkmark} disabled={busy} onClick={() => onStatus(actie.id, 'approve')}>Goedkeuren</Button>
-            <Button size="sm" kind="danger" renderIcon={Close} disabled={busy} onClick={() => onStatus(actie.id, 'reject')}>Afkeuren</Button>
-          </>}
+        {actie.status === 'PLANNED' && <Button size="sm" kind="ghost" disabled={busy} onClick={() => onStatus(actie.id, 'IN_PROGRESS')}>Starten</Button>}
+        {actie.status === 'IN_PROGRESS' && <Button size="sm" kind="ghost" disabled={busy} onClick={() => onStatus(actie.id, 'PENDING_REVIEW')}>Ter beoordeling</Button>}
+        {actie.status === 'PENDING_REVIEW' && <>
+          <Button size="sm" kind="primary" renderIcon={Checkmark} disabled={busy} onClick={() => onStatus(actie.id, 'approve')}>Goedkeuren</Button>
+          <Button size="sm" kind="danger" renderIcon={Close} disabled={busy} onClick={() => onStatus(actie.id, 'reject')}>Afkeuren</Button>
         </>}
       </div>
     </div>

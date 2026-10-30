@@ -1,0 +1,6 @@
+# Name resolution for a GZAC that runs on the host (jdk.net.hosts.file): the
+# containers of its stack know the host as host.docker.internal, and that name
+# travels in the URLs they hand to GZAC (verzoek objects, objecttypes). macOS
+# does not resolve it on the host itself; this file does, for the JDK only.
+127.0.0.1 localhost host.docker.internal keycloak.localhost
+::1 localhost

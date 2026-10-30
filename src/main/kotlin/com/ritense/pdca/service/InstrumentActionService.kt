@@ -18,6 +18,7 @@ package com.ritense.pdca.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.ritense.pdca.domain.InstrumentDetails
+import com.ritense.pdca.domain.UitvoeringsStatus
 import com.ritense.pdca.repository.InstrumentDetailsRepository
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -27,18 +28,19 @@ import org.springframework.http.MediaType
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.client.RestClient
+import org.springframework.web.server.ResponseStatusException
 
 /**
- * The instrumenten/producten side of the plugin actions: this is how a
- * product building block ("product X aanvragen") manages the instrument in
- * Open Plan itself. The pdca-app creates nothing when starting such a
- * building block — the process decides if and when the instrument comes into
- * existence (for example only after the request is granted) and when it is
- * updated.
+ * The instrumenten side of the plugin actions: this is how the instrument
+ * dossier (`instrument-verzoek`, ARCHITECTURE §9) manages the instrument in
+ * Open Plan. The app creates nothing when a product is requested — the
+ * dossier decides when the instrument comes into existence and when it is
+ * completed.
  *
- *  - aanmaak-instrument: creates the instrument under a doel and returns the
- *    instrumentUuid as a process variable (the variables channel of the
- *    action response), so the process can use it later on;
+ *  - aanmaak-instrument: creates the instrument under a doel, records the
+ *    calling dossier in the instrument's `zaak` field and returns the
+ *    instrumentUuid as declared output (the result channel of the action
+ *    response), so the dossier can use it later on;
  *  - update-instrument: sets status afgerond/geannuleerd (+ resultaat) in
  *    the register and stores an optional toelichting in the PDCA overlay.
  */
@@ -46,27 +48,46 @@ import org.springframework.web.client.RestClient
 class InstrumentActionService(
     private val instrumentDetailsRepository: InstrumentDetailsRepository,
     private val openPlanRestClient: RestClient,
+    private val gzacClient: GzacClient,
     private val objectMapper: ObjectMapper
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
+    companion object {
+        /**
+         * URN of a GZAC dossier, stored in the instrument's `zaak` register
+         * field: `urn:pdca:gzac:dossier:<caseDefinitionKey>:<documentId>`.
+         * Carries both parts the GZAC UI route needs
+         * (`/cases/{caseDefinitionKey}/document/{documentId}`), so the plan
+         * page can link to the dossier purely from the register value.
+         */
+        const val DOSSIER_URN_PREFIX = "urn:pdca:gzac:dossier:"
+
+        /** Start status that creates the instrument as gepland (overlay refinement) instead of gestart. */
+        const val STATUS_GEPLAND = "gepland"
+    }
+
     /**
      * Plugin action aanmaak-instrument. Properties: doelUuid (required),
-     * titel (required), product (URN, optional), zaak (URN, optional —
-     * DOSSIER products pass their aanvraagdossier's URN here, which is how
-     * the plan page links to the running dossier), status (optional,
-     * default "actief"). Returns {"instrumentUuid": "..."} as declared
-     * output (result channel).
+     * titel (required), product (URN, optional), status (optional: `actief`,
+     * the default, or `gepland` — actief in the register with the overlay
+     * refinement GEPLAND, which needs planUuid), planUuid (optional). The
+     * calling dossier ([documentId] of the action call) becomes the
+     * instrument's `zaak`: `urn:pdca:gzac:dossier:<dossiertype>:<documentId>`,
+     * the dossiertype being the document's definition name. Returns
+     * {"instrumentUuid": "..."} as declared output (result channel).
      */
     @Transactional
-    fun handleAanmaakInstrument(properties: Map<String, Any?>): Map<String, Any?> {
+    fun handleAanmaakInstrument(properties: Map<String, Any?>, documentId: String?): Map<String, Any?> {
         val doelUuid = requiredUuid(properties, "doelUuid")
         val titel = (properties["titel"] as? String)?.trim()?.takeIf { it.isNotBlank() }
             ?: throw PluginActionException("TITEL_ONTBREEKT", "Property 'titel' ontbreekt of is leeg")
         val product = (properties["product"] as? String)?.takeIf { it.isNotBlank() }
-        val zaak = (properties["zaak"] as? String)?.takeIf { it.isNotBlank() }
-        val status = (properties["status"] as? String)?.takeIf { it.isNotBlank() } ?: "actief"
+        val gewensteStatus = (properties["status"] as? String)?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: "actief"
+        val gepland = gewensteStatus == STATUS_GEPLAND
+        val planUuid = optionalUuid(properties, "planUuid")
+        val zaak = documentId?.takeIf { it.isNotBlank() }?.let(::dossierUrn)
 
         val instrumenttypeUuid = listRegister("/plannen/api/v0/instrumenttype")
             .firstOrNull()?.get("uuid") as? String
@@ -79,14 +100,27 @@ class InstrumentActionService(
                 instrumenttypeUuid?.let { put("instrumenttypeUuid", it) }
                 product?.let { put("product", it) }
                 zaak?.let { put("zaak", it) }
-                put("status", status)
+                put("status", if (gepland) "actief" else gewensteStatus)
             }
         )
-        val instrumentUuid = created["uuid"] as? String
+        val instrumentUuid = (created["uuid"] as? String)?.let { UUID.fromString(it) }
             ?: throw PluginActionException("AANMAAK_MISLUKT", "Open Plan gaf geen uuid terug voor het nieuwe instrument")
 
-        log.info("aanmaak-instrument: created '$titel' ($instrumentUuid) under doel $doelUuid")
-        return mapOf("instrumentUuid" to instrumentUuid)
+        if (gepland) {
+            if (planUuid == null) {
+                log.warn("aanmaak-instrument: start status gepland for $instrumentUuid needs planUuid; created as gestart")
+            } else {
+                val details = instrumentDetailsRepository.findById(instrumentUuid).orElse(
+                    InstrumentDetails(instrumentUuid = instrumentUuid, planUuid = planUuid)
+                )
+                details.uitvoeringsStatus = UitvoeringsStatus.GEPLAND
+                details.updatedAt = LocalDateTime.now()
+                instrumentDetailsRepository.save(details)
+            }
+        }
+
+        log.info("aanmaak-instrument: created '$titel' ($instrumentUuid) under doel $doelUuid${zaak?.let { " from $it" } ?: ""}")
+        return mapOf("instrumentUuid" to instrumentUuid.toString())
     }
 
     /**
@@ -109,9 +143,7 @@ class InstrumentActionService(
         }
         val resultaat = (properties["resultaat"] as? String)?.takeIf { it.isNotBlank() }
         val toelichting = (properties["toelichting"] as? String)?.takeIf { it.isNotBlank() }
-        val planUuid = (properties["planUuid"] as? String)?.let {
-            try { UUID.fromString(it.trim()) } catch (e: IllegalArgumentException) { null }
-        }
+        val planUuid = optionalUuid(properties, "planUuid")
 
         patchRegister(
             "/plannen/api/v0/instrument/$instrumentUuid", buildMap {
@@ -134,6 +166,19 @@ class InstrumentActionService(
         log.info("update-instrument: $instrumentUuid -> $status${resultaat?.let { " ($it)" } ?: ""}")
     }
 
+    /**
+     * The URN of the calling dossier, from the dossier itself: its document
+     * definition name (the dossier type) plus its id. The plan page reads it
+     * back from the register and offers the jump to the dossier.
+     */
+    private fun dossierUrn(documentId: String): String = try {
+        "$DOSSIER_URN_PREFIX${gzacClient.documentDefinitionName(documentId)}:$documentId"
+    } catch (e: ResponseStatusException) {
+        throw PluginActionException(
+            "DOSSIER_ONBEKEND", "Het aanroepende dossier $documentId is niet op te halen in GZAC: ${e.reason}"
+        )
+    }
+
     private fun requiredUuid(properties: Map<String, Any?>, key: String): UUID {
         val raw = properties[key] as? String
             ?: throw PluginActionException(
@@ -145,6 +190,12 @@ class InstrumentActionService(
             throw PluginActionException("${key.uppercase()}_ONGELDIG", "Property '$key' is geen uuid: '$raw'")
         }
     }
+
+    /** An optional uuid property; an unparseable value counts as absent. */
+    private fun optionalUuid(properties: Map<String, Any?>, key: String): UUID? =
+        (properties[key] as? String)?.let {
+            try { UUID.fromString(it.trim()) } catch (e: IllegalArgumentException) { null }
+        }
 
     // --------------------------------------------------- Open Plan helpers
 

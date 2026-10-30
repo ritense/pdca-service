@@ -101,7 +101,7 @@ html, body {
   overflow-x: auto;
 }
 
-/* Dropdown menu under a toolbar button (building block pickers). */
+/* Dropdown menu under a toolbar button (the product picker). */
 .pdca-menu {
   position: absolute;
   right: 0;
@@ -595,15 +595,6 @@ html, body {
   max-inline-size: none;
   min-inline-size: 0;
   margin-bottom: var(--pdca-spacing-05);
-}
-
-/* A notification with a button next to it; the row carries the spacing. */
-.pdca-notification-row {
-  margin-bottom: var(--pdca-spacing-05);
-}
-
-.pdca-notification-row .pdca-notification {
-  margin-bottom: 0;
 }
 
 /* Edit action buttons row */

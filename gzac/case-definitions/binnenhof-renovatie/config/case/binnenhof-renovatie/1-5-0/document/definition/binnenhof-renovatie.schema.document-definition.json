@@ -31,18 +31,6 @@
         "planStatus": {
             "type": "string",
             "description": "Status van het plan in Open Plan (actief/afgerond/geannuleerd)"
-        },
-        "bouwblokStart": {
-            "type": "object",
-            "description": "Startgegevens van de laatst gestarte bouwblok (geschreven door het startformulier van het bouwblok; de input mappings van de bouwbloklink kopiëren ze naar het bouwblokdocument)",
-            "properties": {
-                "actieId": { "type": "string" },
-                "actieTitel": { "type": "string" },
-                "actieOmschrijving": { "type": "string" },
-                "planUuid": { "type": "string" },
-                "doelUuid": { "type": "string" },
-                "subjectId": { "type": "string" }
-            }
         }
     }
 }

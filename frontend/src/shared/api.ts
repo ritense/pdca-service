@@ -236,33 +236,13 @@ export const pdca = {
       request<void>(`${API_BASE}/api/v1/admin/phase-configs/${key}`, { method: 'DELETE' }),
   },
   /**
-   * Bouwblok koppelingen: GZAC building blocks linked to a plan case type +
-   * doeltype(s), as actie or product. Read + start for the plan page; CRUD
-   * and dropdown data for the admin.
+   * Product requests: the app files a verzoek for the producttype's
+   * StartInstrument actie (Open Product); GZAC's instrument dossier picks it
+   * up and creates the instrument in the plan from there.
    */
-  actieBouwblokken: {
-    listByCaseDefinition: (caseDefinitionKey: string) =>
-      request<ActieBouwblokKoppeling[]>(`${PDCA}/actie-bouwblokken?caseDefinitionKey=${encodeURIComponent(caseDefinitionKey)}`),
-    start: (id: string, doelUuid: string) =>
-      request<BouwblokStartResult>(`${PDCA}/actie-bouwblokken/${id}/start`, { method: 'POST', body: JSON.stringify({ doelUuid }) }),
-    admin: {
-      list: () => request<ActieBouwblokKoppeling[]>(`${API_BASE}/api/v1/admin/actie-bouwblokken`),
-      create: (data: Partial<ActieBouwblokKoppeling>) =>
-        request<ActieBouwblokKoppeling>(`${API_BASE}/api/v1/admin/actie-bouwblokken`, { method: 'POST', body: JSON.stringify(data) }),
-      update: (id: string, data: Partial<ActieBouwblokKoppeling>) =>
-        request<ActieBouwblokKoppeling>(`${API_BASE}/api/v1/admin/actie-bouwblokken/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
-      delete: (id: string) =>
-        request<void>(`${API_BASE}/api/v1/admin/actie-bouwblokken/${id}`, { method: 'DELETE' }),
-      /** Imported building block processes in GZAC (versionTag BB:<key>:<version>). */
-      bouwblokProcessen: () =>
-        request<BouwblokProces[]>(`${API_BASE}/api/v1/admin/actie-bouwblokken/bouwblok-processen`),
-      /** Case types with the product-dossier contract in their schema (DOSSIER uitvoeringsvorm). */
-      productDossiertypes: () =>
-        request<string[]>(`${API_BASE}/api/v1/admin/actie-bouwblokken/product-dossiertypes`),
-      /** This app's plugin configurations pushed by GZAC. */
-      pluginConfiguraties: () =>
-        request<PluginConfiguratie[]>(`${API_BASE}/api/v1/admin/actie-bouwblokken/plugin-configuraties`),
-    },
+  instrumenten: {
+    start: (doelUuid: string, producttypeUuid: string) =>
+      request<InstrumentVerzoek>(`${PDCA}/instrumenten/start`, { method: 'POST', body: JSON.stringify({ doelUuid, producttypeUuid }) }),
   },
 };
 
@@ -475,8 +455,17 @@ export interface ProductType {
   organisaties: { uuid?: string; naam: string; code?: string; stad?: string }[];
   keywords: string[];
   parameters: { naam: string; waarde: string }[];
+  /** The producttype's acties; the one named StartInstrument makes it requestable from the plan page. */
+  acties?: { uuid: string; naam: string; url?: string }[];
   gepubliceerd?: boolean;
 }
+
+/** Name of the Open Product actie that says how a product is started from a plan. */
+export const START_ACTIE = 'StartInstrument';
+
+/** Can this producttype be requested from the plan page? Decided by Open Product: it carries a StartInstrument actie. */
+export const heeftStartActie = (producttype: ProductType) =>
+  (producttype.acties ?? []).some(a => a.naam.toLowerCase() === START_ACTIE.toLowerCase());
 
 export function productTypeByUrn(producttypen: ProductType[], productUrn: string | null | undefined): ProductType | undefined {
   const code = urnId(productUrn);
@@ -590,44 +579,21 @@ export interface Actie {
   startDate?: string;
   dueDate?: string;
   contactmomentUuid?: string;
-  /** LOKAAL (tracked in the tab only) or BOUWBLOK (executed by a GZAC building block process). */
-  uitvoering?: string;
-  gzacProcessInstanceId?: string;
-  bouwblokKoppelingId?: string;
   completedDate?: string;
   result?: string;
 }
 
-export interface ActieBouwblokKoppeling {
-  id: string;
-  caseDefinitionKey: string;
-  /** ACTIE starts an action under a doel; PRODUCT starts a request process
-   *  that manages the instrument in the plan itself. */
-  soort: 'ACTIE' | 'PRODUCT';
-  /** BOUWBLOK runs on the plan dossier; DOSSIER (PRODUCT only) is a full
-   *  case of productCaseDefinitionKey with its own dossier. */
-  uitvoeringsvorm?: 'BOUWBLOK' | 'DOSSIER';
-  naam: string;
-  omschrijving?: string;
-  buildingBlockKey?: string | null;
-  buildingBlockVersion?: string;
-  processDefinitionKey?: string | null;
-  productCaseDefinitionKey?: string | null;
-  pluginConfigId: string;
-  /** JSON array of doeltype uuids; empty/null = available under every doel. */
-  doeltypeUuids?: string | null;
-}
-
-/** Outcome of a koppeling start: the created action (ACTIE) and/or the created aanvraagdossier (DOSSIER product). */
-export interface BouwblokStartResult {
-  actie: Actie | null;
-  dossier: { caseDefinitionKey: string; documentId: string; dossierUrn: string } | null;
+/** Outcome of a product request: the verzoek object in the Objecten API and the product it asks for. */
+export interface InstrumentVerzoek {
+  objectUrl: string | null;
+  productTitel: string;
 }
 
 /**
  * Parses a dossier URN (`urn:pdca:gzac:dossier:<caseDefinitionKey>:<documentId>`,
- * stored in an instrument's `zaak` register field) into the parts of the
- * GZAC route `/cases/<caseDefinitionKey>/document/<documentId>`.
+ * written into an instrument's `zaak` register field by the instrument
+ * dossier that created it) into the parts of the GZAC route
+ * `/cases/<caseDefinitionKey>/document/<documentId>`.
  */
 export function parseDossierUrn(value?: string | null): { caseDefinitionKey: string; documentId: string } | null {
   if (!value) return null;
@@ -636,18 +602,6 @@ export function parseDossierUrn(value?: string | null): { caseDefinitionKey: str
     return null;
   }
   return { caseDefinitionKey: parts[4], documentId: parts[5] };
-}
-
-export interface BouwblokProces {
-  bouwblokKey: string;
-  bouwblokVersie: string;
-  processDefinitionKey: string;
-  naam?: string;
-}
-
-export interface PluginConfiguratie {
-  configId: string;
-  titel: string;
 }
 
 export interface Betrokkene {

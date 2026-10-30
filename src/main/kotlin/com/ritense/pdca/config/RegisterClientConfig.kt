@@ -46,6 +46,9 @@ class RegisterClientConfig(
     @Bean
     fun openKlantRestClient(builder: RestClient.Builder): RestClient = registerRestClient(builder, Register.OPENKLANT)
 
+    @Bean
+    fun objectenRestClient(builder: RestClient.Builder): RestClient = registerRestClient(builder, Register.OBJECTEN)
+
     private fun registerRestClient(builder: RestClient.Builder, register: Register): RestClient =
         builder.clone()
             .baseUrl(register.contractBaseUrl)

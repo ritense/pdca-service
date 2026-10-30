@@ -1,0 +1,11 @@
+{
+    "id": "00000000-0000-4000-8000-0000dca00002",
+    "title": "InstrumentVerzoek",
+    "objecttypenApiPluginConfigurationId": "4021bb75-18c8-4ca5-8658-b9f9c728bba0",
+    "objecttypeId": "00000000-0000-4000-8000-0000dca00001",
+    "objecttypeVersion": 1,
+    "objectenApiPluginConfigurationId": "b6d83348-97e7-4660-bd35-2e5fcc9629b4",
+    "showInDataMenu": true,
+    "formDefinitionView": null,
+    "formDefinitionEdit": null
+}

@@ -11,7 +11,7 @@
                   name="Inwonerplan (PDCA)">
         <bpmn:documentation>Het plandossier ontstaat vanuit een intake: het taakformulier "Plan aanmaken (PDCA)" maakt het
             plan aan in Open Plan en start dit proces met de dossiergegevens. Het plan wordt daarna bijgehouden
-            via de PDCA-tabbladen en acties lopen via bouwblokken; dit proces heeft zelf geen taken.
+            via de PDCA-tabbladen; een aangevraagd instrument krijgt zijn eigen instrumentdossier. Dit proces heeft zelf geen taken.
         </bpmn:documentation>
         <bpmn:startEvent id="start-event" name="Plan aangemaakt vanuit intake">
             <bpmn:outgoing>flow-start-einde</bpmn:outgoing>

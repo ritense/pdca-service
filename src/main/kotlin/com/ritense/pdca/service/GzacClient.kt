@@ -233,47 +233,9 @@ class GzacClient(
             )
     }
 
-    // ---------------------------------------------------- bouwblok support
+    // ------------------------------------------ instrument dossier support
 
-    /**
-     * Starts a building block process on an existing dossier through that
-     * process's start-form link. This is the route GZAC's own UI also uses:
-     * the submission starts by process definition **id** (the start-by-key
-     * endpoint cannot start blueprint-owned, BB:-tagged processes) and the
-     * form's fields are written to the **dossier document** before the
-     * process starts — the building-block link's input mappings then copy
-     * them into the building block document. The process's tasks appear in
-     * the dossier's task list via the building block instance. The
-     * submission returns no processInstanceId; correlation runs through the
-     * update-actie callback (actieId).
-     */
-    fun submitStartForm(processLinkId: String, documentId: String, formData: Map<String, Any?>) {
-        val (baseUrl, token) = resolveAccess()
-        val result = try {
-            restClientBuilder.clone().build()
-                .post()
-                .uri("$baseUrl/api/v1/process-link/$processLinkId/form/submission?documentId=$documentId")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(formData.filterValues { it != null })
-                .retrieve()
-                .body(Map::class.java)
-        } catch (e: Exception) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_GATEWAY,
-                "GZAC startformulier van het bouwblok indienen mislukt op dossier $documentId: ${e.message}"
-            )
-        }
-        val errors = (result?.get("errors") as? List<*>)?.filterNotNull() ?: emptyList<Any>()
-        if (errors.isNotEmpty()) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_GATEWAY,
-                "GZAC weigerde de start van het bouwblok op dossier $documentId: $errors"
-            )
-        }
-    }
-
-    /** Latest version of a process definition (to find its start-form link). */
+    /** Latest version of a process definition (to find its process links). */
     fun latestProcessDefinitionId(processDefinitionKey: String): String {
         val (baseUrl, token) = resolveAccess()
         val definition = try {
@@ -286,13 +248,13 @@ class GzacClient(
         } catch (e: Exception) {
             throw ResponseStatusException(
                 HttpStatus.BAD_GATEWAY,
-                "GZAC procesdefinitie '$processDefinitionKey' ophalen mislukt (is het bouwblok geïmporteerd?): ${e.message}"
+                "GZAC procesdefinitie '$processDefinitionKey' ophalen mislukt (is het dossiertype geïmporteerd?): ${e.message}"
             )
         }
         return definition?.get("id") as? String
             ?: throw ResponseStatusException(
                 HttpStatus.BAD_GATEWAY,
-                "GZAC kent geen procesdefinitie '$processDefinitionKey' (is het bouwblok geïmporteerd?)"
+                "GZAC kent geen procesdefinitie '$processDefinitionKey' (is het dossiertype geïmporteerd?)"
             )
     }
 
@@ -312,87 +274,10 @@ class GzacClient(
         return links?.filterIsInstance<Map<*, *>>() ?: emptyList()
     }
 
-    /**
-     * The building-block link of a case definition version (GZAC's
-     * startable-item management API): inputMappings, outputMappings,
-     * pluginConfigurationMappings and startableByUser. Returns null when the
-     * case definition has no link for this building block (zip not imported).
-     */
-    fun buildingBlockLink(
-        caseDefinitionKey: String,
-        caseDefinitionVersionTag: String,
-        buildingBlockKey: String,
-        buildingBlockVersionTag: String
-    ): Map<*, *>? {
-        val (baseUrl, token) = resolveAccess()
-        return try {
-            restClientBuilder.clone().build()
-                .get()
-                .uri(
-                    "$baseUrl/api/management/v1/case-definition/$caseDefinitionKey/version/$caseDefinitionVersionTag" +
-                        "/startable-item/$buildingBlockKey/version/$buildingBlockVersionTag/properties?type=BUILDING_BLOCK"
-                )
-                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
-                .retrieve()
-                .body(Map::class.java)
-        } catch (e: HttpClientErrorException.NotFound) {
-            null
-        } catch (e: Exception) {
-            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC bouwbloklink ophalen mislukt: ${e.message}")
-        }
-    }
-
-    /**
-     * Updates the building-block link of a case definition version. The
-     * startable-item API replaces all link properties at once, so the caller
-     * must pass the complete set (read it first with [buildingBlockLink]).
-     */
-    fun updateBuildingBlockLink(
-        caseDefinitionKey: String,
-        caseDefinitionVersionTag: String,
-        buildingBlockKey: String,
-        buildingBlockVersionTag: String,
-        properties: Map<String, Any?>
-    ) {
-        val (baseUrl, token) = resolveAccess()
-        try {
-            restClientBuilder.clone().build()
-                .put()
-                .uri(
-                    "$baseUrl/api/management/v1/case-definition/$caseDefinitionKey/version/$caseDefinitionVersionTag" +
-                        "/startable-item/$buildingBlockKey/version/$buildingBlockVersionTag"
-                )
-                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(mapOf("type" to "BUILDING_BLOCK", "properties" to properties))
-                .retrieve()
-                .toBodilessEntity()
-        } catch (e: Exception) {
-            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC bouwbloklink bijwerken mislukt: ${e.message}")
-        }
-    }
-
     /** Version tag of the case definition behind [caseDefinitionKey]. */
     fun caseDefinitionVersionTag(caseDefinitionKey: String): String {
         val (baseUrl, token) = resolveAccess()
         return caseDefinitionVersionTag(baseUrl, token, caseDefinitionKey)
-    }
-
-    /** Replaces a dossier document's content (used to write the dossier's own URN into it). */
-    fun modifyDocument(documentId: String, content: Map<String, Any?>) {
-        val (baseUrl, token) = resolveAccess()
-        try {
-            restClientBuilder.clone().build()
-                .put()
-                .uri("$baseUrl/api/v1/document")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(mapOf("documentId" to documentId, "content" to content.filterValues { it != null }))
-                .retrieve()
-                .toBodilessEntity()
-        } catch (e: Exception) {
-            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossier $documentId bijwerken mislukt: ${e.message}")
-        }
     }
 
     /**
@@ -429,24 +314,25 @@ class GzacClient(
     }
 
     /**
-     * All deployed process definitions (latest version per key). Building
-     * block processes are recognisable by versionTag prefix
-     * "BB:<key>:<version>" — that is how PDCA Beheer fills the bouwblok
-     * dropdown without a management API.
+     * The document definition name of a dossier, read from the document
+     * itself (`definitionId.name`; for the PDCA cases equal to the case
+     * definition key). This is how aanmaak-instrument learns which dossier
+     * type is calling it, without the process having to say so.
      */
-    fun processDefinitions(): List<Map<*, *>> {
+    fun documentDefinitionName(documentId: String): String {
         val (baseUrl, token) = resolveAccess()
-        val body = try {
+        val document = try {
             restClientBuilder.clone().build()
                 .get()
-                .uri("$baseUrl/api/v1/process/definition")
+                .uri("$baseUrl/api/v1/document/$documentId")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
                 .retrieve()
-                .body(List::class.java)
+                .body(Map::class.java)
         } catch (e: Exception) {
-            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC procesdefinities ophalen mislukt: ${e.message}")
+            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossier $documentId ophalen mislukt: ${e.message}")
         }
-        return body?.filterIsInstance<Map<*, *>>() ?: emptyList()
+        return (document?.get("definitionId") as? Map<*, *>)?.get("name") as? String
+            ?: throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossier $documentId draagt geen documentdefinitie")
     }
 
     /**

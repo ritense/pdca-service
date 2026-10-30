@@ -141,28 +141,21 @@ tasks.register<Exec>("dockerBuildPush") {
     environment("PATH", "/usr/local/bin:/usr/bin:/bin")
 }
 
-// Importable GZAC zips (see gzac/case-definitions/README.md): case definitions
-// (config/case/<key>/<version>/) and building blocks
-// (config/building-block/<key>/<version>/). Case zips bundle the building
-// blocks their building-block-links reference, so one import per case zip
-// suffices: GZAC imports bundled building blocks first and skips any that
-// already exist. Output is reproducible so the committed zips only change
-// when their content does.
-val caseZipBouwblokken = mapOf(
-    "inwonerplan" to listOf("pdca-actie", "jobcoaching-aanvragen"),
-    "binnenhof-renovatie" to listOf("pdca-actie"),
-    "intake-werk-participatie" to emptyList(),
-    "renovatie-intake" to emptyList(),
-    "werkfit-aanvraag" to emptyList(),
+// Importable GZAC case-definition zips (config/case/<key>/<version>/, see
+// gzac/case-definitions/README.md). Output is reproducible so the committed
+// zips only change when their content does.
+val caseKeys = listOf(
+    "inwonerplan",
+    "binnenhof-renovatie",
+    "intake-werk-participatie",
+    "renovatie-intake",
+    "instrument-verzoek",
 )
-val caseZipTasks = caseZipBouwblokken.map { (caseKey, bouwblokken) ->
+val caseZipTasks = caseKeys.map { caseKey ->
     tasks.register<Zip>("caseZip-$caseKey") {
         group = "gzac"
         description = "Build the importable GZAC case-definition zip for '$caseKey'"
         from(layout.projectDirectory.dir("gzac/case-definitions/$caseKey"))
-        bouwblokken.forEach { bouwblokKey ->
-            from(layout.projectDirectory.dir("gzac/bouwblokken/$bouwblokKey"))
-        }
         include("config/**")
         exclude("**/.DS_Store")
         archiveFileName = "$caseKey.zip"
@@ -172,26 +165,10 @@ val caseZipTasks = caseZipBouwblokken.map { (caseKey, bouwblokken) ->
     }
 }
 
-val bouwblokZipTasks = listOf(
-    "pdca-actie", "jobcoaching-aanvragen",
-).map { bouwblokKey ->
-    tasks.register<Zip>("bouwblokZip-$bouwblokKey") {
-        group = "gzac"
-        description = "Build the importable GZAC building-block zip for '$bouwblokKey'"
-        from(layout.projectDirectory.dir("gzac/bouwblokken/$bouwblokKey"))
-        include("config/**")
-        exclude("**/.DS_Store")
-        archiveFileName = "$bouwblokKey.zip"
-        destinationDirectory = layout.projectDirectory.dir("gzac/bouwblokken")
-        isPreserveFileTimestamps = false
-        isReproducibleFileOrder = true
-    }
-}
-
 tasks.register("buildGzacZips") {
     group = "gzac"
-    description = "Build all importable GZAC zips (case definitions + building blocks)"
-    dependsOn(caseZipTasks + bouwblokZipTasks)
+    description = "Build all importable GZAC case-definition zips"
+    dependsOn(caseZipTasks)
 }
 
 // ---------------------------------------------------------------------------
@@ -206,7 +183,8 @@ tasks.register("buildGzacZips") {
 val registerPlugins = mapOf(
     "openplan" to "OpenPlan",
     "openproduct" to "OpenProduct",
-    "openklant" to "OpenKlant"
+    "openklant" to "OpenKlant",
+    "objecten" to "Objecten"
 )
 val valtimoDir = providers.gradleProperty("valtimoDir")
     .map { file(it) }

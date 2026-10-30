@@ -15,6 +15,11 @@ Maykin's Common Ground registers**:
   klantcontacten of the inwoner (Klantinteracties API `v1`), linked to the plan through an
   onderwerpobject; the backend creates them, the tabs read them through the proxy
   (ARCHITECTURE §5.1).
+- The **[Objecten API](https://github.com/maykinmedia/objects-api)** (Objects API `v2`) carries
+  the **verzoeken** by which a product is requested from a plan: the app files one, GZAC's
+  Verzoek plugin turns it into an instrument dossier that manages the instrument in the plan
+  (ARCHITECTURE §9). Which products can be requested is said by Open Product (the actie
+  `StartInstrument` on the producttype).
 
 The frontend consumes the register APIs **in their native shape** (camelCase Dutch fields,
 statuses `actief`/`afgerond`/`geannuleerd`, resultaat `behaald`/`gefaald`, paginated
@@ -27,13 +32,14 @@ statuses `actief`/`afgerond`/`geannuleerd`, resultaat `behaald`/`gefaald`, pagin
 ```
 
 **The registers are reached through GZAC**: for each register the app calls a contract
-(`nl.ritense.openplan@1`, `nl.ritense.openproduct@1`, `nl.ritense.openklant@1`), and GZAC
-forwards each call to the bound register plugin — [`openplan`](./plugins/openplan/README.md),
-[`openproduct`](./plugins/openproduct/README.md) or [`openklant`](./plugins/openklant/README.md)
-— which runs on a Valtimo plugin host and holds the register's URL and token (ARCHITECTURE
-§6.3). Paths, bodies and status codes are those of the register APIs. The app holds no register
-URLs or tokens and has no other route to the registers: it always depends on GZAC and the three
-register plugins.
+(`nl.ritense.openplan@1`, `nl.ritense.openproduct@1`, `nl.ritense.openklant@1`,
+`nl.ritense.objecten@1`), and GZAC forwards each call to the bound register plugin —
+[`openplan`](./plugins/openplan/README.md), [`openproduct`](./plugins/openproduct/README.md),
+[`openklant`](./plugins/openklant/README.md) or [`objecten`](./plugins/objecten/README.md) —
+which runs on a Valtimo plugin host and holds the register's URL and token (ARCHITECTURE §6.3).
+Paths, bodies and status codes are those of the register APIs. The app holds no register URLs or
+tokens and has no other route to the registers: it always depends on GZAC and the four register
+plugins. The Objecten API is used by the backend only (no proxy).
 
 The Spring Boot backend itself only keeps what the registers don't model, keyed by register uuid
 (`/api/v1/pdca/*`): the **direct dossier link** (`plan_details.dossier_id`, plan = dossier
@@ -62,7 +68,7 @@ Key modelling choices:
   is no target position on the plan — the direction lives in the hoofddoel.
 - **Doelen from the doeltype register** — `DoelType.doelType` carries the name of a fixed,
   defined doel; category `Hoofddoel` marks hoofddoel types and every other category is a
-  thema that scopes the product catalog under that subdoel (ARCHITECTURE §9.2). Every plan
+  thema that scopes the product catalog under that subdoel (ARCHITECTURE §9.3). Every plan
   has exactly one **active hoofddoel**, created as a real Doel with the subdoelen
   referencing it via the register field `doel.hoofdDoel` (W&P hierarchy plan → hoofddoel →
   subdoelen; the overlay keeps the type in `hoofddoel_type_uuid`). Switching the hoofddoel
@@ -222,20 +228,11 @@ the `pdca-admin` view and the `evaluation` side panel are loaded as sandboxed if
   [`gzac/case-definitions/README.md`](./gzac/case-definitions/README.md)). In the PDCA
   configuration the intake case type points at its plan case type via
   **planCaseDefinitionKey**.
-- **Instrument-dossier type** `werkfit-aanvraag`: a product request as a **full case** —
-  every request from the plan page gets its own dossier (own tasks, PBAC, documents,
-  optionally a zaak via GZAC's zaaktype-link) and manages the instrument in the plan
-  through the pdca plugin actions; the instrument's `zaak` field carries the dossier URN,
-  which gives the plan page its "Dossier" button.
-
-In addition, [`gzac/bouwblokken/`](./gzac/bouwblokken/) ships importable **building
-blocks**: `pdca-actie.zip` (an action under a doel executed as a GZAC building block
-process) and `jobcoaching-aanvragen.zip` (a product request — all product logic lives in
-the building block, which manages the instrument in the plan itself through the
-`aanmaak-instrument`/`update-instrument` plugin actions). The plan-dossier zips link to
-them with `startableByUser: false` — normal building block behaviour, but no entry in the
-start menu; starting happens from the plan page (see
-[`gzac/case-definitions/README.md`](./gzac/case-definitions/README.md)).
+- **Instrument dossier** `instrument-verzoek`: the one dossier type for every product
+  requested from a plan. The plan page files a verzoek in the Objecten API; GZAC's Verzoek
+  plugin turns it into this dossier, which puts the instrument in the plan through the pdca
+  plugin actions and completes it later. The instrument's `zaak` field carries the dossier
+  URN, which gives the plan page its "Dossier" button (ARCHITECTURE §9).
 
 The setup is the standard GZAC admin flow — a few manual steps in the GZAC UI, nothing else
 is needed (the PDCA side seeds itself: reference data in the registers and the case
@@ -244,13 +241,15 @@ plugin contracts and a plugin host registered in it.
 
 0. **Install the register plugins** — build them once (`./gradlew buildPlugins`, see the
    READMEs of [`openplan`](./plugins/openplan/README.md),
-   [`openproduct`](./plugins/openproduct/README.md) and
-   [`openklant`](./plugins/openklant/README.md)) and upload
-   `plugins/openplan/dist/openplan-1.0.0.zip`, `plugins/openproduct/dist/openproduct-1.0.0.zip`
-   and `plugins/openklant/dist/openklant-1.0.0.zip` onto the plugin host (*Admin → Plugins →
-   Upload plugin*). Configure each, accepting `http_request` and `log`; their configuration
-   screens start with the local development values (`http://host.docker.internal:7501`,
-   `:7502` and `:7504` with the dev tokens).
+   [`openproduct`](./plugins/openproduct/README.md),
+   [`openklant`](./plugins/openklant/README.md) and
+   [`objecten`](./plugins/objecten/README.md)) and upload
+   `plugins/openplan/dist/openplan-1.0.0.zip`, `plugins/openproduct/dist/openproduct-1.0.0.zip`,
+   `plugins/openklant/dist/openklant-1.0.0.zip` and `plugins/objecten/dist/objecten-1.0.0.zip`
+   onto the plugin host (*Admin → Plugins → Upload plugin*). Configure each, accepting
+   `http_request` and `log`; their configuration screens start with the local development
+   values (`http://host.docker.internal:7501`, `:7502` and `:7504` with the dev tokens, and
+   `:8010` with the Objecten API token of the gzac-docker-compose fixtures).
 
    The URL is the address the **plugin host** reaches the register on —
    `http://host.docker.internal:<port>` for a plugin host in Docker on the same machine as this
@@ -261,7 +260,8 @@ plugin contracts and a plugin host registered in it.
 1. **Register the app** — register the external-plugin host at `http://localhost:7500`; the
    plugin "PDCA Planbeheer" is discovered. Create a **plugin configuration** for it, accept
    the requested endpoints/capabilities and, under *Required plugins*, bind
-   `nl.ritense.openplan@1`, `nl.ritense.openproduct@1` and `nl.ritense.openklant@1` to the
+   `nl.ritense.openplan@1`, `nl.ritense.openproduct@1`, `nl.ritense.openklant@1` and
+   `nl.ritense.objecten@1` to the
    configurations of the matching plugins (each preselected when it is the only one). GZAC
    then pushes the serviceToken and the granted contracts to the app. An existing PDCA
    configuration keeps working when contracts are added: GZAC asks the administrator to
@@ -273,21 +273,25 @@ plugin contracts and a plugin host registered in it.
    and everything is connected at import (imported without the mapping, the case shows a
    configuration issue — repairable afterwards; see
    [`gzac/case-definitions/README.md`](./gzac/case-definitions/README.md), "PDCA connected
-   at import"). The plan-dossier zips are self-contained and
-   bundle the building blocks their building-block-links reference (GZAC imports those
-   first and skips any that already exist). The standalone zips in `gzac/bouwblokken/`
-   remain for importing/updating a building block on its own. **Activate the imported
+   at import"). The instrument dossier `instrument-verzoek` needs no mapping: the app
+   repairs its pdca process links itself. **Activate the imported
    version** in case management afterwards — imported versions arrive inactive, and an
    inactive case type stays invisible (dossier lists, start menus, and the PDCA Beheer
    dropdowns all show active case types only).
 3. **Menu config** — add the plugin page "PDCA Beheer" (`pdca-admin`) to the menu.
-4. **Link actions and products** — PDCA Beheer → Actie-bouwblokken, Instrument-bouwblokken
-   or Instrument-dossiers: pick the building block (or, in the Instrument-dossiers section, the
-   product case type such as `werkfit-aanvraag`), the plugin
-   configuration and the doeltype(s) per plan case type; see
-   [`gzac/case-definitions/README.md`](./gzac/case-definitions/README.md). Optional: give
-   product dossiers a **zaak** by linking the product case type to a zaaktype in GZAC case
-   management (*Connected zaak type* with *Automatically create for each case*).
+4. **Set up the verzoek route** — once per GZAC stack: the `InstrumentVerzoek` objecttype in
+   the Objecttypen API (schema in [`gzac/objecttypen/`](./gzac/objecttypen/)), notifications
+   from the Objecten API to Open Notificaties, the Objecttypen/Objecten/Notificaties API
+   plugins plus an object management configuration in GZAC, a zaaktype link on
+   `instrument-verzoek`, and one Verzoek plugin configuration with verzoek type `instrument`;
+   step by step in [`gzac/case-definitions/README.md`](./gzac/case-definitions/README.md),
+   "The instrument dossier". Then give the producttypen in Open Product their
+   `StartInstrument` actie with that objecttype URL — the dev seed does this when
+   `PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE` is set (see "Docker").
+
+For the local GZAC dev stack (the Valtimo monorepo's `gzac-docker-compose`) steps 0 to 4 are
+done at boot by the autodeployment set in [`gzac/autodeployment/`](./gzac/autodeployment/README.md):
+run GZAC with its init script and everything above is registered, uploaded, bound and configured.
 
 Open the "Plan aanmaken" task after the intake: the form is fully prefilled from the intake
 document; submitting creates — in a single `POST /api/v1/pdca/plan-intake` — the plan (incl.
@@ -327,8 +331,8 @@ All routes yield a dossier (plan = dossier 1:1):
   The call is idempotent: an already-linked plan returns its existing dossier.
 
 The app's manifest declares the contracts it calls (`permissions.contracts`:
-`nl.ritense.openplan@1`, `nl.ritense.openproduct@1`, `nl.ritense.openklant@1`) and this GZAC-API
-footprint (capability `gzac_api` plus
+`nl.ritense.openplan@1`, `nl.ritense.openproduct@1`, `nl.ritense.openklant@1`,
+`nl.ritense.objecten@1`) and this GZAC-API footprint (capability `gzac_api` plus
 `permissions.endpoints`, see
 [`PluginHostController`](./src/main/kotlin/com/ritense/pdca/plugin/PluginHostController.kt)):
 
@@ -337,22 +341,15 @@ footprint (capability `gzac_api` plus
   `GET /api/management/v1/document-definition` — list case types for the PDCA Beheer
   dropdowns (the management list, since the v1 list is PBAC-filtered and hides freshly
   imported types) and look up schemas/the caseDefinitionVersionTag (blueprint);
-- `GET /api/v1/document/*` — read a dossier (intake prefill, linking a planId under water);
+- `GET /api/v1/document/*` — read a dossier (intake prefill, linking a planId under water,
+  the dossier type behind an `aanmaak-instrument` call);
 - `GET /api/management/v1/case/*` — read a dossier's content via case inspection, because
   `/api/v1/document/*` omits `content` unless GZAC runs with
   `valtimo.includeDocumentContentInResponse: true` (default off; on in the local dev GZAC);
-- `PUT /api/v1/document` — write a product dossier's own URN into its document;
-- `GET /api/v1/process/definition` + `GET /api/v1/process/definition/*` — recognise building
-  block processes (`BB:` version tag) and look up the latest version per key;
-- `POST /api/v1/process-link/*/form/submission` — start a building block via its start form
-  (the start payload lands on the dossier document under `/bouwblokStart`);
-- `GET /api/v1/process-link` — find a building block's start-form link;
-- `GET .../startable-item/*/version/*/properties` + `PUT .../startable-item/*/version/*`
-  (under `/api/management/v1/case-definition/*/version/*`) — maintain the
-  `pluginConfigurationMappings` on the case type's building-block link (the configuration
-  chosen in PDCA Beheer);
-- `PUT .../plugin-configuration-mappings` (same base path) — repair a product case type's
-  dangling pdca process links to the chosen configuration (DOSSIER products).
+- `GET /api/v1/process/definition/*` + `GET /api/v1/process-link` — the latest version of the
+  instrument dossier's process and its pdca process links;
+- `PUT /api/management/v1/case-definition/*/version/*/plugin-configuration-mappings` — repair
+  those dangling process links to the pushed PDCA configuration.
 
 The list with per-endpoint rationale lives in one place in the code:
 `PluginHostController.GRANTED_ENDPOINTS`.
@@ -419,6 +416,7 @@ register plugin configurations in GZAC.
 | `GZAC_URL` | _(empty: the pushed callback URL is used)_ | Override of the GZAC API URL pushed by GZAC; required for the static-token/Keycloak fallbacks |
 | `GZAC_TOKEN_URL` / `GZAC_CLIENT_ID` / `GZAC_CLIENT_SECRET` | standard gzac-docker-compose m2m client | Keycloak client-credentials fallback |
 | `PDCA_SEED_DEMO_DATA` | `true` | Seed demo plans into an empty Open Plan on boot |
+| `PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE` | _(empty)_ | Compose init only: the URL of the `InstrumentVerzoek` objecttype in the Objecttypen API, written into the `StartInstrument` acties of the seeded producttypen (ARCHITECTURE §9). Without it the acties lack the objecttype and a product request says so |
 
 **Registers outside docker compose** (e.g. a cluster environment): the app needs the same
 reference data in Open Plan and Open Product, otherwise the dienstverlening/hoofddoel/subdoel
@@ -429,8 +427,13 @@ API token with the dev token:
 
 ```bash
 kubectl exec -i <openplan-pod> -- python src/manage.py shell < docker/openplan/reference_data.py
-kubectl exec -i <openproduct-pod> -- python src/manage.py shell < docker/openproduct/reference_data.py
+kubectl exec -i <openproduct-pod> -- env PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE=<objecttype url> \
+  python src/manage.py shell < docker/openproduct/reference_data.py
 ```
+
+The Open Product seed also gives every producttype its `StartInstrument` actie; the objecttype
+URL of the verzoek is that environment's own, hence the variable (rerunning the seed with it
+updates existing acties).
 
 Container networking notes: the compose `pdca-app` service reaches a GZAC stack running on the
 host via `host.docker.internal` (mapped with `host-gateway`, so it also works on Linux). The
@@ -441,9 +444,9 @@ other direction, when GZAC itself runs in Docker, register the plugin URL as
 
 ```bash
 ./gradlew build          # full build -> build/libs/pdca-app-0.1.0.jar
-./gradlew buildGzacZips  # rebuild the importable GZAC zips (case definitions + building blocks)
+./gradlew buildGzacZips  # rebuild the importable GZAC case-definition zips
 ./gradlew buildPlugins   # the register plugins -> plugins/<register>/dist/<register>-1.0.0.zip (Node 22+)
-                         # one at a time: buildOpenPlanPlugin, buildOpenProductPlugin, buildOpenKlantPlugin
+                         # one at a time: buildOpenPlanPlugin, buildOpenProductPlugin, buildOpenKlantPlugin, buildObjectenPlugin
 ```
 
 Resetting data: `docker compose down -v` wipes all four databases; the init containers and
