@@ -46,21 +46,25 @@ allprojects {
             }
         }
 
-        tasks.named("bootRun", JavaExec::class.java) {
-            // The dev app loads .env.properties in a doFirst action of its own;
-            // this action is inserted right after it so the overrides win.
-            actions.add(minOf(1, actions.size), Action<Task> { (this as JavaExec).environment(environmentOverrides) })
-            // The JDK hosts file replaces the system resolver entirely, so the
-            // machine's own name (the process engine asks for it) goes in too.
-            val hostsFile = layout.buildDirectory.file("pdca/jdk-hosts").get().asFile
-            doFirst {
-                hostsFile.parentFile.mkdirs()
-                val localName = runCatching { java.net.InetAddress.getLocalHost().hostName }.getOrDefault("localhost")
-                hostsFile.writeText(
-                    pdcaRoot.resolve("gzac/autodeployment/dev/jdk-hosts").readText().trimEnd() + "\n127.0.0.1 $localName\n"
-                )
+        // bootRun starts the app against a running stack, bootRunWithDocker
+        // brings the stack up first; both get the same environment and JDK.
+        listOf("bootRun", "bootRunWithDocker").filter { tasks.names.contains(it) }.forEach { taskName ->
+            tasks.named(taskName, JavaExec::class.java) {
+                // The dev app loads .env.properties in a doFirst action of its own;
+                // this action is inserted right after it so the overrides win.
+                actions.add(minOf(1, actions.size), Action<Task> { (this as JavaExec).environment(environmentOverrides) })
+                // The JDK hosts file replaces the system resolver entirely, so the
+                // machine's own name (the process engine asks for it) goes in too.
+                val hostsFile = layout.buildDirectory.file("pdca/jdk-hosts").get().asFile
+                doFirst {
+                    hostsFile.parentFile.mkdirs()
+                    val localName = runCatching { java.net.InetAddress.getLocalHost().hostName }.getOrDefault("localhost")
+                    hostsFile.writeText(
+                        pdcaRoot.resolve("gzac/autodeployment/dev/jdk-hosts").readText().trimEnd() + "\n127.0.0.1 $localName\n"
+                    )
+                }
+                jvmArgs("-Djdk.net.hosts.file=$hostsFile")
             }
-            jvmArgs("-Djdk.net.hosts.file=$hostsFile")
         }
     }
 }

@@ -37,7 +37,8 @@ and its plugin host running:
      ./gradlew bootRunWithDocker
    ```
 
-4. Start GZAC from the root of the Valtimo monorepo:
+4. Start GZAC from the root of the Valtimo monorepo (`bootRunWithDocker`
+   works the same way and brings the stack up first):
 
    ```bash
    ./gradlew :backend:apps:dev:bootRun -I <pdca-app>/gzac/autodeployment/gzac-dev.init.gradle.kts
@@ -50,6 +51,34 @@ to the plugin host, discovers the PDCA app's manifest, binds the contracts
 and pushes the configuration to the app, which then repairs the instrument
 dossier's process links itself. Everything is idempotent: change a file,
 restart GZAC the same way.
+
+**A fresh GZAC database needs two boots.** On the first boot the descriptor
+creates the four register plugin configurations before the plugin host
+serves their plugins, so GZAC does not know their manifests yet and stores
+the tokens unencrypted; pushing those configurations to the plugin host then
+fails on decryption, every discovery cycle. The second boot re-applies the
+descriptor against the manifests discovered in the meantime, re-encrypts the
+tokens and the pushes succeed. Once that has happened the configuration is
+in GZAC's database and later boots, with or without the init script, keep
+working.
+
+### After a clean start of the stack
+
+When the stack's databases were recreated (`docker compose down -v`, a fresh
+machine), repeat in this order:
+
+1. `sh gzac/autodeployment/dev/setup-registers.sh` — the objecttype and the
+   token permission live in the Objecttypen and Objecten API databases.
+2. Give the Open Product acties the objecttype URL again: start the PDCA
+   stack with `PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE` set (step 3 above), or
+   re-run the seed in the running Open Product container:
+
+   ```bash
+   docker exec -i -e PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE=http://host.docker.internal:8011/api/v2/objecttypes/00000000-0000-4000-8000-0000dca00001 \
+     pdca-app-openproduct-1 python src/manage.py shell < docker/openproduct/reference_data.py
+   ```
+
+3. Start GZAC with the init script, twice when its database is fresh too.
 
 ### The two environment values
 
