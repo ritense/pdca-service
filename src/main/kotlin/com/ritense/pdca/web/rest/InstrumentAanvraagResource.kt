@@ -22,15 +22,17 @@ import jakarta.validation.constraints.NotNull
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
  * Requesting a product for a doel from the plan page: files the verzoek
- * (ARCHITECTURE §9). The answer is 202: the instrument appears in the plan
+ * (ARCHITECTURE §6.2). The answer is 202: the instrument appears in the plan
  * once GZAC's instrument dossier has created it.
  */
 @RestController
@@ -40,10 +42,19 @@ class InstrumentAanvraagResource(
 ) {
 
     data class StartRequest(
-        @field:NotNull val doelUuid: UUID,
-        @field:NotNull val producttypeUuid: UUID
+        @field:NotNull(message = "Kies het doel") val doelUuid: UUID,
+        @field:NotNull(message = "Kies het product") val producttypeUuid: UUID
     )
 
+    /**
+     * The open verzoeken of a plan: filed, but their instrument has not
+     * appeared yet (oldest first, with how long they have been open).
+     */
+    @GetMapping("/verzoeken")
+    fun openVerzoeken(@RequestParam(name = "planUuid") planUuid: UUID): List<InstrumentAanvraagService.OpenVerzoek> =
+        instrumentAanvraagService.openVerzoeken(planUuid)
+
+    /** Files a verzoek; 409 while one for the same doel and product is open, or when doel or plan no longer runs. */
     @PostMapping("/start")
     fun start(@Valid @RequestBody request: StartRequest): ResponseEntity<InstrumentAanvraagService.Verzoek> =
         ResponseEntity.status(HttpStatus.ACCEPTED)

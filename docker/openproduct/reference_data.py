@@ -5,7 +5,7 @@
 # own themes. Idempotent.
 #
 # Every producttype also gets the actie "StartInstrument": that is what makes
-# it requestable from a plan (ARCHITECTURE.md §9). Its mapping is the start
+# it requestable from a plan (ARCHITECTURE.md §6.2). Its mapping is the start
 # recipe the PDCA app reads: soort "verzoek" and the objecttype of the
 # verzoek in the Objecten API. That objecttype URL is environment-specific
 # (the Objecttypen API of the GZAC stack), so it comes from the environment
@@ -13,7 +13,9 @@
 # created without objecttype and the app refuses the request with a message
 # that says so — set the URL on the actie in the Open Product admin, or run
 # this script again with the variable set. The parameter "startStatus" is the
-# status the instrument starts with in the plan (actief or gepland).
+# status the instrument starts with in the plan (actief or gepland), the
+# parameter "instrumenttype" the Open Plan instrumenttype it gets (one of the
+# instrumenttypen docker/openplan/reference_data.py seeds).
 #
 # Runs in a Django shell of the Open Product container. Locally init.py
 # executes it after provisioning the dev token; on any other environment run
@@ -83,6 +85,7 @@ PRODUCTTYPEN = [
         "organisatie": ("WERKSE", "Werkse!", "Delft"),
         "keywords": ["werkzoekenden", "wio-doelgroep"],
         "duur": "6 maanden",
+        "instrumenttype": "training",
     },
     {
         "code": "JOBCOACHING",
@@ -93,6 +96,7 @@ PRODUCTTYPEN = [
         "organisatie": ("RANDSTAD", "Randstad", "Diemen"),
         "keywords": ["arbeidsbeperking", "werkenden met ondersteuningsbehoefte"],
         "duur": "12 maanden",
+        "instrumenttype": "coaching",
     },
     {
         "code": "LEERBAARHEIDSTOETS",
@@ -103,6 +107,7 @@ PRODUCTTYPEN = [
         "organisatie": ("ROC-MONDRIAAN", "ROC Mondriaan", "Den Haag"),
         "keywords": ["jongeren", "herintreders"],
         "duur": "2 weken",
+        "instrumenttype": "training",
     },
     {
         "code": "ORIENTEREND-AANBOD",
@@ -113,6 +118,7 @@ PRODUCTTYPEN = [
         "organisatie": ("GEMEENTE-DEN-HAAG", "Gemeente Den Haag", "Den Haag"),
         "keywords": ["werkzoekenden", "statushouders"],
         "duur": "3 maanden",
+        "instrumenttype": "training",
     },
     {
         "code": "NAZORGTRAJECT",
@@ -123,6 +129,7 @@ PRODUCTTYPEN = [
         "organisatie": ("GEMEENTE-DEN-HAAG", "Gemeente Den Haag", "Den Haag"),
         "keywords": ["nazorg", "recent geplaatste werknemers"],
         "duur": "6 maanden",
+        "instrumenttype": "coaching",
     },
     {
         "code": "BRANDVEILIGHEIDSONDERZOEK",
@@ -133,6 +140,7 @@ PRODUCTTYPEN = [
         "organisatie": ("BRANDWEER-NL", "Brandweer NL", "Arnhem"),
         "keywords": ["gebouweigenaren", "monumentenbeheerders"],
         "duur": "4 weken",
+        "instrumenttype": "coaching",
     },
     {
         "code": "BHV-TRAINING",
@@ -143,6 +151,7 @@ PRODUCTTYPEN = [
         "organisatie": ("VEILIGHEIDSREGIO", "Veiligheidsregio", "Den Haag"),
         "keywords": ["bhv-ers", "medewerkers"],
         "duur": "2 dagen",
+        "instrumenttype": "training",
     },
     {
         "code": "INSPECTIEDIENST",
@@ -153,6 +162,7 @@ PRODUCTTYPEN = [
         "organisatie": ("TUV-NEDERLAND", "TUV Nederland", "Best"),
         "keywords": ["gebouweigenaren", "installatiebeheerders"],
         "duur": "1 week",
+        "instrumenttype": "coaching",
     },
     {
         "code": "FINANCIELE-INTAKE",
@@ -163,6 +173,7 @@ PRODUCTTYPEN = [
         "organisatie": ("GEMEENTE-DEN-HAAG", "Gemeente Den Haag", "Den Haag"),
         "keywords": ["bijstandsgerechtigden", "minima"],
         "duur": "2 weken",
+        "instrumenttype": "financiele_ondersteuning",
     },
 ]
 
@@ -187,6 +198,7 @@ for spec in PRODUCTTYPEN:
     else:
         print(f"[openproduct-reference-data] Producttype {spec['code']} already present")
     ensure_parameter(pt, "startStatus", "actief")
+    ensure_parameter(pt, "instrumenttype", spec["instrumenttype"])
     print(f"[openproduct-reference-data] Producttype {spec['code']}: actie {START_ACTIE} {ensure_start_actie(pt)}")
 
 if not VERZOEK_OBJECTTYPE:

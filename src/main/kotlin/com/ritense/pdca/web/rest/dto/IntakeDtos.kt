@@ -16,23 +16,27 @@
 
 package com.ritense.pdca.web.rest.dto
 
-import com.fasterxml.jackson.annotation.JsonAlias
+import com.fasterxml.jackson.annotation.JsonIgnore
+import com.ritense.pdca.domain.Bsn
+import jakarta.validation.Valid
+import jakarta.validation.constraints.AssertTrue
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Pattern
 
 /**
- * Prefill for the create-plan task form, built from the dossier content
- * through the case type's prefill mapping (PhaseConfig.prefillMapping or the
- * default paths). `prefill` only contains the fields found in the document —
- * the form works with minimal as well as maximal prefill.
+ * Prefill for the create-plan task form, built from the intake dossier's
+ * content through the case type's prefill mapping (PhaseConfig.prefillMapping
+ * or the default paths). `prefill` only contains the fields found in the
+ * document — the form works with minimal as well as maximal prefill.
  */
 data class PlanPrefillResponse(
     val documentId: String,
     val caseDefinitionKey: String?,
     /**
-     * Case type of the PLAN that results from this dossier. Equal to
-     * [caseDefinitionKey] for plan case types; for an intake case type it
-     * points at the plan case type (PhaseConfig.planCaseDefinitionKey) — the
-     * task form then creates a plan dossier of that type next to the plan
-     * instead of linking to this dossier.
+     * Case type of the plan that results from this intake dossier
+     * (PhaseConfig.planCaseDefinitionKey of the intake case type); the plan
+     * gets a plan dossier of that type. Null when the dossier's case type is
+     * not configured as an intake: no plan can be created from it.
      */
     val planCaseDefinitionKey: String?,
     val mapping: Map<String, String>,
@@ -43,19 +47,24 @@ data class PlanPrefillResponse(
  * The full plan structure from the intake: the create-plan task form sends
  * this (edited by the user) to POST /api/v1/pdca/plan-intake. Everything
  * except subject + titel is optional — minimal prefill yields a bare plan,
- * maximal prefill a complete plan with doelen, instrumenten, contactmomenten
- * and betrokkenen.
+ * maximal prefill a complete plan with doelen, contactmomenten and
+ * betrokkenen, plus the instrumenten to request once the plan exists. The
+ * subject of a persoon plan must be a valid bsn (elfproef, [Bsn]).
  */
 data class PlanIntakeRequest(
-    val documentId: String? = null,
-    val caseDefinitionKey: String,
+    /** The intake dossier the task form runs in. */
+    @field:NotBlank(message = "Het intakedossier ontbreekt")
+    val documentId: String,
+    @field:Pattern(regexp = "PERSON|OBJECT", message = "Het onderwerp is een persoon (PERSON) of een object (OBJECT)")
     val subjectType: String,
+    @field:NotBlank(message = "Vul een BSN of object-ID in")
     val subjectId: String,
     /**
      * Display name of the subject (inwoner or object) as the intake knows it;
      * becomes the plan dossier's onderwerp when the register has no name.
      */
     val subjectNaam: String? = null,
+    @field:NotBlank(message = "Vul een titel voor het plan in")
     val titel: String,
     val notitie: String? = null,
     val dienstverlening: String? = null,
@@ -65,14 +74,21 @@ data class PlanIntakeRequest(
     val beginPositie: String? = null,
     val startdatum: String? = null,
     val streefEinddatum: String? = null,
+    @field:Valid
     val doelen: List<IntakeDoel> = emptyList(),
     val instrumenten: List<IntakeInstrument> = emptyList(),
     val contactmomenten: List<IntakeContactmoment> = emptyList(),
     val betrokkenen: List<IntakeBetrokkene> = emptyList()
-)
+) {
+    @get:JsonIgnore
+    @get:AssertTrue(message = "Het BSN is ongeldig (elfproef)")
+    val isSubjectBsnGeldig: Boolean
+        get() = subjectType != "PERSON" || subjectId.isBlank() || Bsn.isValid(subjectId.trim())
+}
 
-/** [status]: gepland, gestart or afgerond (legacy `actief` = gepland). */
+/** [status]: gepland (the default), gestart or afgerond. */
 data class IntakeDoel(
+    @field:NotBlank(message = "Elk subdoel heeft een doeltype")
     val doelType: String,
     val beschrijving: String? = null,
     val status: String? = null,
@@ -80,15 +96,16 @@ data class IntakeDoel(
     val toelichting: String? = null
 )
 
-/** [status]: gepland, gestart or afgerond (legacy `actief` = gestart). */
+/**
+ * An instrument to request once the plan exists: [product] is the Open
+ * Product producttype code, [doel] the subdoel by doeltype name. Without a
+ * subdoel, or when two subdoelen share that doeltype, it goes under the
+ * first (matching) subdoel with a warning; an unknown subdoel is not
+ * requested and becomes a warning.
+ */
 data class IntakeInstrument(
-    val titel: String,
     val product: String? = null,
-    val doel: String? = null,
-    val status: String? = null,
-    val resultaat: String? = null,
-    val urenBesteed: Int? = null,
-    val effectiviteit: Int? = null
+    val doel: String? = null
 )
 
 data class IntakeContactmoment(
@@ -102,37 +119,34 @@ data class IntakeContactmoment(
 
 /**
  * [procesbegeleider] marks the plan's procesbegeleider; only the first
- * flagged betrokkene becomes it. Older intake documents call the flag
- * `hoofdverantwoordelijke`.
+ * flagged betrokkene becomes it.
  */
 data class IntakeBetrokkene(
     val naam: String,
     val rol: String,
     val email: String? = null,
     val organisatie: String? = null,
-    @JsonAlias("hoofdverantwoordelijke")
     val procesbegeleider: Boolean = false
 )
 
 data class PlanIntakeResponse(
     val planUuid: String,
-    val documentId: String?,
-    /**
-     * The plan dossier the plan is linked 1:1 to: the dossier itself (plan
-     * case type), or the newly created plan dossier (intake and standalone
-     * route) — plan and dossier always come into existence together.
-     */
-    val planDossierId: String?,
+    /** The intake dossier the plan came from. */
+    val documentId: String,
+    /** The plan dossier the plan is linked 1:1 to; always set, a plan is only done with its dossier. */
+    val planDossierId: String,
     val doelen: Int,
-    val instrumenten: Int,
+    /** Verzoeken filed for the intake's instrumenten; each instrument appears once its instrument dossier created it. */
+    val instrumentenAangevraagd: Int,
     val contactmomenten: Int,
     val betrokkenen: Int,
     val warnings: List<String>,
     /**
-     * True when this intake had already produced a plan and nothing was
-     * created: the counts are then those of the existing plan's structure as
-     * far as the overlay knows them (0), not of this call. The task form uses
-     * it to report "already created" and complete the task on that plan.
+     * True when this intake's plan was complete already and nothing was
+     * done: the counts are then 0. The task form reports "already created"
+     * and completes the task on that plan.
      */
-    val bestaand: Boolean = false
+    val bestaand: Boolean = false,
+    /** True when this call completed a plan an earlier, failed attempt had started. */
+    val hervat: Boolean = false
 )

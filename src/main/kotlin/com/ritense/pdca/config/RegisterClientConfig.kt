@@ -17,7 +17,8 @@
 package com.ritense.pdca.config
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.ritense.pdca.plugin.PushedGzacAccess
+import com.ritense.pdca.plugin.GzacAccess
+import com.ritense.pdca.registers.ContractCallLimiter
 import com.ritense.pdca.registers.Register
 import com.ritense.pdca.registers.RegisterContractRequestFactory
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -29,13 +30,20 @@ import org.springframework.web.client.RestClient
  * RestClient beans for the Maykin registers. The app holds no register URL or
  * token: every request goes through the register's GZAC contract
  * ([RegisterContractRequestFactory]), served by the bound register plugin.
+ * Services use them only through the register gateways
+ * ([com.ritense.pdca.registers.RegisterGateway]); the browser passthrough
+ * ([com.ritense.pdca.registers.RegisterProxyController]) uses them directly.
  */
 @Configuration
 @EnableConfigurationProperties(PdcaProperties::class)
 class RegisterClientConfig(
-    private val pushedGzacAccess: PushedGzacAccess,
-    private val objectMapper: ObjectMapper
+    private val gzacAccess: GzacAccess,
+    private val objectMapper: ObjectMapper,
+    properties: PdcaProperties
 ) {
+
+    /** One limiter for every register: all contract calls count against the one active configuration. */
+    private val contractCallLimiter = ContractCallLimiter(properties.registers)
 
     @Bean
     fun openPlanRestClient(builder: RestClient.Builder): RestClient = registerRestClient(builder, Register.OPENPLAN)
@@ -52,6 +60,6 @@ class RegisterClientConfig(
     private fun registerRestClient(builder: RestClient.Builder, register: Register): RestClient =
         builder.clone()
             .baseUrl(register.contractBaseUrl)
-            .requestFactory(RegisterContractRequestFactory(register, pushedGzacAccess, objectMapper, builder))
+            .requestFactory(RegisterContractRequestFactory(register, gzacAccess, objectMapper, builder, contractCallLimiter))
             .build()
 }

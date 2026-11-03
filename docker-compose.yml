@@ -51,7 +51,8 @@ services:
       PDCA_DB_PORT: "5432"
       # GZAC runs outside this compose project (its own stack on the host).
       GZAC_URL: http://host.docker.internal:8080
-      GZAC_TOKEN_URL: http://host.docker.internal:8081/auth/realms/valtimo/protocol/openid-connect/token
+      # Demo data of the display stubs (BRP, objecten), as with bootRun.
+      PDCA_DISPLAY_STUBS: ${PDCA_DISPLAY_STUBS:-true}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped
@@ -176,9 +177,11 @@ services:
       OTEL_SDK_DISABLED: "true"
       PGHOST: openproduct-db
       PGPORT: "5432"
-      # Objecttype of the verzoek the StartInstrument acties point at (the
-      # Objecttypen API of the GZAC stack; environment-specific, see README).
-      PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE: ${PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE:-}
+      # Objecttype of the verzoek the StartInstrument acties point at. The
+      # local-dev default is the objecttype the local GZAC stack gets from
+      # gzac/dev-setup/registers/setup-registers.sh (fixed uuid); other
+      # environments set their own (see README).
+      PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE: ${PDCA_INSTRUMENT_VERZOEK_OBJECTTYPE:-http://host.docker.internal:8011/api/v2/objecttypes/00000000-0000-4000-8000-0000dca00001}
     volumes:
       - ./docker/register-dev/pdca_dev.py:/app/src/openproduct/conf/pdca_dev.py:ro
       - ./docker/openproduct/init.py:/init/init.py:ro

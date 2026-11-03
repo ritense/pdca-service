@@ -1,0 +1,14 @@
+{
+  "name": "register-plugin-core",
+  "version": "2.0.0",
+  "description": "Shared core of the register plugins: the contract handler and the configuration screen",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "EUPL-1.2"
+}

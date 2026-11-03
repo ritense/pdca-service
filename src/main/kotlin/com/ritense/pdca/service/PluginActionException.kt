@@ -16,5 +16,14 @@
 
 package com.ritense.pdca.service
 
-/** Error in a plugin action invocation; the controller turns this into a 422 response for GZAC. */
-class PluginActionException(val errorCode: String, override val message: String) : RuntimeException(message)
+/**
+ * Error in a plugin action invocation. A business refusal (the default) is
+ * answered with 422: retrying gives the same answer. A [retryable] failure
+ * (a register or GZAC temporarily unavailable) is answered with 503: the job
+ * executor's retry, or an administrator retrying the incident, can succeed.
+ */
+class PluginActionException(
+    val errorCode: String,
+    override val message: String,
+    val retryable: Boolean = false
+) : RuntimeException(message)

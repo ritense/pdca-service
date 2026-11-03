@@ -29,8 +29,26 @@ securityContext:
 
 config:
   serverPort: 7500
-  seedDemoData: "false"
   javaOpts: "-XX:MaxRAMPercentage=75"
+  # com.ritense.pdca log level (PDCA_LOG_LEVEL)
+  logLevel: "INFO"
+  # Demo data for the registers outside the integration (BRP, objecten;
+  # PDCA_DISPLAY_STUBS). Only for demo environments.
+  displayStubs: false
+  # Rate limit of /data, calls per window (PDCA_DATA_RATE_LIMIT_*); 0
+  # switches a limit off. Counted per replica. perUser: every call of one
+  # user; perClient and perConfiguration: the calls that cost a token
+  # introspection at GZAC, per client address and for the configuration.
+  dataRateLimit:
+    perUser: 600
+    perClient: 300
+    perConfiguration: 6000
+    window: "1m"
+  # How the client address of a /data call is read
+  # (SERVER_FORWARD_HEADERS_STRATEGY): "native" takes it from the
+  # X-Forwarded-For of a proxy in the cluster network (the ingress), "none"
+  # uses the TCP peer.
+  forwardHeadersStrategy: "native"
 
 database:
   host: ""
@@ -44,16 +62,38 @@ externalServices:
   # The registers are not configured here: the app reaches them only through
   # GZAC's contracts and the register plugins, which hold their URLs and tokens.
   #
-  # Normally left disabled: the app then calls GZAC on the callback URL that
-  # GZAC pushes with the plugin configuration. Enable only to override that URL
-  # or to use the Keycloak client-credentials fallback.
+  # The app reaches GZAC with the serviceToken GZAC pushes with the plugin
+  # configuration, on the callback URL pushed along with it. Enable only to
+  # override that URL where the app sees GZAC under a different address.
   gzac:
     enabled: false
     url: ""
-    tokenUrl: ""
-    clientId: ""
-    existingSecret: ""
-    existingSecretKey: "gzac-client-secret"
+    # The pushed PDCA configuration the app uses (PDCA_GZAC_CONFIGURATION_ID).
+    # Leave empty when GZAC holds exactly one PDCA configuration.
+    configurationId: ""
+    # GZAC base URLs whose configuration pushes the app accepts, comma
+    # separated (PDCA_GZAC_ALLOWED_BASE_URLS). Empty accepts any signed push.
+    allowedBaseUrls: ""
+    # Browser origins of the GZAC frontend, comma separated
+    # (PDCA_GZAC_FRONTEND_ORIGINS): they may frame the bundles and call /data,
+    # on top of the origins GZAC announces itself. Empty keeps the app default
+    # (the local Valtimo dev frontend).
+    frontendOrigins: ""
+
+# Secret GZAC signs its requests to the app with (PDCA_HOST_SECRET): the
+# same secret as entered for the PDCA integration in GZAC. Without it the app
+# runs on the documented local-dev secret and warns at startup: always set it
+# outside local development.
+host:
+  existingSecret: ""
+  existingSecretKey: "host-secret"
+
+# Secret the pushed serviceTokens are encrypted with (PDCA_ENCRYPTION_SECRET).
+# Without it the app runs on the documented local-dev secret and warns at
+# startup: always set it outside local development.
+encryption:
+  existingSecret: ""
+  existingSecretKey: "encryption-secret"
 
 service:
   type: ClusterIP

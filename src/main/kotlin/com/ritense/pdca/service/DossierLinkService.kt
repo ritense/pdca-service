@@ -16,39 +16,43 @@
 
 package com.ritense.pdca.service
 
+import com.ritense.pdca.domain.PdcaUrn
 import com.ritense.pdca.domain.PlanDetails
-import com.ritense.pdca.registers.RegisterStubController
+import com.ritense.pdca.registers.StubRegisterService
+import com.ritense.pdca.registers.openplan.OpenPlanGateway
+import com.ritense.pdca.registers.openplan.Plan
 import com.ritense.pdca.repository.PlanDetailsRepository
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.client.RestClient
 import org.springframework.web.server.ResponseStatusException
 import java.time.LocalDateTime
 import java.util.UUID
 
 /**
  * The direct plan = dossier link (1:1): plan_details.dossier_id, unique.
- * Self-healing for the dev cycle: when an existing link points at a dossier
- * that was deleted in GZAC, it is released instead of holding the plan
- * hostage. [ensurePlanDossier] yields the matching plan dossier: the
- * existing one when present, otherwise it is created in GZAC (standalone
- * and intake route).
+ * [ensurePlanDossier] yields the plan's plan dossier: the linked one while it
+ * still exists in GZAC, otherwise one GZAC already holds for the plan,
+ * otherwise a new one created in GZAC and linked.
  */
 @Service
 class DossierLinkService(
     private val planDetailsRepository: PlanDetailsRepository,
     private val gzacClient: GzacClient,
-    private val openPlanRestClient: RestClient,
-    private val registerStubs: RegisterStubController
+    private val openPlanGateway: OpenPlanGateway,
+    private val stubRegisterService: StubRegisterService
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
     /**
      * Ensures the plan has its own plan dossier (plan = dossier 1:1): an
-     * existing link wins — provided that dossier still exists — otherwise a
-     * GZAC dossier of the plan's caseDefinitionKey is created and linked.
+     * existing link wins — provided that dossier still exists. Otherwise a
+     * dossier of the plan's caseDefinitionKey whose `planId` is this plan is
+     * looked up in GZAC first: creating one and linking it are two steps, so
+     * an earlier attempt may have created it and then lost GZAC's answer (a
+     * read timeout) or failed to save the link. The oldest such dossier is
+     * linked; only when there is none is a new one created and linked.
      * [onderwerp] is the subject's display name as the caller knows it (the
      * intake); see [dossierContent]. Returns (documentId, newly created).
      */
@@ -64,93 +68,67 @@ class DossierLinkService(
         val caseDefinitionKey = details.caseDefinitionKey
             ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Plan $planUuid heeft geen caseDefinitionKey")
 
-        val plan = openPlanRestClient.get()
-            .uri("/plannen/api/v0/plan/$planUuid")
-            .retrieve()
-            .body(Map::class.java)
-            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Plan $planUuid niet gevonden in Open Plan")
+        gzacClient.findDossierIds(caseDefinitionKey, PLAN_ID_FIELD, planUuid.toString()).firstOrNull()?.let { found ->
+            link(planUuid, found)
+            log.info("Plan {} linked to its existing plan dossier {} ({})", planUuid, found, caseDefinitionKey)
+            return found to false
+        }
+
+        val plan = openPlanGateway.getPlan(planUuid)
 
         val dossier = gzacClient.createDossier(caseDefinitionKey, dossierContent(plan, onderwerp?.takeIf { it.isNotBlank() }))
         link(planUuid, dossier.documentId)
-        log.info("Plan $planUuid gekoppeld aan nieuw plan-dossier ${dossier.documentId} ($caseDefinitionKey)")
+        log.info("Plan {} linked to its new plan dossier {} ({})", planUuid, dossier.documentId, caseDefinitionKey)
         return dossier.documentId to true
     }
 
     /**
      * Dossier content following the case's document schema: subject fields
-     * from plan.domeinregister (urn:pdca:brp:persoon:<bsn> or
-     * urn:pdca:objecten:object:<id>) plus the plan reference fields.
-     * `onderwerp` is the dossier's subject line: [onderwerp] when given,
-     * otherwise the name from the (stub) register, otherwise the plan titel;
-     * a person unknown to the register gets that name as `naam` too.
+     * from plan.domeinregister (a persoon or object URN, [PdcaUrn]) plus the
+     * plan reference fields. `onderwerp` is the dossier's subject line:
+     * [onderwerp] when given, otherwise the name from the (stub) register,
+     * otherwise the plan titel; a person unknown to the register gets that
+     * name as `naam` too.
      */
-    private fun dossierContent(plan: Map<*, *>, onderwerp: String?): Map<String, Any?> {
+    private fun dossierContent(plan: Plan, onderwerp: String?): Map<String, Any?> {
         val content = mutableMapOf<String, Any?>(
-            "planId" to plan["uuid"],
-            "planTitel" to plan["titel"],
-            "planStatus" to plan["status"]
+            PLAN_ID_FIELD to plan.uuid.toString(),
+            "planTitel" to plan.titel
         )
-        val domeinregister = (plan["domeinregister"] as? String).orEmpty().split(':')
-        val resource = domeinregister.getOrNull(3)
-        val id = domeinregister.getOrNull(4)
+        val subject = PdcaUrn.parse(plan.domeinregister)
         var registerName: String? = null
-        when {
-            resource == "persoon" && id != null -> {
-                registerName = registerStubs.getPersoon(id).body?.naam
-                content["bsn"] = id
+        when (subject?.kind) {
+            PdcaUrn.Kind.PERSOON -> {
+                registerName = stubRegisterService.persoon(subject.id)?.naam
+                content["bsn"] = subject.id
                 content["naam"] = registerName ?: onderwerp
             }
-            resource == "object" && id != null -> {
-                registerName = registerStubs.getObject(id).body?.naam
-                content["objectId"] = id
+            PdcaUrn.Kind.OBJECT -> {
+                registerName = stubRegisterService.registerObject(subject.id)?.naam
+                content["objectId"] = subject.id
                 content["objectNaam"] = registerName
             }
+            else -> {}
         }
-        content["onderwerp"] = onderwerp ?: registerName ?: plan["titel"]
+        content["onderwerp"] = onderwerp ?: registerName ?: plan.titel
         return content
     }
 
     fun findByDossier(documentId: String): PlanDetails? =
         planDetailsRepository.findByDossierId(documentId)
 
-    /**
-     * Creates the 1:1 link with conflict guarding: 409 when the plan already
-     * hangs under another (still existing) dossier or the dossier already
-     * has another plan. Idempotent for an existing identical link.
-     */
-    fun link(planUuid: UUID, documentId: String): PlanDetails {
+    /** Points the plan at its plan dossier. */
+    private fun link(planUuid: UUID, documentId: String) {
         val details = planDetailsRepository.findById(planUuid).orElseThrow {
             ResponseStatusException(HttpStatus.NOT_FOUND, "Geen plandetails voor plan $planUuid")
         }
-        if (details.dossierId == documentId) return details
-        details.dossierId?.let { bestaand ->
-            if (gzacClient.documentExists(bestaand)) {
-                throw ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    "Plan '$planUuid' is al gekoppeld aan een ander dossier ($bestaand)"
-                )
-            }
-            log.info("Plan $planUuid was gekoppeld aan verdwenen dossier $bestaand; koppeling vrijgegeven")
-            details.dossierId = null
-        }
-        planDetailsRepository.findByDossierId(documentId)?.let {
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "Dossier $documentId heeft al een gekoppeld plan (${it.planUuid})"
-            )
-        }
         details.dossierId = documentId
         details.updatedAt = LocalDateTime.now()
-        return planDetailsRepository.save(details)
+        planDetailsRepository.save(details)
     }
 
-    /** Unlinks the plan from this dossier; null when there was no link. */
-    fun unlink(documentId: String): PlanDetails? {
-        val details = planDetailsRepository.findByDossierId(documentId) ?: return null
-        details.dossierId = null
-        details.updatedAt = LocalDateTime.now()
-        planDetailsRepository.save(details)
-        log.info("Plan ${details.planUuid} ontkoppeld van dossier $documentId")
-        return details
+    private companion object {
+        /** The plan dossier's document field with the plan's uuid; also how an unlinked plan dossier is found. */
+        const val PLAN_ID_FIELD = "planId"
     }
 }

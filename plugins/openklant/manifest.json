@@ -1,17 +1,16 @@
 {
   "pluginId": "openklant",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "provider": "Ritense",
   "translations": {
     "en": {
       "name": "Open Klant",
-      "description": "Gives other plugins access to an Open Klant instance (Klantinteracties API v1) through the contract nl.ritense.openklant@1.",
-      "contracts.nl.ritense.openklant@1.title": "Open Klant Klantinteracties API v1",
-      "contracts.nl.ritense.openklant@1.operations.list.title": "List resources",
-      "contracts.nl.ritense.openklant@1.operations.get.title": "Get a resource",
-      "contracts.nl.ritense.openklant@1.operations.create.title": "Create a resource",
-      "contracts.nl.ritense.openklant@1.operations.update.title": "Update a resource",
-      "contracts.nl.ritense.openklant@1.operations.delete.title": "Delete a resource",
+      "description": "Gives other plugins access to an Open Klant instance (Klantinteracties API v1) through the contract nl.ritense.openklant@2.",
+      "contracts.nl.ritense.openklant@2.title": "Open Klant Klantinteracties API v1",
+      "contracts.nl.ritense.openklant@2.operations.list.title": "List resources",
+      "contracts.nl.ritense.openklant@2.operations.get.title": "Get a resource",
+      "contracts.nl.ritense.openklant@2.operations.create.title": "Create a resource",
+      "contracts.nl.ritense.openklant@2.operations.update.title": "Update a resource",
       "config.title.label": "Configuration name",
       "config.title.placeholder": "e.g. Open Klant production",
       "config.title.required": "Enter a name for this configuration",
@@ -32,13 +31,12 @@
     },
     "nl": {
       "name": "Open Klant",
-      "description": "Geeft andere plugins toegang tot een Open Klant-omgeving (Klantinteracties API v1) via het contract nl.ritense.openklant@1.",
-      "contracts.nl.ritense.openklant@1.title": "Open Klant Klantinteracties API v1",
-      "contracts.nl.ritense.openklant@1.operations.list.title": "Registerobjecten opvragen",
-      "contracts.nl.ritense.openklant@1.operations.get.title": "Registerobject opvragen",
-      "contracts.nl.ritense.openklant@1.operations.create.title": "Registerobject aanmaken",
-      "contracts.nl.ritense.openklant@1.operations.update.title": "Registerobject bijwerken",
-      "contracts.nl.ritense.openklant@1.operations.delete.title": "Registerobject verwijderen",
+      "description": "Geeft andere plugins toegang tot een Open Klant-omgeving (Klantinteracties API v1) via het contract nl.ritense.openklant@2.",
+      "contracts.nl.ritense.openklant@2.title": "Open Klant Klantinteracties API v1",
+      "contracts.nl.ritense.openklant@2.operations.list.title": "Registerobjecten opvragen",
+      "contracts.nl.ritense.openklant@2.operations.get.title": "Registerobject opvragen",
+      "contracts.nl.ritense.openklant@2.operations.create.title": "Registerobject aanmaken",
+      "contracts.nl.ritense.openklant@2.operations.update.title": "Registerobject bijwerken",
       "config.title.label": "Configuratienaam",
       "config.title.placeholder": "bijv. Open Klant productie",
       "config.title.required": "Geef deze configuratie een naam",
@@ -92,7 +90,7 @@
   "actions": [],
   "provides": [
     {
-      "contract": "nl.ritense.openklant@1",
+      "contract": "nl.ritense.openklant@2",
       "title": "Open Klant Klantinteracties API v1",
       "operations": [
         {
@@ -122,14 +120,6 @@
         {
           "key": "update",
           "title": "Update a resource",
-          "outputs": [
-            "status",
-            "body"
-          ]
-        },
-        {
-          "key": "delete",
-          "title": "Delete a resource",
           "outputs": [
             "status",
             "body"

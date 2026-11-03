@@ -16,48 +16,37 @@
 
 package com.ritense.pdca.service
 
-import com.ritense.pdca.config.PdcaProperties
-import com.ritense.pdca.plugin.ConfigurationStore
-import com.ritense.pdca.plugin.PushedGzacAccess
+import com.ritense.pdca.plugin.GzacAccess
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Service
-import org.springframework.util.LinkedMultiValueMap
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClient
 import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 
 /**
- * Calls GZAC itself, e.g. to create a dossier for a plan (plan = dossier 1:1;
- * creating a standalone plan still yields a dossier). Authentication, in
- * order of preference:
- *
- *  1. the serviceToken + gzacBaseUrl pushed with the plugin configuration
- *     (URL-app contract, persisted in [ConfigurationStore], resolved by
- *     [PushedGzacAccess]). The manifest
- *     declares capability `gzac_api` plus the required endpoints under
- *     `permissions.endpoints`; GZAC enforces that allowlist for the
- *     serviceToken (PBAC does not apply there) once the administrator has
- *     accepted the footprint;
- *  2. `pdca.gzac.static-token`;
- *  3. Keycloak client credentials (`pdca.gzac.token-url` + client id/secret) —
- *     dev fallback without a plugin configuration. Note: the service account
- *     then needs ROLE_USER/ROLE_ADMIN in the GZAC realm (PBAC).
+ * Calls GZAC itself, e.g. to read an intake dossier or to create the plan
+ * dossier of a new plan (plan = dossier 1:1). It authenticates with the
+ * serviceToken and gzacBaseUrl GZAC pushed with the plugin configuration
+ * (URL-app contract, persisted in `ConfigurationStore`) of the active
+ * configuration ([GzacAccess]); without one there is no access (503).
+ * The manifest declares capability `gzac_api` plus the required endpoints
+ * under `permissions.endpoints`; GZAC enforces that allowlist for the
+ * serviceToken (PBAC does not apply there) once the administrator has
+ * accepted the footprint. The checks about a user (token introspection,
+ * dossier access, admin role) are made with that user's own token instead.
+ * Failure reasons are fixed Dutch messages; the underlying error is logged.
  */
 @Service
 class GzacClient(
-    private val configurationStore: ConfigurationStore,
-    private val pushedGzacAccess: PushedGzacAccess,
-    private val properties: PdcaProperties,
-    private val restClientBuilder: RestClient.Builder
+    private val gzacAccess: GzacAccess,
+    restClientBuilder: RestClient.Builder
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
-
-    private var cachedToken: String? = null
-    private var cachedTokenExpiry: Instant = Instant.EPOCH
+    private val gzac = restClientBuilder.clone().build()
 
     data class Dossier(val documentId: String)
 
@@ -80,8 +69,7 @@ class GzacClient(
         )
 
         val result = try {
-            restClientBuilder.clone().build()
-                .post()
+            gzac.post()
                 .uri("$baseUrl/api/v1/process-document/operation/new-document-and-start-process")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -89,17 +77,17 @@ class GzacClient(
                 .retrieve()
                 .body(Map::class.java)
         } catch (e: Exception) {
-            log.warn("Creating a GZAC dossier failed for case '$caseDefinitionKey': ${e.message}")
-            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossier aanmaken mislukt: ${e.message}")
+            log.warn("Creating a GZAC dossier failed for case '{}'", caseDefinitionKey, e)
+            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossier aanmaken mislukt")
         }
 
         val document = result?.get("document") as? Map<*, *>
         val errors = (result?.get("errors") as? List<*>)?.filterNotNull() ?: emptyList<Any>()
         val documentId = document?.get("id") as? String
-            ?: throw ResponseStatusException(
-                HttpStatus.BAD_GATEWAY,
-                "GZAC gaf geen dossier terug voor case '$caseDefinitionKey': $errors"
-            )
+            ?: run {
+                log.warn("GZAC returned no dossier for case '{}': {}", caseDefinitionKey, errors)
+                throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC gaf geen dossier terug voor dossiertype '$caseDefinitionKey'")
+            }
         return Dossier(documentId)
     }
 
@@ -117,14 +105,14 @@ class GzacClient(
         var page = 0
         while (page < 20) {
             val body = try {
-                restClientBuilder.clone().build()
-                    .get()
+                gzac.get()
                     .uri("$baseUrl/api/management/v1/document-definition?page=$page&size=100")
                     .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
                     .retrieve()
                     .body(Map::class.java)
             } catch (e: Exception) {
-                throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossierdefinities ophalen mislukt: ${e.message}")
+                log.warn("Listing GZAC document definitions failed", e)
+                throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossierdefinities ophalen mislukt")
             }
             val content = body?.get("content") as? List<*> ?: emptyList<Any>()
             names += content.mapNotNull { ((it as? Map<*, *>)?.get("id") as? Map<*, *>)?.get("name") as? String }
@@ -142,19 +130,7 @@ class GzacClient(
      */
     fun documentSchemaPaths(caseDefinitionKey: String): List<String> {
         val (baseUrl, token) = resolveAccess()
-        val definition = try {
-            restClientBuilder.clone().build()
-                .get()
-                .uri("$baseUrl/api/v1/document-definition/$caseDefinitionKey")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
-                .retrieve()
-                .body(Map::class.java)
-        } catch (e: Exception) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_GATEWAY,
-                "GZAC documentdefinitie '$caseDefinitionKey' ophalen mislukt: ${e.message}"
-            )
-        }
+        val definition = documentDefinition(baseUrl, token, caseDefinitionKey)
         val properties = (definition?.get("schema") as? Map<*, *>)?.get("properties") as? Map<*, *>
             ?: return emptyList()
         return properties.keys.filterIsInstance<String>().map { "/$it" }
@@ -168,9 +144,8 @@ class GzacClient(
     fun documentExists(documentId: String): Boolean {
         val (baseUrl, token) = resolveAccess()
         return try {
-            restClientBuilder.clone().build()
-                .get()
-                .uri("$baseUrl/api/v1/document/$documentId")
+            gzac.get()
+                .uri("$baseUrl/api/v1/document/{id}", documentId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
                 .retrieve()
                 .toBodilessEntity()
@@ -178,13 +153,56 @@ class GzacClient(
         } catch (e: HttpClientErrorException.NotFound) {
             false
         } catch (e: Exception) {
-            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossier $documentId controleren mislukt: ${e.message}")
+            log.warn("Checking GZAC dossier {} failed", documentId, e)
+            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossier $documentId controleren mislukt")
         }
     }
 
     /**
+     * The ids of the dossiers of [caseDefinitionKey] whose document holds
+     * [value] in the top-level field [field], oldest first, through GZAC's
+     * document search (a granted endpoint; PBAC does not apply to the
+     * service token). GZAC matches a field case-insensitively on "contains",
+     * so this is meant for values that cannot occur inside another value,
+     * such as a uuid. GZAC refusing the call (the grant not yet accepted)
+     * or failing is a 502: an empty answer must mean "none".
+     */
+    fun findDossierIds(caseDefinitionKey: String, field: String, value: String): List<String> {
+        val (baseUrl, token) = resolveAccess()
+        val body = mapOf(
+            "documentDefinitionName" to caseDefinitionKey,
+            "otherFilters" to listOf(mapOf("path" to "$.$field", "value" to value))
+        )
+        val page = try {
+            gzac.post()
+                .uri("$baseUrl/api/v1/document-search?page=0&size=$DOSSIER_SEARCH_SIZE&sort=createdOn,asc")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(Map::class.java)
+        } catch (e: HttpClientErrorException) {
+            log.warn("Searching GZAC dossiers of case '{}' answered {}", caseDefinitionKey, e.statusCode.value())
+            throw ResponseStatusException(
+                HttpStatus.BAD_GATEWAY,
+                if (e.statusCode.value() == 401 || e.statusCode.value() == 403) {
+                    "GZAC staat het zoeken naar dossiers niet toe. Accepteer in GZAC de permissies van de " +
+                        "PDCA-plugin opnieuw (endpoint POST /api/v1/document-search)."
+                } else {
+                    "GZAC dossiers zoeken mislukt"
+                }
+            )
+        } catch (e: Exception) {
+            log.warn("Searching GZAC dossiers of case '{}' failed", caseDefinitionKey, e)
+            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossiers zoeken mislukt")
+        }
+        return (page?.get("content") as? List<*>).orEmpty()
+            .mapNotNull { (it as? Map<*, *>)?.get("id") as? String }
+    }
+
+    /**
      * Dossier (document) from GZAC, incl. `content` — for the intake prefill
-     * and the under-water link via planId.
+     * and the plan creation from an intake.
      *
      * GZAC only serializes `content` on `/api/v1/document/{id}` when
      * `valtimo.includeDocumentContentInResponse` is on (default off). Without
@@ -196,17 +214,19 @@ class GzacClient(
     fun getDocument(documentId: String): Map<*, *> {
         val (baseUrl, token) = resolveAccess()
         val document = try {
-            restClientBuilder.clone().build()
-                .get()
-                .uri("$baseUrl/api/v1/document/$documentId")
+            gzac.get()
+                .uri("$baseUrl/api/v1/document/{id}", documentId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
                 .retrieve()
                 .body(Map::class.java)
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Dossier $documentId niet gevonden in GZAC")
         } catch (e: ResponseStatusException) {
             throw e
+        } catch (e: HttpClientErrorException.NotFound) {
+            throw ResponseStatusException(HttpStatus.NOT_FOUND, "Dossier $documentId niet gevonden in GZAC")
         } catch (e: Exception) {
-            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossier $documentId ophalen mislukt: ${e.message}")
+            log.warn("Reading GZAC dossier {} failed", documentId, e)
+            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossier $documentId ophalen mislukt")
         }
         if (document["content"] is Map<*, *>) return document
         return document + ("content" to inspectionContent(baseUrl, token, documentId))
@@ -214,14 +234,13 @@ class GzacClient(
 
     private fun inspectionContent(baseUrl: String, token: String, documentId: String): Map<*, *> {
         val inspected = try {
-            restClientBuilder.clone().build()
-                .get()
-                .uri("$baseUrl/api/management/v1/case/$documentId")
+            gzac.get()
+                .uri("$baseUrl/api/management/v1/case/{id}", documentId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
                 .retrieve()
                 .body(Map::class.java)
         } catch (e: Exception) {
-            log.warn("GZAC case inspection for dossier $documentId failed: ${e.message}")
+            log.warn("GZAC case inspection for dossier {} failed", documentId, e)
             null
         }
         return inspected?.get("content") as? Map<*, *>
@@ -233,86 +252,6 @@ class GzacClient(
             )
     }
 
-    // ------------------------------------------ instrument dossier support
-
-    /** Latest version of a process definition (to find its process links). */
-    fun latestProcessDefinitionId(processDefinitionKey: String): String {
-        val (baseUrl, token) = resolveAccess()
-        val definition = try {
-            restClientBuilder.clone().build()
-                .get()
-                .uri("$baseUrl/api/v1/process/definition/$processDefinitionKey")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
-                .retrieve()
-                .body(Map::class.java)
-        } catch (e: Exception) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_GATEWAY,
-                "GZAC procesdefinitie '$processDefinitionKey' ophalen mislukt (is het dossiertype geïmporteerd?): ${e.message}"
-            )
-        }
-        return definition?.get("id") as? String
-            ?: throw ResponseStatusException(
-                HttpStatus.BAD_GATEWAY,
-                "GZAC kent geen procesdefinitie '$processDefinitionKey' (is het dossiertype geïmporteerd?)"
-            )
-    }
-
-    /** The process links of a process definition version. */
-    fun processLinks(processDefinitionId: String): List<Map<*, *>> {
-        val (baseUrl, token) = resolveAccess()
-        val links = try {
-            restClientBuilder.clone().build()
-                .get()
-                .uri("$baseUrl/api/v1/process-link?processDefinitionId=$processDefinitionId")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
-                .retrieve()
-                .body(List::class.java)
-        } catch (e: Exception) {
-            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC proceskoppelingen ophalen mislukt: ${e.message}")
-        }
-        return links?.filterIsInstance<Map<*, *>>() ?: emptyList()
-    }
-
-    /** Version tag of the case definition behind [caseDefinitionKey]. */
-    fun caseDefinitionVersionTag(caseDefinitionKey: String): String {
-        val (baseUrl, token) = resolveAccess()
-        return caseDefinitionVersionTag(baseUrl, token, caseDefinitionKey)
-    }
-
-    /**
-     * GZAC's plugin-configuration repair for a case definition version: maps
-     * dangling or re-targeted plugin references to a configuration. Keys are
-     * either a process link id (dangling FIXED link without configuration)
-     * or a currently referenced configuration id; values the new
-     * configuration id. Also clears the case-configuration issue banner.
-     */
-    fun resolvePluginConfigurationMappings(
-        caseDefinitionKey: String,
-        caseDefinitionVersionTag: String,
-        mappings: Map<String, String>
-    ) {
-        val (baseUrl, token) = resolveAccess()
-        try {
-            restClientBuilder.clone().build()
-                .put()
-                .uri(
-                    "$baseUrl/api/management/v1/case-definition/$caseDefinitionKey" +
-                        "/version/$caseDefinitionVersionTag/plugin-configuration-mappings"
-                )
-                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(mappings)
-                .retrieve()
-                .toBodilessEntity()
-        } catch (e: Exception) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_GATEWAY,
-                "GZAC pluginconfiguratie koppelen op dossiertype '$caseDefinitionKey' mislukt: ${e.message}"
-            )
-        }
-    }
-
     /**
      * The document definition name of a dossier, read from the document
      * itself (`definitionId.name`; for the PDCA cases equal to the case
@@ -322,14 +261,14 @@ class GzacClient(
     fun documentDefinitionName(documentId: String): String {
         val (baseUrl, token) = resolveAccess()
         val document = try {
-            restClientBuilder.clone().build()
-                .get()
-                .uri("$baseUrl/api/v1/document/$documentId")
+            gzac.get()
+                .uri("$baseUrl/api/v1/document/{id}", documentId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
                 .retrieve()
                 .body(Map::class.java)
         } catch (e: Exception) {
-            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossier $documentId ophalen mislukt: ${e.message}")
+            log.warn("Reading GZAC dossier {} failed", documentId, e)
+            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossier $documentId ophalen mislukt")
         }
         return (document?.get("definitionId") as? Map<*, *>)?.get("name") as? String
             ?: throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossier $documentId draagt geen documentdefinitie")
@@ -342,19 +281,7 @@ class GzacClient(
      * PDCA cases the document definition name equals the case definition key.
      */
     private fun caseDefinitionVersionTag(baseUrl: String, token: String, caseDefinitionKey: String): String {
-        val definition = try {
-            restClientBuilder.clone().build()
-                .get()
-                .uri("$baseUrl/api/v1/document-definition/$caseDefinitionKey")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
-                .retrieve()
-                .body(Map::class.java)
-        } catch (e: Exception) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_GATEWAY,
-                "GZAC documentdefinitie '$caseDefinitionKey' ophalen mislukt: ${e.message}"
-            )
-        }
+        val definition = documentDefinition(baseUrl, token, caseDefinitionKey)
         val blueprint = ((definition?.get("id") as? Map<*, *>)?.get("blueprintId") as? Map<*, *>)
         return blueprint?.get("blueprintVersionTag") as? String
             ?: throw ResponseStatusException(
@@ -363,39 +290,53 @@ class GzacClient(
             )
     }
 
+    /** What GZAC's introspection says about a user token. */
+    data class UserTokenIntrospection(val subject: String, val configurationId: String, val expiresAt: Instant?)
+
     /**
-     * Verifies a downscoped user token (forwarded by the GZAC frontend on a
-     * `/data` call) against GZAC's introspection endpoint and returns the
-     * user's login. The token must belong to [configurationId]. Fails closed:
-     * an unreachable GZAC is a 503, never a pass.
+     * Introspects a downscoped user token (forwarded by the GZAC frontend on
+     * a `/data` call) at the active configuration's GZAC: the token is its
+     * own credential there. Null when GZAC refuses the token (401/403);
+     * fails closed with 503 when GZAC cannot be asked or answers
+     * unexpectedly, never a pass. Neither the token nor GZAC's answer is
+     * logged.
      */
-    fun introspectUserToken(configurationId: String, userToken: String): String {
+    fun introspectUserToken(userToken: String): UserTokenIntrospection? {
+        val baseUrl = gzacAccess.active().baseUrl
         val response = try {
-            restClientBuilder.clone().build()
-                .get()
-                .uri("${baseUrlFor(configurationId)}/api/v1/external-plugin/user-token/introspect")
+            gzac.get()
+                .uri("$baseUrl/api/v1/external-plugin/user-token/introspect")
                 .header(HttpHeaders.AUTHORIZATION, "Bearer $userToken")
                 .retrieve()
                 .body(Map::class.java)
         } catch (e: HttpClientErrorException) {
-            throw ResponseStatusException(HttpStatus.UNAUTHORIZED, "Gebruikerstoken is niet geldig")
+            if (e.statusCode.value() == 401 || e.statusCode.value() == 403) return null
+            log.warn("User token introspection answered {}", e.statusCode.value())
+            throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, GEBRUIKER_NIET_TE_CONTROLEREN)
         } catch (e: Exception) {
-            log.warn("User token introspection failed: ${e.message}")
-            throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "GZAC is niet bereikbaar om de gebruiker te controleren")
+            log.warn("User token introspection failed: {}", e.javaClass.simpleName)
+            throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, GEBRUIKER_NIET_TE_CONTROLEREN)
         }
-        if (response?.get("configurationId")?.toString() != configurationId) {
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Gebruikerstoken hoort niet bij deze configuratie")
+        val subject = response?.get("subject") as? String
+        val configurationId = response?.get("configurationId")?.toString()
+        if (subject.isNullOrBlank() || configurationId.isNullOrBlank()) {
+            log.warn("User token introspection returned no subject or configuration")
+            throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, GEBRUIKER_NIET_TE_CONTROLEREN)
         }
-        return response["subject"] as? String
-            ?: throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "GZAC gaf geen gebruiker terug")
+        val expiresAt = (response["expiresAt"] as? String)?.let { runCatching { Instant.parse(it) }.getOrNull() }
+        return UserTokenIntrospection(subject, configurationId, expiresAt)
     }
 
-    /** Can the user behind [userToken] read the dossier? GZAC applies PBAC to user tokens. */
-    fun userCanReadDocument(configurationId: String, userToken: String, documentId: String): Boolean =
-        try {
-            restClientBuilder.clone().build()
-                .get()
-                .uri("${baseUrlFor(configurationId)}/api/v1/document/$documentId")
+    /**
+     * Can the user behind [userToken] read the dossier? Asked as the user
+     * (`GET /api/v1/document/{id}`), so GZAC applies the user's PBAC. A
+     * refusal or unknown dossier (4xx) is false; an outage fails closed (503).
+     */
+    fun userCanReadDocument(userToken: String, documentId: String): Boolean {
+        val baseUrl = gzacAccess.active().baseUrl
+        return try {
+            gzac.get()
+                .uri("$baseUrl/api/v1/document/{id}", documentId)
                 .header(HttpHeaders.AUTHORIZATION, "Bearer $userToken")
                 .retrieve()
                 .toBodilessEntity()
@@ -403,60 +344,53 @@ class GzacClient(
         } catch (e: HttpClientErrorException) {
             false
         } catch (e: Exception) {
-            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC dossier $documentId controleren mislukt: ${e.message}")
+            log.warn("Checking GZAC dossier {} as the user failed: {}", documentId, e.javaClass.simpleName)
+            throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, GEBRUIKER_NIET_TE_CONTROLEREN)
         }
-
-    private fun baseUrlFor(configurationId: String): String {
-        val configured = pushedGzacAccess.configuredBaseUrl()
-        val pushed = configurationStore.get(configurationId)?.gzacBaseUrl?.trimEnd('/')?.takeIf { it.isNotBlank() }
-        return configured ?: pushed
-            ?: throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Geen GZAC-adres bekend voor configuratie $configurationId")
     }
 
-    private fun resolveAccess(): Pair<String, String> {
-        pushedGzacAccess.latest()?.let { return it.baseUrl to it.serviceToken }
-        val gzac = properties.gzac
-        val baseUrl = pushedGzacAccess.configuredBaseUrl()
-        if (gzac == null || baseUrl == null) {
-            throw ResponseStatusException(
-                HttpStatus.SERVICE_UNAVAILABLE,
-                "Geen GZAC-toegang: geen pluginconfiguratie gepusht en geen pdca.gzac.base-url geconfigureerd"
-            )
-        }
-        gzac.staticToken?.takeIf { it.isNotBlank() }?.let { return baseUrl to it }
-        if (!gzac.tokenUrl.isNullOrBlank()) return baseUrl to clientCredentialsToken(gzac)
-        throw ResponseStatusException(
-            HttpStatus.SERVICE_UNAVAILABLE,
-            "Geen GZAC-credentials: push een pluginconfiguratie of configureer pdca.gzac (static-token of token-url + client)"
-        )
-    }
-
-    private fun clientCredentialsToken(gzac: PdcaProperties.GzacApi): String {
-        cachedToken?.takeIf { Instant.now().isBefore(cachedTokenExpiry) }?.let { return it }
-        val tokenUrl = gzac.tokenUrl ?: throw ResponseStatusException(
-            HttpStatus.SERVICE_UNAVAILABLE, "pdca.gzac.token-url ontbreekt voor client credentials"
-        )
-        val form = LinkedMultiValueMap<String, String>().apply {
-            add("grant_type", "client_credentials")
-            add("client_id", gzac.clientId ?: "")
-            add("client_secret", gzac.clientSecret ?: "")
-        }
-        val response = try {
-            restClientBuilder.clone().build()
-                .post()
-                .uri(tokenUrl)
-                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
-                .body(form)
+    /**
+     * Is the user behind [userToken] a GZAC administrator? The introspection
+     * carries no roles, so the user token asks an endpoint GZAC only opens to
+     * `ROLE_ADMIN`: the management list of document definitions (one of the
+     * granted endpoints). 401/403 is false; an outage fails closed (503).
+     */
+    fun userIsAdmin(userToken: String): Boolean {
+        val baseUrl = gzacAccess.active().baseUrl
+        return try {
+            gzac.get()
+                .uri("$baseUrl/api/management/v1/document-definition?page=0&size=1")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer $userToken")
                 .retrieve()
-                .body(Map::class.java)
+                .toBodilessEntity()
+            true
+        } catch (e: HttpClientErrorException) {
+            if (e.statusCode.value() == 401 || e.statusCode.value() == 403) return false
+            log.warn("Checking the GZAC admin role answered {}", e.statusCode.value())
+            throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, GEBRUIKER_NIET_TE_CONTROLEREN)
         } catch (e: Exception) {
-            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Keycloak token ophalen mislukt: ${e.message}")
+            log.warn("Checking the GZAC admin role failed: {}", e.javaClass.simpleName)
+            throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, GEBRUIKER_NIET_TE_CONTROLEREN)
         }
-        val token = response?.get("access_token") as? String
-            ?: throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Keycloak gaf geen access_token terug")
-        val expiresIn = (response["expires_in"] as? Number)?.toLong() ?: 60L
-        cachedToken = token
-        cachedTokenExpiry = Instant.now().plusSeconds(maxOf(expiresIn - 30, 10))
-        return token
+    }
+
+    private fun documentDefinition(baseUrl: String, token: String, caseDefinitionKey: String): Map<*, *>? = try {
+        gzac.get()
+            .uri("$baseUrl/api/v1/document-definition/{key}", caseDefinitionKey)
+            .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+            .retrieve()
+            .body(Map::class.java)
+    } catch (e: Exception) {
+        log.warn("Reading GZAC document definition '{}' failed", caseDefinitionKey, e)
+        throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC documentdefinitie '$caseDefinitionKey' ophalen mislukt")
+    }
+
+    private fun resolveAccess(): Pair<String, String> = gzacAccess.active().let { it.baseUrl to it.serviceToken }
+
+    private companion object {
+        const val GEBRUIKER_NIET_TE_CONTROLEREN = "GZAC is niet bereikbaar om de gebruiker te controleren"
+
+        /** Matches a dossier search reads; more than a few means duplicates, and the oldest is what counts. */
+        const val DOSSIER_SEARCH_SIZE = 10
     }
 }

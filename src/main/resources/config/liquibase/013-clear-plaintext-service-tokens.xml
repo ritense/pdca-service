@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The serviceToken of a pushed plugin configuration is stored encrypted from
+  now on. Tokens stored before that are plaintext and are cleared: GZAC pushes
+  every configuration again, token included, on its next discovery poll.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="013-01-clear-plaintext-service-tokens" author="pdca">
+        <update tableName="plugin_configuration">
+            <column name="service_token" valueComputed="NULL"/>
+        </update>
+    </changeSet>
+
+</databaseChangeLog>

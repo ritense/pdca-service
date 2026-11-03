@@ -25,7 +25,9 @@
                 "productTypeCode": { "type": "string" },
                 "productTitel": { "type": "string" },
                 "productUrn": { "type": "string" },
-                "startStatus": { "type": "string" }
+                "startStatus": { "type": "string" },
+                "instrumenttype": { "type": "string" },
+                "aangevraagdOp": { "type": "string" }
             },
             "additionalProperties": true
         }

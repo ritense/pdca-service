@@ -16,34 +16,61 @@
 
 package com.ritense.pdca.service
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.ritense.pdca.plugin.PluginHostController
-import com.ritense.pdca.plugin.PushedGzacAccess
+import com.ritense.pdca.domain.PdcaUrn
+import com.ritense.pdca.registers.objecten.NewObject
+import com.ritense.pdca.registers.objecten.NewObjectRecord
+import com.ritense.pdca.registers.objecten.ObjectenGateway
+import com.ritense.pdca.registers.openplan.Doel
+import com.ritense.pdca.registers.openplan.Instrument
+import com.ritense.pdca.registers.openplan.OpenPlanGateway
+import com.ritense.pdca.registers.openplan.Plan
+import com.ritense.pdca.registers.openplan.STATUS_ACTIEF
+import com.ritense.pdca.registers.openproduct.OpenProductGateway
+import com.ritense.pdca.registers.openproduct.ProductType
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
-import org.springframework.http.MediaType
 import org.springframework.stereotype.Service
-import org.springframework.web.client.RestClient
-import org.springframework.web.client.RestClientResponseException
 import org.springframework.web.server.ResponseStatusException
+import java.time.Duration
 import java.time.LocalDate
+import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.UUID
+import java.util.concurrent.locks.ReentrantLock
 
 /**
- * Product requests the way the registers describe them (ARCHITECTURE §9).
+ * Product requests the way the registers describe them (ARCHITECTURE §6.2).
  *
  * Which products can be requested, and how, lives in Open Product: a
  * producttype that carries an actie named [START_ACTIE] can be requested
- * from the plan page. Requesting one files a **verzoek**: an object in the
+ * from the plan page, and [PlanIntakeService] requests the instruments an
+ * intake set up once their plan exists. This is the only way an instrument
+ * gets into a plan. Requesting one files a **verzoek**: an object in the
  * Objecten API of the objecttype named in that actie, with the plan, doel,
  * subject and producttype as its data. GZAC's Verzoek plugin picks the
  * object up (through Open Notificaties) and starts the instrument dossier
- * [PRODUCT_CASE_KEY], which manages the instrument in Open Plan through the
+ * `instrument-verzoek`, which manages the instrument in Open Plan through the
  * plugin actions aanmaak-instrument and update-instrument
  * ([InstrumentActionService]). The app creates nothing in the plan and
  * keeps no record of the request: the verzoek is in the Objecten API, the
  * dossier in GZAC, and the instrument's `zaak` field in Open Plan points at
  * the dossier.
+ *
+ * A verzoek is **open** as long as its instrument has not appeared: per doel
+ * and product, the verzoeken outnumber the instruments with a dossier as
+ * `zaak` ([openVerzoeken], oldest verzoeken matched first). The plan page
+ * shows open verzoeken as "Aangevraagd", and [start] refuses a second
+ * request for a doel and product while one is open (409), so a slow or
+ * broken notification route never leads to duplicates. The check and the
+ * filing run under a lock per doel and product, so two concurrent requests
+ * cannot both pass the check; the lock is held in memory, so with several
+ * replicas two requests for the same doel and product that reach different
+ * replicas at the same moment can still both be filed.
  *
  * The actie's `mapping` (Open Product's DMN-mapping shape) is read as the
  * start recipe: the `static` items `soort` (`verzoek`, the only kind so
@@ -55,15 +82,16 @@ import java.util.UUID
  */
 @Service
 class InstrumentAanvraagService(
-    private val openPlanRestClient: RestClient,
-    private val openProductRestClient: RestClient,
-    private val objectenRestClient: RestClient,
-    private val pushedGzacAccess: PushedGzacAccess,
-    private val gzacClient: GzacClient,
+    private val openPlanGateway: OpenPlanGateway,
+    private val openProductGateway: OpenProductGateway,
+    private val objectenGateway: ObjectenGateway,
     private val objectMapper: ObjectMapper
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
+
+    /** The lock per doel and product that [start] files under. */
+    private val requestLocks = KeyedLocks()
 
     companion object {
         /** Name of the Open Product actie that makes a producttype requestable. */
@@ -72,11 +100,11 @@ class InstrumentAanvraagService(
         /** The `type` of every verzoek this app files; the Verzoek plugin routes it to the instrument dossier. */
         const val VERZOEK_TYPE = "instrument"
 
-        /** Case definition key of the instrument dossier (gzac/case-definitions/instrument-verzoek). */
-        const val PRODUCT_CASE_KEY = "instrument-verzoek"
-
         /** Producttype parameter with the start status of the instrument (actief or gepland). */
         const val START_STATUS_PARAMETER = "startStatus"
+
+        /** Producttype parameter with the Open Plan instrumenttype (name or uuid) of the instrument. */
+        const val INSTRUMENTTYPE_PARAMETER = "instrumenttype"
 
         private const val SOORT_VERZOEK = "verzoek"
         private val CONTROL_STATICS = setOf("soort", "type", "typeVersion")
@@ -84,6 +112,31 @@ class InstrumentAanvraagService(
 
     /** Outcome of a request: the created verzoek object and the requested product. */
     data class Verzoek(val objectUrl: String?, val productTitel: String)
+
+    /**
+     * A verzoek whose instrument has not appeared in the plan yet. [aangevraagdOp]
+     * is when it was filed (ISO date-time; for an older verzoek only its
+     * registration date), [minutenOpen] how long ago that is.
+     */
+    data class OpenVerzoek(
+        val objectUrl: String?,
+        val planUuid: UUID?,
+        val doelUuid: UUID,
+        val productUrn: String?,
+        val productTitel: String?,
+        val aangevraagdOp: String?,
+        val minutenOpen: Long?
+    )
+
+    /** A verzoek as read back from the Objecten API. */
+    data class VerzoekRecord(
+        val objectUrl: String?,
+        val planUuid: UUID?,
+        val doelUuid: UUID,
+        val productUrn: String?,
+        val productTitel: String?,
+        val aangevraagdOp: OffsetDateTime?
+    )
 
     /** The start recipe of a producttype, read from its StartInstrument actie. */
     data class StartActie(
@@ -97,13 +150,37 @@ class InstrumentAanvraagService(
     )
 
     fun start(doelUuid: UUID, producttypeUuid: UUID): Verzoek {
-        val doel = get(openPlanRestClient, "/plannen/api/v0/doel/$doelUuid", "Open Plan")
-        val planUuid = ((doel["plannen"] as? List<*>)?.firstOrNull() as? Map<*, *>)?.get("uuid") as? String
+        val doel = openPlanGateway.getDoel(doelUuid)
+        val planUuid = doel.plannen.firstOrNull()?.uuid
             ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Doel $doelUuid hangt niet onder een plan")
-        val plan = get(openPlanRestClient, "/plannen/api/v0/plan/$planUuid", "Open Plan")
-        val producttype = get(openProductRestClient, "/producttypen/api/v1/producttypen/$producttypeUuid", "Open Product")
-        val code = producttype["code"] as? String ?: producttypeUuid.toString()
-        val titel = producttype["naam"] as? String ?: code
+        val plan = openPlanGateway.getPlan(planUuid)
+        if (doel.status != STATUS_ACTIEF || plan.status != STATUS_ACTIEF) {
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                if (plan.status != STATUS_ACTIEF) "Het plan is ${plan.status}; er kan geen instrument meer worden aangevraagd"
+                else "Het doel is ${doel.status}; er kan geen instrument meer onder worden aangevraagd"
+            )
+        }
+        val producttype = openProductGateway.getProducttype(producttypeUuid)
+        val productUrn = PdcaUrn.producttype(producttype.code ?: producttypeUuid.toString()).toString()
+        return requestLocks.withLock("$doelUuid $productUrn") {
+            fileVerzoek(doel, plan, producttypeUuid, producttype, productUrn)
+        }
+    }
+
+    /** Files the verzoek for [doel] and [producttype], unless one is open already (409); runs under the lock of [start]. */
+    private fun fileVerzoek(doel: Doel, plan: Plan, producttypeUuid: UUID, producttype: ProductType, productUrn: String): Verzoek {
+        val doelUuid = doel.uuid
+        val planUuid = plan.uuid
+        val code = producttype.code ?: producttypeUuid.toString()
+        val titel = producttype.naam ?: code
+        openVerzoekVoor(doelUuid, productUrn)?.let { open ->
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "'$titel' is voor dit doel al aangevraagd${open.aangevraagdOp?.let { " (${weergave(it)})" } ?: ""}; " +
+                    "het instrument verschijnt zodra GZAC het instrumentdossier heeft aangemaakt"
+            )
+        }
 
         val actie = startActie(producttypeUuid, titel)
         if (actie.soort != SOORT_VERZOEK) {
@@ -118,115 +195,156 @@ class InstrumentAanvraagService(
                 "(static 'type' in de mapping); vul die in Open Product in"
         )
 
-        // The dossier that is going to pick the verzoek up must be there and
-        // its pdca process links must point at this app (self-healing after
-        // a re-import).
-        ensureProductCaseConfiguration()
-
         val (subjectId, bsn) = subjectOf(plan, doel)
         val data = linkedMapOf<String, Any?>(
-            "planUuid" to planUuid,
+            "planUuid" to planUuid.toString(),
             "doelUuid" to doelUuid.toString(),
             "subjectId" to subjectId,
             "productTypeUuid" to producttypeUuid.toString(),
             "productTypeCode" to code,
             "productTitel" to titel,
-            "productUrn" to "urn:pdca:openproduct:producttype:$code",
-            "startStatus" to parameter(producttype, START_STATUS_PARAMETER)
+            "productUrn" to productUrn,
+            "startStatus" to producttype.parameter(START_STATUS_PARAMETER),
+            "instrumenttype" to producttype.parameter(INSTRUMENTTYPE_PARAMETER),
+            "aangevraagdOp" to OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS).toString()
         )
         data += actie.statics
-        data += resolveMappings(actie, mapOf("plan" to plan, "doel" to doel, "producttype" to producttype))
+        data += resolveMappings(
+            actie,
+            mapOf(
+                "plan" to objectMapper.valueToTree(plan),
+                "doel" to objectMapper.valueToTree(doel),
+                "producttype" to objectMapper.valueToTree(producttype)
+            )
+        )
 
         val verzoek = linkedMapOf<String, Any?>("type" to VERZOEK_TYPE)
         bsn?.let { verzoek["bsn"] = it }
         verzoek["data"] = data.filterValues { it != null }
-        val created = post(
-            objectenRestClient, "/api/v2/objects", "Objecten API",
-            mapOf(
-                "type" to objecttype,
-                "record" to mapOf(
-                    "typeVersion" to actie.typeVersion,
-                    "startAt" to LocalDate.now().toString(),
-                    "data" to verzoek
-                )
+        val created = objectenGateway.createObject(
+            NewObject(
+                type = objecttype,
+                record = NewObjectRecord(typeVersion = actie.typeVersion, startAt = LocalDate.now().toString(), data = verzoek)
             )
         )
-        val objectUrl = created["url"] as? String
-        log.info("Verzoek for product '$code' filed for doel $doelUuid of plan $planUuid: ${objectUrl ?: "(no url)"}")
-        return Verzoek(objectUrl, titel)
+        log.info("Verzoek for product '$code' filed for doel $doelUuid of plan $planUuid: ${created.url ?: "(no url)"}")
+        return Verzoek(created.url, titel)
     }
 
     /**
-     * The instrument dossier's pdca process links are FIXED and ship
-     * **dangling** in the zip (configuration UUIDs are environment-specific).
-     * Repairs them to the configuration GZAC pushed to this app, through
-     * GZAC's plugin-configuration repair (dangling links keyed by link id,
-     * re-targeted links by their current configuration id), which also
-     * clears the case-configuration issue banner. Runs when GZAC pushes a
-     * configuration and before every request (self-healing after a
-     * re-import); fails with the reason when the dossier type is missing.
+     * [start] for a producttype known by its code, the way intake documents
+     * name products. Fails with 422 when Open Product has no producttype
+     * with that code.
      */
-    fun ensureProductCaseConfiguration() {
-        val configId = pushedGzacAccess.latest()?.configuration?.configId
-            ?: throw ResponseStatusException(
-                HttpStatus.SERVICE_UNAVAILABLE, "Geen PDCA-pluginconfiguratie door GZAC gepusht; activeer PDCA in GZAC"
-            )
-        val processDefinitionId = gzacClient.latestProcessDefinitionId(PRODUCT_CASE_KEY)
-        val pdcaLinks = gzacClient.processLinks(processDefinitionId).filter {
-            it["processLinkType"] == "external_plugin" && it["pluginDefinitionKey"] == PluginHostController.PLUGIN_ID
-        }
-        if (pdcaLinks.isEmpty()) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_GATEWAY,
-                "Dossiertype '$PRODUCT_CASE_KEY' heeft geen pdca-proceskoppelingen; importeer de nieuwste zip"
-            )
-        }
-        val mappings = buildMap {
-            pdcaLinks.forEach { link ->
-                when (val current = link["externalPluginConfigurationId"] as? String) {
-                    null -> put(link["id"] as String, configId)
-                    configId -> Unit
-                    else -> put(current, configId)
-                }
-            }
-        }
-        if (mappings.isEmpty()) return
-        gzacClient.resolvePluginConfigurationMappings(
-            PRODUCT_CASE_KEY, gzacClient.caseDefinitionVersionTag(PRODUCT_CASE_KEY), mappings
+    fun startByCode(doelUuid: UUID, code: String): Verzoek {
+        val producttype = openProductGateway.findProducttypeByCode(code) ?: throw ResponseStatusException(
+            HttpStatus.UNPROCESSABLE_ENTITY, "Open Product kent geen producttype met code '$code'"
         )
-        log.info("Repaired ${mappings.size} pdca process link(s) of dossier type '$PRODUCT_CASE_KEY' to configuration $configId")
+        return start(doelUuid, producttype.uuid)
     }
+
+    // ------------------------------------------------------- open verzoeken
+
+    /** The open verzoeken of a plan, for the doelen it (still) has; oldest first. */
+    fun openVerzoeken(planUuid: UUID): List<OpenVerzoek> {
+        val doelen = openPlanGateway.listDoelen(planUuid).map { it.uuid }.toSet()
+        val verzoeken = verzoeken(mapOf("data__planUuid" to planUuid.toString())).filter { it.doelUuid in doelen }
+        if (verzoeken.isEmpty()) return emptyList()
+        val instrumenten = openPlanGateway.listInstrumentenVanDoelen(verzoeken.map { it.doelUuid }.distinct())
+        return open(verzoeken, instrumenten)
+    }
+
+    /** All verzoeken ever filed for a doel (open or not), as read back from the Objecten API. */
+    fun verzoekenVoor(doelUuid: UUID): List<VerzoekRecord> = verzoeken(mapOf("data__doelUuid" to doelUuid.toString()))
+
+    /** The oldest open verzoek for this doel and product, or null. */
+    fun openVerzoekVoor(doelUuid: UUID, productUrn: String): OpenVerzoek? {
+        val verzoeken = verzoekenVoor(doelUuid).filter { it.productUrn == productUrn }
+        if (verzoeken.isEmpty()) return null
+        return open(verzoeken, openPlanGateway.listInstrumenten(doelUuid)).firstOrNull()
+    }
+
+    /**
+     * Count-based matching: per doel and product the oldest verzoeken are
+     * fulfilled by the instruments that carry a dossier as `zaak`; the rest
+     * is open. (A verzoek does not know its dossier and an instrument not its
+     * verzoek, so counting is the only match there is.)
+     */
+    fun open(verzoeken: List<VerzoekRecord>, instrumenten: List<Instrument>, nu: OffsetDateTime = OffsetDateTime.now()): List<OpenVerzoek> =
+        verzoeken.groupBy { it.doelUuid to it.productUrn }
+            .flatMap { (sleutel, groep) ->
+                val (doelUuid, productUrn) = sleutel
+                val vervuld = instrumenten.count { inst ->
+                    inst.isDossierManaged && inst.product == productUrn && inst.doelen.any { it.uuid == doelUuid }
+                }
+                groep.sortedBy { it.aangevraagdOp ?: OffsetDateTime.MIN }.drop(vervuld)
+            }
+            .sortedBy { it.aangevraagdOp ?: OffsetDateTime.MIN }
+            .map { v ->
+                OpenVerzoek(
+                    objectUrl = v.objectUrl,
+                    planUuid = v.planUuid,
+                    doelUuid = v.doelUuid,
+                    productUrn = v.productUrn,
+                    productTitel = v.productTitel,
+                    aangevraagdOp = v.aangevraagdOp?.toString(),
+                    minutenOpen = v.aangevraagdOp?.let { Duration.between(it, nu).toMinutes().coerceAtLeast(0) }
+                )
+            }
+
+    private fun verzoeken(dataAttrs: Map<String, String>): List<VerzoekRecord> =
+        objectenGateway.listObjects(mapOf("type" to VERZOEK_TYPE) + dataAttrs).mapNotNull { obj ->
+            val data = obj.record?.data?.path("data") ?: return@mapNotNull null
+            val doelUuid = data.path("doelUuid").asText("").let { runCatching { UUID.fromString(it) }.getOrNull() }
+                ?: return@mapNotNull null
+            VerzoekRecord(
+                objectUrl = obj.url,
+                planUuid = data.path("planUuid").asText("").let { runCatching { UUID.fromString(it) }.getOrNull() },
+                doelUuid = doelUuid,
+                productUrn = data.path("productUrn").takeIf { it.isTextual }?.asText(),
+                productTitel = data.path("productTitel").takeIf { it.isTextual }?.asText(),
+                aangevraagdOp = data.path("aangevraagdOp").takeIf { it.isTextual }?.asText()
+                    ?.let { runCatching { OffsetDateTime.parse(it) }.getOrNull() }
+                    ?: (obj.record.registrationAt ?: obj.record.startAt)
+                        ?.let { runCatching { LocalDate.parse(it).atStartOfDay().atOffset(ZoneOffset.UTC) }.getOrNull() }
+            )
+        }
+
+    private fun weergave(aangevraagdOp: String): String = runCatching {
+        val moment = OffsetDateTime.parse(aangevraagdOp).atZoneSameInstant(ZoneId.systemDefault())
+        "op ${moment.format(DateTimeFormatter.ofPattern("d-M-yyyy 'om' HH:mm"))}"
+    }.getOrDefault("eerder")
 
     // ---------------------------------------------------------- the recipe
 
     /** The StartInstrument actie of a producttype, read from Open Product (the acties list carries the mapping). */
     private fun startActie(producttypeUuid: UUID, titel: String): StartActie {
-        val acties = list(openProductRestClient, "/producttypen/api/v1/acties?producttype__uuid=$producttypeUuid", "Open Product")
-        val actie = acties.firstOrNull { (it["naam"] as? String)?.equals(START_ACTIE, ignoreCase = true) == true }
+        val actie = openProductGateway.listActies(producttypeUuid)
+            .firstOrNull { it.naam?.equals(START_ACTIE, ignoreCase = true) == true }
             ?: throw ResponseStatusException(
                 HttpStatus.UNPROCESSABLE_ENTITY,
                 "Producttype '$titel' heeft geen actie '$START_ACTIE' in Open Product en kan niet worden aangevraagd"
             )
-        return parseStartActie(actie["mapping"])
+        return parseStartActie(actie.mapping)
     }
 
     /** Reads the start recipe out of an actie's mapping (Open Product's DMN-mapping shape, see the class doc). */
-    fun parseStartActie(mapping: Any?): StartActie {
-        val root = mapping as? Map<*, *> ?: emptyMap<Any, Any>()
-        val statics = (root["static"] as? List<*>).orEmpty()
-            .filterIsInstance<Map<*, *>>()
-            .mapNotNull { item -> (item["name"] as? String)?.let { it to item["value"] } }
+    fun parseStartActie(mapping: JsonNode?): StartActie {
+        val root = mapping?.takeIf { it.isObject }
+        val statics = root?.path("static")?.takeIf { it.isArray }.orEmpty()
+            .mapNotNull { item ->
+                val name = item.path("name").takeIf { it.isTextual }?.asText() ?: return@mapNotNull null
+                name to item.get("value")?.let { objectMapper.treeToValue(it, Any::class.java) }
+            }
             .toMap()
-        val mappings = root.entries
-            .filter { it.key != "static" && it.value is List<*> }
+        val mappings = root?.properties().orEmpty()
+            .filter { (source, items) -> source != "static" && items.isArray }
             .associate { (source, items) ->
-                source.toString().lowercase() to (items as List<*>)
-                    .filterIsInstance<Map<*, *>>()
-                    .mapNotNull { item ->
-                        val name = item["name"] as? String ?: return@mapNotNull null
-                        val path = item["regex"] as? String ?: return@mapNotNull null
-                        name to path
-                    }
+                source.lowercase() to items.mapNotNull { item ->
+                    val name = item.path("name").takeIf { it.isTextual }?.asText() ?: return@mapNotNull null
+                    val path = item.path("regex").takeIf { it.isTextual }?.asText() ?: return@mapNotNull null
+                    name to path
+                }
             }
         return StartActie(
             soort = (statics["soort"] as? String)?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: SOORT_VERZOEK,
@@ -238,7 +356,7 @@ class InstrumentAanvraagService(
     }
 
     /** Applies the per-source mappings of the recipe; unknown sources and missing values are skipped. */
-    fun resolveMappings(actie: StartActie, sources: Map<String, Map<*, *>>): Map<String, Any?> = buildMap {
+    fun resolveMappings(actie: StartActie, sources: Map<String, JsonNode>): Map<String, Any?> = buildMap {
         actie.mappings.forEach { (source, items) ->
             val sourceObject = sources[source]
             if (sourceObject == null) {
@@ -252,78 +370,49 @@ class InstrumentAanvraagService(
     }
 
     /** The value at a `$.a.b` (or `a.b`) path in a register object; null when absent. */
-    private fun valueAt(source: Map<*, *>, path: String): Any? =
-        path.removePrefix("$").trim('.').split('.').filter { it.isNotBlank() }
-            .fold(source as Any?) { current, key -> (current as? Map<*, *>)?.get(key) }
-
-    private fun parameter(producttype: Map<*, *>, naam: String): String? =
-        (producttype["parameters"] as? List<*>)?.filterIsInstance<Map<*, *>>()
-            ?.firstOrNull { it["naam"] == naam }?.get("waarde") as? String
+    private fun valueAt(source: JsonNode, path: String): Any? {
+        val node = path.removePrefix("$").trim('.').split('.').filter { it.isNotBlank() }
+            .fold(source) { current, key -> current.path(key) }
+        return if (node.isMissingNode || node.isNull) null else objectMapper.treeToValue(node, Any::class.java)
+    }
 
     /**
-     * The subject of the plan from `plan.domeinregister`
-     * (`urn:pdca:<register>:<resource>:<id>`): the id, plus the bsn when the
-     * subject is a persoon — that bsn is the verzoek's initiator. A plan
-     * without domeinregister falls back to the doel's persoon.
+     * The subject of the plan from `plan.domeinregister` ([PdcaUrn] persoon
+     * or object): the id, plus the bsn when the subject is a persoon — that
+     * bsn is the verzoek's initiator. A plan without domeinregister falls
+     * back to the doel's persoon.
      */
-    private fun subjectOf(plan: Map<*, *>, doel: Map<*, *>): Pair<String?, String?> {
-        val parts = (plan["domeinregister"] as? String)?.split(':').orEmpty()
-        val resource = parts.getOrNull(3)
-        val id = parts.getOrNull(4)?.takeIf { it.isNotBlank() }
-        val doelBsn = (doel["persoon"] as? Map<*, *>)?.get("bsn") as? String
-        return when {
-            id != null && resource == "persoon" -> id to id
-            id != null -> id to null
-            else -> doelBsn to doelBsn
+    private fun subjectOf(plan: Plan, doel: Doel): Pair<String?, String?> {
+        val subject = PdcaUrn.parse(plan.domeinregister)
+        val doelBsn = doel.persoon?.bsn
+        return when (subject?.kind) {
+            PdcaUrn.Kind.PERSOON -> subject.id to subject.id
+            null -> doelBsn to doelBsn
+            else -> subject.id to null
         }
     }
 
-    // ------------------------------------------------------ register calls
+    private fun JsonNode?.orEmpty(): List<JsonNode> = this?.toList() ?: emptyList()
+}
 
-    private fun get(client: RestClient, path: String, register: String): Map<*, *> =
-        call(register, path) { client.get().uri(path).retrieve().body(Map::class.java) }
+/**
+ * In-memory locks per key, held only while someone uses them: [withLock]
+ * runs a block exclusively per key, and a key's lock is dropped once no
+ * caller holds or waits for it.
+ */
+internal class KeyedLocks {
+    private class Entry(val lock: ReentrantLock = ReentrantLock(), var users: Int = 0)
 
-    private fun list(client: RestClient, path: String, register: String): List<Map<*, *>> =
-        (get(client, path, register)["results"] as? List<*>).orEmpty().filterIsInstance<Map<*, *>>()
+    private val entries = HashMap<String, Entry>()
 
-    private fun post(client: RestClient, path: String, register: String, body: Map<String, Any?>): Map<*, *> =
-        call(register, path) {
-            client.post()
-                .uri(path)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(objectMapper.writeValueAsBytes(body))
-                .retrieve()
-                .body(Map::class.java)
+    fun <T> withLock(key: String, block: () -> T): T {
+        val entry = synchronized(entries) { entries.getOrPut(key) { Entry() }.also { it.users++ } }
+        entry.lock.lock()
+        try {
+            return block()
+        } finally {
+            entry.lock.unlock()
+            synchronized(entries) { if (--entry.users == 0) entries.remove(key) }
         }
-
-    /**
-     * Runs a register call and turns its failures into answers for the plan
-     * page: the register's own 4xx (validation, not found) keeps its status,
-     * a contract failure (register not bound, GZAC down) keeps its 503, and
-     * anything else is a 502. The message is the `detail` of the answer.
-     */
-    private fun call(register: String, path: String, request: () -> Map<*, *>?): Map<*, *> = try {
-        request() ?: throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "$register gaf geen antwoord op $path")
-    } catch (e: ResponseStatusException) {
-        throw e
-    } catch (e: RestClientResponseException) {
-        val detail = detailOf(e.responseBodyAsString) ?: e.responseBodyAsString.take(300)
-        val status = when (e.statusCode.value()) {
-            400, 404, 422 -> HttpStatus.valueOf(e.statusCode.value())
-            503 -> HttpStatus.SERVICE_UNAVAILABLE
-            else -> HttpStatus.BAD_GATEWAY
-        }
-        throw ResponseStatusException(status, "$register: $detail")
-    } catch (e: Exception) {
-        throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "$register-aanroep $path mislukt: ${e.message}")
-    }
-
-    private fun detailOf(body: String): String? = try {
-        val node = objectMapper.readTree(body)
-        node.path("detail").takeIf { it.isTextual }?.asText()
-            ?: node.path("invalidParams").takeIf { it.isArray && it.size() > 0 }
-                ?.joinToString(", ") { "${it.path("name").asText()}: ${it.path("reason").asText()}" }
-    } catch (e: Exception) {
-        null
     }
 }

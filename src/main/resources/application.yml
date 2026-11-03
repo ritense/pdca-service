@@ -4,8 +4,12 @@
 server:
   port: 7500
   error:
-    # Prototype: expose the reason of ResponseStatusExceptions in the error response.
-    include-message: always
+    # Error bodies come from ErrorResponseAdvice ({"detail": ...}); Spring's
+    # fallback error page never shows messages or stack traces.
+    include-message: never
+    include-stacktrace: never
+    include-exception: false
+    include-binding-errors: never
 
 spring:
   application:
@@ -18,37 +22,86 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: none
+      ddl-auto: validate
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
   liquibase:
     change-log: classpath:config/liquibase/changelog-master.xml
+  # Timeouts of every outbound HTTP call (GZAC, and the registers through
+  # GZAC's contract broker).
+  http:
+    client:
+      connect-timeout: ${PDCA_HTTP_CONNECT_TIMEOUT:5s}
+      read-timeout: ${PDCA_HTTP_READ_TIMEOUT:30s}
 
 pdca:
   # The registers (Open Plan, Open Product, Open Klant, Objecten API) have no
   # settings here: the app reaches them only through GZAC's contracts
-  # nl.ritense.<register>@1, served by the bound register plugins, which hold
+  # nl.ritense.<register>@2, served by the bound register plugins, which hold
   # the URLs and tokens.
-  # GZAC itself: dossier reads/creation and the process-link repair of the
-  # instrument dossier. The
-  # preferred credential is the serviceToken + gzacBaseUrl (the host's
-  # server-to-server callback URL) GZAC pushes with the plugin configuration.
-  # GZAC_URL is an explicit override of that pushed URL, only set where the
-  # app sees GZAC under a different address (the compose pdca-app service:
-  # host.docker.internal, see docker-compose.yml); it has no default, so a
-  # deployment without it always uses the pushed URL. Keycloak client
-  # credentials (the standard gzac-docker-compose m2m client) are the dev
-  # fallback without a plugin configuration and then require GZAC_URL.
+  # GZAC itself (dossier reads and creation, user-token introspection) is
+  # reached with the serviceToken + gzacBaseUrl (the host's server-to-server
+  # callback URL) GZAC pushes with the plugin configuration; there are no
+  # GZAC credentials here. GZAC_URL is an explicit override of that pushed
+  # URL, only set where the app sees GZAC under a different address (the
+  # compose pdca-app service: host.docker.internal, see docker-compose.yml);
+  # it has no default, so a deployment without it always uses the pushed URL.
+  # The app uses one pushed PDCA configuration. PDCA_GZAC_CONFIGURATION_ID
+  # names it; without it GZAC must have pushed exactly one, and with several
+  # the app refuses GZAC and register calls until one is named.
+  # Trust: GZAC signs its requests to the app (host API, plugin actions) with
+  # the secret entered when the app was registered in GZAC; PDCA_HOST_SECRET
+  # must be that same secret. The default is the documented local-dev secret
+  # (also the local GZAC dev setup's default); the app warns while it is in use.
+  # PDCA_GZAC_ALLOWED_BASE_URLS (comma separated, empty = any) pins the GZAC
+  # instances whose configuration pushes are accepted.
+  # PDCA_GZAC_FRONTEND_ORIGINS (comma separated) are the GZAC frontend
+  # origins that may frame the bundles and call /data, on top of the origins
+  # GZAC announces itself; the default is the Valtimo dev frontend.
   gzac:
     base-url: ${GZAC_URL:}
-    token-url: ${GZAC_TOKEN_URL:http://localhost:8081/auth/realms/valtimo/protocol/openid-connect/token}
-    client-id: ${GZAC_CLIENT_ID:valtimo-user-m2m-client}
-    client-secret: ${GZAC_CLIENT_SECRET:6ef6ca16-6b86-482a-a3d9-0561704c1db9}
-  # Namespace used for URNs this app mints (plan.domeinregister,
-  # instrument.product, persoon.klant, ...): urn:<namespace>:<component>:<resource>:<id>
-  urn-namespace: pdca
+    configuration-id: ${PDCA_GZAC_CONFIGURATION_ID:}
+    allowed-base-urls: ${PDCA_GZAC_ALLOWED_BASE_URLS:}
+    frontend-origins: ${PDCA_GZAC_FRONTEND_ORIGINS:http://localhost:4200}
+  host:
+    secret: ${PDCA_HOST_SECRET:dev-only-insecure-secret}
+  # The pushed serviceTokens are stored encrypted (AES-GCM) with a key derived
+  # from this secret. The default is the documented local-dev secret; the app
+  # warns at startup while it is in use.
+  encryption:
+    secret: ${PDCA_ENCRYPTION_SECRET:pdca-local-dev-encryption-secret}
+  # A register listing with more pages than this fails instead of being read
+  # partially. GZAC runs at most 8 contract calls per calling configuration at
+  # a time; the app keeps its own register calls below that
+  # (contract-concurrency, a caller waits at most contract-permit-timeout) and
+  # retries a call GZAC still refuses as too many a few times after a jittered
+  # pause growing from contract-retry-backoff.
+  registers:
+    max-pages: ${PDCA_REGISTER_MAX_PAGES:50}
+    contract-concurrency: ${PDCA_REGISTER_CONTRACT_CONCURRENCY:6}
+    contract-permit-timeout: ${PDCA_REGISTER_CONTRACT_PERMIT_TIMEOUT:30s}
+    contract-retries: ${PDCA_REGISTER_CONTRACT_RETRIES:3}
+    contract-retry-backoff: ${PDCA_REGISTER_CONTRACT_RETRY_BACKOFF:200ms}
+  # Rate limit of /data (the browser traffic), calls per window as a burst or
+  # spread out; 0 switches a limit off. Counted in memory per replica.
+  # per-user: every call of one verified user. per-client and
+  # per-configuration: only the calls whose user token is not cached and
+  # costs an introspection at GZAC, per client address (the TCP peer; behind
+  # a reverse proxy set SERVER_FORWARD_HEADERS_STRATEGY=native so it is the
+  # browser's) and for the whole configuration.
+  data:
+    rate-limit:
+      per-user: ${PDCA_DATA_RATE_LIMIT_PER_USER:600}
+      per-client: ${PDCA_DATA_RATE_LIMIT_PER_CLIENT:300}
+      per-configuration: ${PDCA_DATA_RATE_LIMIT_PER_CONFIGURATION:6000}
+      window: ${PDCA_DATA_RATE_LIMIT_WINDOW:1m}
+  # Demo data for the registers outside this integration (BRP
+  # persoonsgegevens, objectenregister). Off unless PDCA_DISPLAY_STUBS=true;
+  # bootRun and the compose app service switch it on for local development.
+  display-stubs:
+    enabled: ${PDCA_DISPLAY_STUBS:false}
 
 logging:
   level:
-    com.ritense.pdca: DEBUG
+    com.ritense.pdca: ${PDCA_LOG_LEVEL:INFO}

@@ -5,19 +5,20 @@
 #   docker run --rm -p 7500:7500 pdca-app          # needs the compose deps (see README)
 #   docker compose --profile app up -d --build     # entire stack in Docker
 #
-# All external endpoints are env-configurable (see README "Docker" section):
-# PDCA_DB_HOST/PORT/NAME/USER/PASS, OPENPLAN_URL/TOKEN, OPENPRODUCT_URL/TOKEN,
-# GZAC_URL/TOKEN_URL/CLIENT_ID/CLIENT_SECRET, PDCA_SEED_DEMO_DATA, SERVER_PORT.
+# All external endpoints are env-configurable (see README "Configuration"):
+# PDCA_DB_HOST/PORT/NAME/USER/PASS, GZAC_URL, SERVER_PORT. The registers are
+# reached through GZAC and need no settings here.
 
 # ---- Stage 1: frontend bundles (Vite) --------------------------------------
 # vite.config.ts writes to ../src/main/resources/static/bundles/react, so the
 # output lands in /workspace/src/... and is copied into the backend stage.
+# The frontend checks (typecheck, lint, tests) run in ./gradlew build, not here.
 FROM node:22-alpine AS frontend
 WORKDIR /workspace/frontend
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+RUN npm ci --no-audit --no-fund
 COPY frontend/ ./
-RUN npx vite build
+RUN npm run build
 
 # ---- Stage 2: backend jar (Gradle) -----------------------------------------
 FROM eclipse-temurin:21-jdk AS backend
@@ -29,7 +30,8 @@ COPY gradle/ gradle/
 RUN chmod +x gradlew && ./gradlew --no-daemon dependencies > /dev/null 2>&1 || true
 COPY src/ src/
 COPY --from=frontend /workspace/src/main/resources/static/bundles/react/ src/main/resources/static/bundles/react/
-RUN ./gradlew --no-daemon bootJar
+# -PskipFrontend: the bundles come from stage 1, this stage has no Node.
+RUN ./gradlew --no-daemon bootJar -PskipFrontend
 
 # ---- Stage 3: runtime ------------------------------------------------------
 FROM eclipse-temurin:21-jre-alpine

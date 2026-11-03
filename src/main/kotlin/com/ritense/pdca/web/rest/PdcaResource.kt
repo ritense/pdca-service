@@ -20,19 +20,10 @@ import com.ritense.pdca.domain.ContactmomentDetails
 import com.ritense.pdca.domain.DoelDetails
 import com.ritense.pdca.domain.InstrumentDetails
 import com.ritense.pdca.domain.PlanDetails
-import com.ritense.pdca.domain.UitvoeringsStatus
 import com.ritense.pdca.domain.VoortgangStatusOptie
-import com.ritense.pdca.repository.ActionRepository
-import com.ritense.pdca.repository.ContactmomentDetailsRepository
-import com.ritense.pdca.repository.DoelDetailsRepository
-import com.ritense.pdca.repository.InstrumentDetailsRepository
-import com.ritense.pdca.repository.InvolvedPartyRepository
-import com.ritense.pdca.repository.PlanDetailsRepository
-import com.ritense.pdca.service.KlantcontactService
-import com.ritense.pdca.service.NewContactmoment
-import com.ritense.pdca.service.PhaseConfigService
+import com.ritense.pdca.service.ContactmomentService
+import com.ritense.pdca.service.PlanOverlayService
 import com.ritense.pdca.web.rest.dto.ContactmomentDatumRequest
-import com.ritense.pdca.web.rest.dto.ContactmomentDetailsRequest
 import com.ritense.pdca.web.rest.dto.ContactmomentRequest
 import com.ritense.pdca.web.rest.dto.DoelDetailsRequest
 import com.ritense.pdca.web.rest.dto.InstrumentDetailsRequest
@@ -41,9 +32,6 @@ import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import org.springframework.transaction.annotation.Transactional
-import org.springframework.web.client.RestClient
-import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -53,10 +41,6 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.ZoneId
 import java.util.UUID
 
 /**
@@ -65,99 +49,28 @@ import java.util.UUID
  * from Open Plan / Open Product, contactmomenten (klantcontacten) from Open
  * Klant, through the [com.ritense.pdca.registers.RegisterProxyController];
  * this resource only stores what those registers do not model
- * (uitvoeringsstatus, voortgang, internal/external notes, weergavestatus,
- * uren/effectiviteit, evaluatietype, doelvoortgang, actiepunten) plus the
- * GZAC case link.
- *
- * The DELETE endpoints clean up local overlay rows after the caller removed
- * the register resource through the proxy. Contactmomenten are the
- * exception: creating one and rescheduling a planned one go through this
- * resource ([KlantcontactService] writes the klantcontact with its betrokkene
- * and onderwerpobject), reading them goes through the proxy. Contactmomenten
- * cannot be deleted.
+ * ([PlanOverlayService]); the PUT endpoints are partial updates (an absent
+ * field keeps its value, an explicit null clears it). Overlay rows go when
+ * their register object goes, through the lifecycle use cases.
+ * Contactmomenten are the exception: creating one and rescheduling a
+ * planned one go through this resource ([ContactmomentService]), reading
+ * them goes through the proxy. Contactmomenten cannot be deleted.
  */
 @RestController
-@Transactional
 @RequestMapping("/api/v1/pdca", produces = [MediaType.APPLICATION_JSON_VALUE])
 class PdcaResource(
-    private val planDetailsRepository: PlanDetailsRepository,
-    private val doelDetailsRepository: DoelDetailsRepository,
-    private val contactmomentDetailsRepository: ContactmomentDetailsRepository,
-    private val instrumentDetailsRepository: InstrumentDetailsRepository,
-    private val actionRepository: ActionRepository,
-    private val involvedPartyRepository: InvolvedPartyRepository,
-    private val phaseConfigService: PhaseConfigService,
-    private val klantcontactService: KlantcontactService,
-    private val openPlanRestClient: RestClient
+    private val planOverlayService: PlanOverlayService,
+    private val contactmomentService: ContactmomentService
 ) {
 
     // --------------------------------------------------------- plandetails
 
-    @GetMapping("/plandetails")
-    fun listPlanDetails(
-        @RequestParam(name = "caseDefinitionKey", required = false) caseDefinitionKey: String?
-    ): List<PlanDetails> =
-        if (caseDefinitionKey != null) planDetailsRepository.findByCaseDefinitionKey(caseDefinitionKey)
-        else planDetailsRepository.findAll()
-
-    @GetMapping("/plandetails/{planUuid}")
-    fun getPlanDetails(@PathVariable(name = "planUuid") planUuid: UUID): PlanDetails =
-        planDetailsRepository.findById(planUuid).orElseThrow {
-            ResponseStatusException(HttpStatus.NOT_FOUND, "No plandetails for plan $planUuid")
-        }
-
+    /** Edits the overlay row of an existing plan (404 without one: plans come from the intake). */
     @PutMapping("/plandetails/{planUuid}")
-    fun upsertPlanDetails(
+    fun updatePlanDetails(
         @PathVariable(name = "planUuid") planUuid: UUID,
-        @Valid @RequestBody request: PlanDetailsRequest
-    ): PlanDetails {
-        request.caseDefinitionKey?.let { key ->
-            phaseConfigService.findByCaseDefinitionKey(key)
-                ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "No PhaseConfig found for caseDefinitionKey: $key")
-        }
-        val existing = planDetailsRepository.findById(planUuid).orElse(null)
-        val configKey = existing?.caseDefinitionKey ?: request.caseDefinitionKey
-        request.weergaveStatus?.let { validateWeergaveStatus(configKey, it) }
-        request.beginPositie?.let { validatePositie(configKey, "beginPositie", it) }
-
-        val details = if (existing == null) {
-            PlanDetails(
-                planUuid = planUuid,
-                persoonUuid = request.persoonUuid
-                    ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "persoonUuid is required when creating plandetails"),
-                caseDefinitionKey = request.caseDefinitionKey,
-                weergaveStatus = request.weergaveStatus,
-                beginPositie = request.beginPositie,
-                subdoelgroep = request.subdoelgroep,
-                hoofddoelTypeUuid = request.hoofddoelTypeUuid,
-                streefEinddatum = request.streefEinddatum
-            )
-        } else {
-            existing.apply {
-                caseDefinitionKey = request.caseDefinitionKey ?: caseDefinitionKey
-                weergaveStatus = request.weergaveStatus ?: weergaveStatus
-                beginPositie = request.beginPositie ?: beginPositie
-                subdoelgroep = request.subdoelgroep ?: subdoelgroep
-                hoofddoelTypeUuid = request.hoofddoelTypeUuid ?: hoofddoelTypeUuid
-                streefEinddatum = request.streefEinddatum ?: streefEinddatum
-                updatedAt = LocalDateTime.now()
-            }
-        }
-        return planDetailsRepository.save(details)
-    }
-
-    /** Removes all local overlay data of a plan (call after deleting the plan in Open Plan). */
-    @DeleteMapping("/plandetails/{planUuid}")
-    fun deletePlanDetails(@PathVariable(name = "planUuid") planUuid: UUID): ResponseEntity<Unit> {
-        val doelUuids = doelDetailsRepository.findByPlanUuid(planUuid).map { it.doelUuid }
-        actionRepository.deleteAll(actionRepository.findByDoelUuidIn(doelUuids))
-        doelDetailsRepository.deleteByPlanUuid(planUuid)
-        contactmomentDetailsRepository.deleteByPlanUuid(planUuid)
-        instrumentDetailsRepository.deleteByPlanUuid(planUuid)
-        involvedPartyRepository.deleteByPlanUuid(planUuid)
-        planDetailsRepository.deleteById(planUuid)
-        return ResponseEntity.noContent().build()
-    }
+        @RequestBody request: PlanDetailsRequest
+    ): PlanDetails = planOverlayService.updatePlanDetails(planUuid, request)
 
     // --------------------------------------------------------- doeldetails
 
@@ -168,282 +81,47 @@ class PdcaResource(
     @GetMapping("/voortgangstatussen")
     fun listVoortgangStatussen(
         @RequestParam(name = "planUuid", required = false) planUuid: UUID?
-    ): List<VoortgangStatusOptie> =
-        phaseConfigService.getVoortgangStatussen(planUuid?.let { caseDefinitionKeyVan(it) })
+    ): List<VoortgangStatusOptie> = planOverlayService.voortgangStatussen(planUuid)
 
     @GetMapping("/doeldetails")
     fun listDoelDetails(@RequestParam(name = "planUuid") planUuid: UUID): List<DoelDetails> =
-        doelDetailsRepository.findByPlanUuid(planUuid).sortedBy { it.sortering }
+        planOverlayService.listDoelDetails(planUuid)
 
     @PutMapping("/doeldetails/{doelUuid}")
     fun upsertDoelDetails(
         @PathVariable(name = "doelUuid") doelUuid: UUID,
-        @Valid @RequestBody request: DoelDetailsRequest
-    ): DoelDetails {
-        val existing = doelDetailsRepository.findById(doelUuid).orElse(null)
-        val planUuid = existing?.planUuid ?: request.planUuid
-            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "planUuid is required when creating doeldetails")
-        request.voortgangStatus
-            ?.takeIf { it != existing?.voortgangStatus }
-            ?.let { validateVoortgangStatus(planUuid, doelUuid, it) }
-
-        val details = if (existing == null) {
-            val sortering = request.sortering
-                ?: ((doelDetailsRepository.findByPlanUuid(planUuid).maxOfOrNull { it.sortering } ?: -1) + 1)
-            DoelDetails(
-                doelUuid = doelUuid,
-                planUuid = planUuid,
-                uitvoeringsStatus = request.uitvoeringsStatus ?: UitvoeringsStatus.GEPLAND,
-                voortgangToelichting = request.voortgangToelichting,
-                voortgangStatus = request.voortgangStatus,
-                interneNotitie = request.interneNotitie,
-                externeNotitie = request.externeNotitie,
-                sortering = sortering
-            )
-        } else {
-            existing.apply {
-                uitvoeringsStatus = request.uitvoeringsStatus ?: uitvoeringsStatus
-                voortgangToelichting = request.voortgangToelichting ?: voortgangToelichting
-                voortgangStatus = request.voortgangStatus ?: voortgangStatus
-                interneNotitie = request.interneNotitie ?: interneNotitie
-                externeNotitie = request.externeNotitie ?: externeNotitie
-                sortering = request.sortering ?: sortering
-                updatedAt = LocalDateTime.now()
-            }
-        }
-        return doelDetailsRepository.save(details)
-    }
-
-    /** Removes local overlay data of a doel (call after deleting the doel in Open Plan). */
-    @DeleteMapping("/doeldetails/{doelUuid}")
-    fun deleteDoelDetails(@PathVariable(name = "doelUuid") doelUuid: UUID): ResponseEntity<Unit> {
-        actionRepository.deleteAll(actionRepository.findByDoelUuid(doelUuid))
-        doelDetailsRepository.deleteById(doelUuid)
-        return ResponseEntity.noContent().build()
-    }
+        @RequestBody request: DoelDetailsRequest
+    ): DoelDetails = planOverlayService.upsertDoelDetails(doelUuid, request)
 
     // --------------------------------------------------- instrumentdetails
 
     @GetMapping("/instrumentdetails")
     fun listInstrumentDetails(@RequestParam(name = "planUuid") planUuid: UUID): List<InstrumentDetails> =
-        instrumentDetailsRepository.findByPlanUuid(planUuid)
+        planOverlayService.listInstrumentDetails(planUuid)
 
     @PutMapping("/instrumentdetails/{instrumentUuid}")
     fun upsertInstrumentDetails(
         @PathVariable(name = "instrumentUuid") instrumentUuid: UUID,
-        @Valid @RequestBody request: InstrumentDetailsRequest
-    ): InstrumentDetails {
-        val existing = instrumentDetailsRepository.findById(instrumentUuid).orElse(null)
-        val planUuid = existing?.planUuid ?: request.planUuid
-            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "planUuid is required when creating instrumentdetails")
-
-        val details = if (existing == null) {
-            InstrumentDetails(
-                instrumentUuid = instrumentUuid,
-                planUuid = planUuid,
-                uitvoeringsStatus = request.uitvoeringsStatus,
-                urenBesteed = request.urenBesteed,
-                effectiviteitScore = request.effectiviteitScore,
-                effectiviteitToelichting = request.effectiviteitToelichting,
-                afbreekReden = request.afbreekReden,
-                interneNotitie = request.interneNotitie,
-                externeNotitie = request.externeNotitie
-            )
-        } else {
-            existing.apply {
-                uitvoeringsStatus = request.uitvoeringsStatus ?: uitvoeringsStatus
-                urenBesteed = request.urenBesteed ?: urenBesteed
-                effectiviteitScore = request.effectiviteitScore ?: effectiviteitScore
-                effectiviteitToelichting = request.effectiviteitToelichting ?: effectiviteitToelichting
-                afbreekReden = request.afbreekReden ?: afbreekReden
-                interneNotitie = request.interneNotitie ?: interneNotitie
-                externeNotitie = request.externeNotitie ?: externeNotitie
-                updatedAt = LocalDateTime.now()
-            }
-        }
-        return instrumentDetailsRepository.save(details)
-    }
-
-    @DeleteMapping("/instrumentdetails/{instrumentUuid}")
-    fun deleteInstrumentDetails(@PathVariable(name = "instrumentUuid") instrumentUuid: UUID): ResponseEntity<Unit> {
-        instrumentDetailsRepository.deleteById(instrumentUuid)
-        return ResponseEntity.noContent().build()
-    }
+        @RequestBody request: InstrumentDetailsRequest
+    ): InstrumentDetails = planOverlayService.upsertInstrumentDetails(instrumentUuid, request)
 
     // ------------------------------------------------ contactmomentdetails
 
     @GetMapping("/contactmomentdetails")
     fun listContactmomentDetails(@RequestParam(name = "planUuid") planUuid: UUID): List<ContactmomentDetails> =
-        contactmomentDetailsRepository.findByPlanUuid(planUuid)
-
-    @PutMapping("/contactmomentdetails/{contactmomentUuid}")
-    fun upsertContactmomentDetails(
-        @PathVariable(name = "contactmomentUuid") contactmomentUuid: UUID,
-        @Valid @RequestBody request: ContactmomentDetailsRequest
-    ): ContactmomentDetails {
-        val existing = contactmomentDetailsRepository.findById(contactmomentUuid).orElse(null)
-        val planUuid = existing?.planUuid ?: request.planUuid
-            ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "planUuid is required when creating contactmomentdetails")
-        request.evaluatieType?.let { validateEvaluatieType(planUuid, it) }
-
-        val details = if (existing == null) {
-            ContactmomentDetails(
-                contactmomentUuid = contactmomentUuid,
-                planUuid = planUuid,
-                evaluatieType = request.evaluatieType
-                    ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "evaluatieType is required when creating contactmomentdetails"),
-                geplandeDatum = request.geplandeDatum,
-                deelnemers = request.deelnemers,
-                doelVoortgang = request.doelVoortgang,
-                actiepunten = request.actiepunten
-            )
-        } else {
-            existing.apply {
-                evaluatieType = request.evaluatieType ?: evaluatieType
-                geplandeDatum = request.geplandeDatum ?: geplandeDatum
-                deelnemers = request.deelnemers ?: deelnemers
-                doelVoortgang = request.doelVoortgang ?: doelVoortgang
-                actiepunten = request.actiepunten ?: actiepunten
-                updatedAt = LocalDateTime.now()
-            }
-        }
-        return contactmomentDetailsRepository.save(details)
-    }
+        planOverlayService.listContactmomentDetails(planUuid)
 
     // ------------------------------------------------------ contactmomenten
 
     /** A contactmoment of a plan: the klantcontact in Open Klant plus its overlay row. */
     @PostMapping("/contactmomenten")
-    fun createContactmoment(@Valid @RequestBody request: ContactmomentRequest): ResponseEntity<ContactmomentDetails> {
-        validateEvaluatieType(request.planUuid, request.evaluatieType)
-        val klantcontactUuid = klantcontactService.create(
-            NewContactmoment(
-                planUuid = request.planUuid,
-                evaluatieType = request.evaluatieType,
-                plaatsgevondenOp = plaatsgevondenOp(request.datum),
-                afgerond = request.afgerond,
-                verslag = request.verslag
-            )
-        )
-        val details = contactmomentDetailsRepository.save(
-            ContactmomentDetails(
-                contactmomentUuid = klantcontactUuid,
-                planUuid = request.planUuid,
-                evaluatieType = request.evaluatieType,
-                geplandeDatum = request.datum,
-                deelnemers = request.deelnemers?.takeIf { it.isNotBlank() },
-                doelVoortgang = request.doelVoortgang,
-                actiepunten = request.actiepunten
-            )
-        )
-        return ResponseEntity.status(HttpStatus.CREATED).body(details)
-    }
+    fun createContactmoment(@Valid @RequestBody request: ContactmomentRequest): ResponseEntity<ContactmomentDetails> =
+        ResponseEntity.status(HttpStatus.CREATED).body(contactmomentService.create(request))
 
-    /**
-     * Reschedules a planned contactmoment: moves the klantcontact's
-     * plaatsgevondenOp in Open Klant and the overlay's geplandeDatum. A
-     * contactmoment that already took place cannot be moved (409).
-     */
+    /** Reschedules a planned contactmoment; one that already took place cannot be moved (409). */
     @PatchMapping("/contactmomenten/{contactmomentUuid}")
     fun rescheduleContactmoment(
         @PathVariable(name = "contactmomentUuid") contactmomentUuid: UUID,
         @Valid @RequestBody request: ContactmomentDatumRequest
-    ): ContactmomentDetails {
-        val klantcontact = klantcontactService.get(contactmomentUuid)
-            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Contactmoment niet gevonden")
-        if (!klantcontact.gepland) {
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "Dit contactmoment heeft al plaatsgevonden en kan niet meer worden verplaatst"
-            )
-        }
-        val existing = contactmomentDetailsRepository.findById(contactmomentUuid).orElse(null)
-        val details = existing?.apply {
-            geplandeDatum = request.datum
-            updatedAt = LocalDateTime.now()
-        } ?: ContactmomentDetails(
-            contactmomentUuid = contactmomentUuid,
-            planUuid = klantcontact.planUuid
-                ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Dit contactmoment hoort niet bij een plan"),
-            evaluatieType = klantcontactService.evaluatieTypeOf(klantcontact.onderwerp) ?: DEFAULT_EVALUATIE_TYPE,
-            geplandeDatum = request.datum
-        )
-        val saved = contactmomentDetailsRepository.saveAndFlush(details)
-        klantcontactService.reschedule(contactmomentUuid, plaatsgevondenOp(request.datum))
-        return saved
-    }
-
-    // ------------------------------------------------------------- helpers
-
-    /** A contactmoment on a date takes place at noon, local time. */
-    private fun plaatsgevondenOp(datum: LocalDate) =
-        datum.atTime(12, 0).atZone(ZoneId.systemDefault()).toOffsetDateTime()
-
-    private fun validateWeergaveStatus(caseDefinitionKey: String?, weergaveStatus: String) {
-        if (caseDefinitionKey == null) return
-        val validStatussen = phaseConfigService.getPlanStatussen(caseDefinitionKey) ?: return
-        if (weergaveStatus !in validStatussen) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Invalid weergaveStatus '$weergaveStatus'. Valid: $validStatussen"
-            )
-        }
-    }
-
-    /** Positions are typed: the value must come from the domein's positietype register. */
-    private fun validatePositie(caseDefinitionKey: String?, field: String, positie: String) {
-        if (caseDefinitionKey == null) return
-        val validPosities = phaseConfigService.getPositieTypen(caseDefinitionKey) ?: return
-        if (positie !in validPosities) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Invalid $field '$positie'. Valid positietypen: $validPosities"
-            )
-        }
-    }
-
-    private fun caseDefinitionKeyVan(planUuid: UUID): String? =
-        planDetailsRepository.findById(planUuid).orElse(null)?.caseDefinitionKey
-
-    /**
-     * A voortgangsstatus comes from the plan's list and only applies while the
-     * doel runs: once Open Plan has it afgerond or geannuleerd, the register
-     * status says how it ended.
-     */
-    private fun validateVoortgangStatus(planUuid: UUID, doelUuid: UUID, code: String) {
-        val opties = phaseConfigService.getVoortgangStatussen(caseDefinitionKeyVan(planUuid))
-        if (opties.none { it.code == code }) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Onbekende voortgangsstatus '$code'. Kies uit: ${opties.joinToString { it.naam }}"
-            )
-        }
-        val registerStatus = try {
-            openPlanRestClient.get()
-                .uri("/plannen/api/v0/doel/$doelUuid")
-                .retrieve()
-                .body(Map::class.java)
-                ?.get("status") as? String
-        } catch (e: Exception) {
-            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Doel $doelUuid ophalen uit Open Plan mislukt: ${e.message}")
-        }
-        if (registerStatus != "actief") {
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "Voortgang kan alleen worden vastgelegd bij een lopend doel (status in Open Plan: ${registerStatus ?: "onbekend"})"
-            )
-        }
-    }
-
-    private fun validateEvaluatieType(planUuid: UUID, evaluatieType: String) {
-        val caseDefinitionKey = caseDefinitionKeyVan(planUuid) ?: return
-        val validTypes = phaseConfigService.getEvaluationTypes(caseDefinitionKey)
-        if (evaluatieType !in validTypes) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid evaluatieType '$evaluatieType'. Valid types: $validTypes")
-        }
-    }
-
-    private companion object {
-        const val DEFAULT_EVALUATIE_TYPE = "EVALUATION"
-    }
+    ): ContactmomentDetails = contactmomentService.reschedule(contactmomentUuid, request.datum)
 }

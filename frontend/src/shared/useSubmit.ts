@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
+import { foutmelding } from './http';
 
 /**
  * Submit state of a modal or inline form: a second submit is ignored while
@@ -19,8 +20,8 @@ export function useSubmit() {
     try {
       await action();
       return true;
-    } catch (e: any) {
-      setFout(e?.message ?? String(e));
+    } catch (e) {
+      setFout(foutmelding(e));
       return false;
     } finally {
       running.current = false;

@@ -27,6 +27,7 @@ interface EvaluationChangeRepository : JpaRepository<EvaluationChange, UUID> {
     fun findBySessionIdOrderByCreatedAt(sessionId: UUID): List<EvaluationChange>
 
     fun findBySessionIdInOrderByCreatedAt(sessionIds: Collection<UUID>): List<EvaluationChange>
+    fun deleteBySessionIdIn(sessionIds: Collection<UUID>)
 
     fun findFirstBySessionIdAndSubjectTypeAndSubjectUuidAndSoort(
         sessionId: UUID,

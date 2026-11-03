@@ -17,6 +17,7 @@
 package com.ritense.pdca.domain
 
 import jakarta.persistence.Column
+import jakarta.persistence.Convert
 import jakarta.persistence.Entity
 import jakarta.persistence.Id
 import jakarta.persistence.Table
@@ -26,7 +27,8 @@ import java.time.LocalDateTime
  * Plugin configuration pushed by GZAC (URL-app contract), persisted so the
  * serviceToken + gzacBaseUrl survive an app restart. The serviceToken is what
  * lets this app call GZAC back, e.g. to create a dossier for a plan or to
- * reach the registers through their granted contracts.
+ * reach the registers through their granted contracts. It is stored
+ * encrypted ([ServiceTokenConverter]) and never leaves the app.
  */
 @Entity
 @Table(name = "plugin_configuration")
@@ -36,13 +38,14 @@ data class StoredPluginConfiguration(
     val configId: String,
 
     /** The administrator-facing name of the configuration in GZAC (pushed along with it). */
-    @Column
-    var title: String? = null,
+    @Column(nullable = false)
+    var title: String,
 
     /** JSON object: the configured plugin properties. */
     @Column(columnDefinition = "TEXT", nullable = false)
     var properties: String,
 
+    @Convert(converter = ServiceTokenConverter::class)
     @Column(name = "service_token", columnDefinition = "TEXT")
     var serviceToken: String? = null,
 
@@ -59,4 +62,8 @@ data class StoredPluginConfiguration(
 
     @Column(name = "updated_at", nullable = false)
     var updatedAt: LocalDateTime = LocalDateTime.now()
-)
+) {
+    /** Never prints the serviceToken. */
+    override fun toString(): String =
+        "StoredPluginConfiguration(configId=$configId, title=$title, gzacBaseUrl=$gzacBaseUrl, updatedAt=$updatedAt)"
+}

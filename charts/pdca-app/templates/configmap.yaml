@@ -6,7 +6,13 @@ metadata:
     {{- include "pdca-app.labels" . | nindent 4 }}
 data:
   SERVER_PORT: {{ .Values.config.serverPort | quote }}
-  PDCA_SEED_DEMO_DATA: {{ .Values.config.seedDemoData | quote }}
+  PDCA_LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  PDCA_DISPLAY_STUBS: {{ .Values.config.displayStubs | quote }}
+  PDCA_DATA_RATE_LIMIT_PER_USER: {{ .Values.config.dataRateLimit.perUser | quote }}
+  PDCA_DATA_RATE_LIMIT_PER_CLIENT: {{ .Values.config.dataRateLimit.perClient | quote }}
+  PDCA_DATA_RATE_LIMIT_PER_CONFIGURATION: {{ .Values.config.dataRateLimit.perConfiguration | quote }}
+  PDCA_DATA_RATE_LIMIT_WINDOW: {{ .Values.config.dataRateLimit.window | quote }}
+  SERVER_FORWARD_HEADERS_STRATEGY: {{ .Values.config.forwardHeadersStrategy | quote }}
   {{- if .Values.database.host }}
   PDCA_DB_HOST: {{ .Values.database.host | quote }}
   {{- end }}
@@ -15,6 +21,13 @@ data:
   PDCA_DB_USER: {{ .Values.database.user | quote }}
   {{- if .Values.externalServices.gzac.enabled }}
   GZAC_URL: {{ .Values.externalServices.gzac.url | quote }}
-  GZAC_TOKEN_URL: {{ .Values.externalServices.gzac.tokenUrl | quote }}
-  GZAC_CLIENT_ID: {{ .Values.externalServices.gzac.clientId | quote }}
+  {{- end }}
+  {{- if .Values.externalServices.gzac.configurationId }}
+  PDCA_GZAC_CONFIGURATION_ID: {{ .Values.externalServices.gzac.configurationId | quote }}
+  {{- end }}
+  {{- if .Values.externalServices.gzac.allowedBaseUrls }}
+  PDCA_GZAC_ALLOWED_BASE_URLS: {{ .Values.externalServices.gzac.allowedBaseUrls | quote }}
+  {{- end }}
+  {{- if .Values.externalServices.gzac.frontendOrigins }}
+  PDCA_GZAC_FRONTEND_ORIGINS: {{ .Values.externalServices.gzac.frontendOrigins | quote }}
   {{- end }}

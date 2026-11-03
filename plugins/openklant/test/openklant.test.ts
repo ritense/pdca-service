@@ -15,113 +15,41 @@
  */
 
 import {describe, expect, it} from "vitest";
-import {handleOperation, type HttpCall, type HttpReply} from "../src/openklant";
+import {handleOperation, type HttpCall, type HttpReply} from "../../register-core/src/contract";
+import {expectManifestMatchesSpec} from "../../register-core/test/manifest-support";
+import {OPENKLANT} from "../src/openklant";
+import manifest from "../manifest.json";
+import pkg from "../package.json";
 
-const KLANTCONTACT_UUID = "33333333-3333-3333-3333-333333333333";
-const PLAN_UUID = "11111111-1111-1111-1111-111111111111";
-const CONFIG = {openKlantUrl: "http://openklant.example:7504/", openKlantToken: "secret-token"};
+const UUID = "11111111-1111-1111-1111-111111111111";
+const CONFIG = {openKlantUrl: "http://openklant.example:7504", openKlantToken: "secret-token"};
+const reply: HttpReply = {status: 200, headers: {"content-type": "application/json", date: "x"}, body: {}};
 
-function recorder(reply: HttpReply) {
+function call(operation: Parameters<typeof handleOperation>[1], payload: unknown) {
   const calls: HttpCall[] = [];
-  return {
-    calls,
-    transport: (call: HttpCall) => {
-      calls.push(call);
-      return reply;
-    },
-  };
+  const out = handleOperation(OPENKLANT, operation, payload, CONFIG, (c) => (calls.push(c), reply));
+  return {out, calls};
 }
 
-const registerReply = (status: number, body: unknown): HttpReply => ({
-  status,
-  headers: {"content-type": "application/json", date: "Tue, 14 Oct 2026 10:00:00 GMT", "content-length": "2"},
-  body,
-});
-
-describe("request mapping", () => {
-  it("lists klantcontacten by onderwerpobject with the token header", () => {
-    const {calls, transport} = recorder(registerReply(200, {count: 0, results: []}));
-    const out = handleOperation(
-      "list",
-      {
-        resource: "klantcontacten",
-        query: {
-          onderwerpobject__onderwerpobjectidentificatorObjectId: PLAN_UUID,
-          onderwerpobject__onderwerpobjectidentificatorCodeRegister: "open-plan",
-        },
-      },
-      CONFIG,
-      transport
-    );
-
-    expect(out).toEqual({status: "completed", result: {status: 200, body: {count: 0, results: []}}});
-    expect(calls[0].method).toBe("GET");
-    expect(calls[0].url).toBe(
-      "http://openklant.example:7504/klantinteracties/api/v1/klantcontacten" +
-        `?onderwerpobject__onderwerpobjectidentificatorObjectId=${PLAN_UUID}` +
-        "&onderwerpobject__onderwerpobjectidentificatorCodeRegister=open-plan"
-    );
-    expect(calls[0].headers.Authorization).toBe("Token secret-token");
+describe("nl.ritense.openklant@2", () => {
+  it("declares in its manifest exactly what it serves", () => {
+    expectManifestMatchesSpec(manifest, OPENKLANT, pkg.version);
   });
 
-  it("creates through maak-klantcontact", () => {
-    const {calls, transport} = recorder(registerReply(201, {klantcontact: {uuid: KLANTCONTACT_UUID}}));
-    const body = {klantcontact: {kanaal: "gesprek"}, onderwerpobject: {}};
-    const out = handleOperation("create", {resource: "maak-klantcontact", body}, CONFIG, transport);
-
-    expect(calls[0]).toMatchObject({
-      method: "POST",
-      url: "http://openklant.example:7504/klantinteracties/api/v1/maak-klantcontact",
-      body,
-    });
-    expect(out.result).toEqual({status: 201, body: {klantcontact: {uuid: KLANTCONTACT_UUID}}});
+  it("serves the contactmomenten and partijen the PDCA app uses", () => {
+    const {calls} = call("get", {resource: "klantcontacten", uuid: UUID, query: {expand: "gingOverOnderwerpobjecten"}});
+    expect(calls[0].url).toBe(`http://openklant.example:7504/klantinteracties/api/v1/klantcontacten/${UUID}?expand=gingOverOnderwerpobjecten`);
+    expect(call("create", {resource: "maak-klantcontact", body: {}}).calls[0].method).toBe("POST");
+    expect(call("update", {resource: "klantcontacten", uuid: UUID, body: {}}).calls[0].method).toBe("PATCH");
+    expect(call("list", {resource: "partijen"}).out).toMatchObject({status: "completed"});
+    expect(call("create", {resource: "partijen", body: {}}).out).toMatchObject({status: "completed"});
   });
 
-  it("patches a klantcontact", () => {
-    const {calls, transport} = recorder(registerReply(200, {}));
-    handleOperation(
-      "update",
-      {resource: "klantcontacten", uuid: KLANTCONTACT_UUID, body: {plaatsgevondenOp: "2026-10-15T10:00:00Z"}},
-      CONFIG,
-      transport
-    );
-    expect(calls[0]).toMatchObject({
-      method: "PATCH",
-      url: `http://openklant.example:7504/klantinteracties/api/v1/klantcontacten/${KLANTCONTACT_UUID}`,
-    });
-  });
-});
-
-describe("register answers and failures", () => {
-  it("passes a register validation error through as a completed call", () => {
-    const error = {code: "invalid", invalidParams: [{name: "kanaal", reason: "Dit veld is vereist."}]};
-    const out = handleOperation(
-      "create",
-      {resource: "maak-klantcontact", body: {}},
-      CONFIG,
-      recorder(registerReply(400, error)).transport
-    );
-    expect(out).toEqual({status: "completed", result: {status: 400, body: error}});
-  });
-
-  it("reports an unreachable register", () => {
-    const hostReply: HttpReply = {status: 504, headers: {"content-type": "application/json"}, body: {error: "timeout"}};
-    const out = handleOperation("list", {resource: "partijen"}, CONFIG, recorder(hostReply).transport);
-    expect(out).toMatchObject({status: "error", errorCode: "OPENKLANT_UNREACHABLE"});
-  });
-
-  it("refuses a missing configuration without calling out", () => {
-    const {calls, transport} = recorder(registerReply(200, {}));
-    const out = handleOperation("list", {resource: "partijen"}, {openKlantToken: "t"}, transport);
-    expect(out).toMatchObject({status: "error", errorCode: "CONFIGURATION_INCOMPLETE"});
-    expect(calls).toHaveLength(0);
-  });
-
-  it("refuses resources outside the Klantinteracties API and invalid uuids", () => {
-    const {transport} = recorder(registerReply(200, {}));
-    expect(handleOperation("list", {resource: "producttypen"}, CONFIG, transport)).toMatchObject({errorCode: "UNKNOWN_RESOURCE"});
-    expect(handleOperation("get", {resource: "partijen", uuid: "../x"}, CONFIG, transport)).toMatchObject({
-      errorCode: "INVALID_UUID",
-    });
+  it("refuses deletes and the resources the app does not use", () => {
+    expect(call("delete", {resource: "klantcontacten", uuid: UUID}).out).toMatchObject({errorCode: "OPERATION_NOT_ALLOWED"});
+    expect(call("update", {resource: "partijen", uuid: UUID, body: {}}).out).toMatchObject({errorCode: "OPERATION_NOT_ALLOWED"});
+    for (const resource of ["betrokkenen", "digitaleadressen", "internetaken", "actoren"]) {
+      expect(call("list", {resource}).out).toMatchObject({errorCode: "UNKNOWN_RESOURCE"});
+    }
   });
 });
