@@ -1038,8 +1038,9 @@ path, query parameters) is a 403. *Caller*: **user** = any verified user;
 **Display stubs** — `GET /api/v1/registers/personen/{bsn}` and
 `GET /api/v1/registers/objecten/{objectId}`: fixed demo data for the
 subject's display record (BRP and objects are out of scope), any user. They
-answer 404 unless `pdca.display-stubs.enabled` is set; the bundles then show
-the subject's id. An id that is not one plain path segment
+answer 404 for an id they do not know, and for every id unless
+`pdca.display-stubs.enabled` is set; the bundles then show the subject's id,
+without an error (only another failure shows one). An id that is not one plain path segment
 (`[A-Za-z0-9._~-]`) cannot reach them through `/data` (the policy refuses
 the path): the bundles answer it as not found (404) themselves, without a
 call, so the create-plan form falls back to what the intake recorded.

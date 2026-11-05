@@ -71,7 +71,7 @@ function Detail({ label, waarde }: { label: string; waarde: string }) {
   );
 }
 
-/** The plan subject (plan.domeinregister URN) with its display record; without the record its id and a notice. */
+/** The plan subject (plan.domeinregister URN) with its display record; without the record its id, plus a notice when the lookup failed. */
 export function SubjectKaart({ plan, subject }: { plan: Plan; subject: Resource<SubjectData> }) {
   const urn = parseSubject(plan.domeinregister);
   if (!urn) return null;

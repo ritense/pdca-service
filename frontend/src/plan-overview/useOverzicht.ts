@@ -3,6 +3,7 @@ import {
   BrpPersoon, Doel, DoelType, ObjectRecord, openplan, pdca, Plan, PlanDetails, registers, VoortgangStatusOptie,
 } from '../shared/api';
 import { CaseConfig, useCaseConfig } from '../shared/caseConfig';
+import { isHttpStatus } from '../shared/http';
 import { isHoofddoelType } from '../shared/labels';
 import { PlanData, usePlanData } from '../shared/usePlanData';
 import { Bron, useResource } from '../shared/useResource';
@@ -12,16 +13,26 @@ const BRONNEN = ['doelen', 'doelDetails', 'acties', 'contactmomenten', 'contactm
 
 export type OverzichtData = Pick<PlanData, typeof BRONNEN[number]>;
 
-/** The plan subject from its domeinregister URN: a persoon (bsn) or an object (id), with its display record. */
+/**
+ * The plan subject from its domeinregister URN: a persoon (bsn) or an object
+ * (id), with its display record; null when the register does not know the id.
+ */
 export type SubjectData =
-  | { kind: 'persoon'; bsn: string; brp: BrpPersoon }
-  | { kind: 'object'; id: string; object: ObjectRecord }
+  | { kind: 'persoon'; bsn: string; brp: BrpPersoon | null }
+  | { kind: 'object'; id: string; object: ObjectRecord | null }
   | null;
+
+/** A register's display record; a 404 (the register does not know the id) is no record, not a failure. */
+const ofNietGevonden = <T>(record: Promise<T>): Promise<T | null> =>
+  record.catch((e: unknown) => {
+    if (isHttpStatus(e, 404)) return null;
+    throw e;
+  });
 
 async function laadSubject(plan: Plan): Promise<SubjectData> {
   const subject = parseSubject(plan.domeinregister);
-  if (subject?.kind === 'persoon') return { kind: 'persoon', bsn: subject.bsn, brp: await registers.persoon(subject.bsn) };
-  if (subject?.kind === 'object') return { kind: 'object', id: subject.id, object: await registers.object(subject.id) };
+  if (subject?.kind === 'persoon') return { kind: 'persoon', bsn: subject.bsn, brp: await ofNietGevonden(registers.persoon(subject.bsn)) };
+  if (subject?.kind === 'object') return { kind: 'object', id: subject.id, object: await ofNietGevonden(registers.object(subject.id)) };
   return null;
 }
 
