@@ -1,0 +1,6 @@
+node_modules/
+dist/
+*.wasm
+*.zip
+frontend/*.bundle.js
+frontend/*.bundle.css

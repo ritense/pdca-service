@@ -1,9 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Theme, Layer, Button, Tag, Loading, InlineNotification, Select, SelectItem, TextInput, TextArea } from '@carbon/react';
+import { Layer, Button, Tag, Loading, InlineNotification, Select, SelectItem, TextInput, TextArea } from '@carbon/react';
 import { Checkmark } from '@carbon/react/icons';
-import { onInit, getInitContext, withdrawPanel, getHostTheme, onHostThemeChanged, HostTheme } from '../shared/bridge';
+import { withdrawPanel } from '../shared/bridge';
 import { openklant, pdca } from '../shared/api';
-import { evalTypeLabel, formatDate, overWeken, vandaag } from '../shared/labels';
+import { laadCaseConfig } from '../shared/caseConfig';
+import { formatDate, formatTime, overWeken, vandaag } from '../shared/dates';
+import { foutmelding } from '../shared/http';
+import { evalTypeLabel } from '../shared/labels';
+import { LaadFout, NietGeladen } from '../shared/Meldingen';
+import { useInitContext } from '../shared/PdcaRoot';
 import {
   EVALUATION_PANEL_BUNDLE_KEY, EvaluationSession, EvaluationChange,
   currentEvaluationSession, completeEvaluationSession, cancelEvaluationSession, updateEvaluationDraft,
@@ -13,7 +18,6 @@ import { WijzigingenLijst } from '../shared/WijzigingenLijst';
 
 type Draft = { evaluatieType: string; deelnemers: string; verslag: string };
 
-const formatTime = (iso: string) => iso.split('T')[1]?.slice(0, 5) ?? '';
 const SAVE_DELAY_MS = 700;
 /** The verslag becomes the klantcontact's inhoud in Open Klant, which holds at most 1000 characters. */
 const VERSLAG_MAX_LENGTH = 1000;
@@ -33,9 +37,15 @@ const DEFAULT_EVALUATIE_TYPE = 'EVALUATION';
 export function EvaluationPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** The session itself could not be read: the panel cannot show anything else. */
+  const [laadFout, setLaadFout] = useState<unknown>(null);
   const [session, setSession] = useState<EvaluationSession | null>(null);
-  const [titel, setTitel] = useState('');
-  const [evalTypes, setEvalTypes] = useState<string[]>([]);
+  /** The plan's title; null while unknown, with [titelFout] when it could not be read. */
+  const [titel, setTitel] = useState<string | null>(null);
+  const [titelFout, setTitelFout] = useState<unknown>(null);
+  /** The case type's evaluation types; null until loaded, with [typesFout] when they could not be read. */
+  const [evalTypes, setEvalTypes] = useState<string[] | null>(null);
+  const [typesFout, setTypesFout] = useState<unknown>(null);
   const [draft, setDraft] = useState<Draft>({ evaluatieType: '', deelnemers: '', verslag: '' });
   const [saving, setSaving] = useState<'idle' | 'pending' | 'saved' | 'failed'>('idle');
   const [wijzigingen, setWijzigingen] = useState<EvaluationChange[]>([]);
@@ -48,19 +58,17 @@ export function EvaluationPanel() {
   const [endError, setEndError] = useState<string | null>(null);
   /** Date of the planned contactmoment this evaluation carries out. */
   const [geplandOp, setGeplandOp] = useState<string | null>(null);
-  const [theme, setTheme] = useState<HostTheme>(getHostTheme());
+  const initContext = useInitContext();
   const pendingDraft = useRef<Partial<Draft> | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** The autosave under way, so completing waits for it and sends whatever it left behind. */
   const savingDraft = useRef<Promise<boolean> | null>(null);
 
-  useEffect(() => { onInit(() => { setTheme(getHostTheme()); load(); }); }, []);
-  useEffect(() => onHostThemeChanged(setTheme), []);
-  const offeredKey = () => getInitContext().evaluationSessionId as string | undefined;
+  const offeredKey = () => initContext.evaluationSessionId as string | undefined;
 
   const loadWijzigingen = useCallback(async () => {
     try { setWijzigingen(await listEvaluationChanges()); }
-    catch (e: any) { setError(e.message); }
+    catch (e) { setError(foutmelding(e)); }
   }, []);
 
   // The tabs record changes in the backend and cannot message the panel, so the panel polls.
@@ -70,10 +78,29 @@ export function EvaluationPanel() {
     return () => clearInterval(timer);
   }, [session, completed, cancelled, loadWijzigingen]);
 
-  const load = async () => {
+  /** The plan's title and the case type's evaluation types; each says so in the panel when it fails. */
+  const loadDetails = useCallback((current: EvaluationSession) => {
+    setTitelFout(null);
+    setTypesFout(null);
+    planTitle(current).then(setTitel, setTitelFout);
+    // Without a case type the panel has no type to choose.
+    (current.caseDefinitionKey ? laadCaseConfig(current.caseDefinitionKey).then(c => c.evaluatieTypen) : Promise.resolve([]))
+      .then(setEvalTypes, setTypesFout);
+    if (current.geplandContactmomentUuid) {
+      // Only the date in the "Planning" line; without it the line just says "Geplande evaluatie".
+      openklant.klantcontacten.listByPlan(current.planUuid)
+        .then(cms => setGeplandOp(cms.find(cm => cm.uuid === current.geplandContactmomentUuid)?.plaatsgevondenOp ?? null))
+        .catch(() => setGeplandOp(null));
+    }
+  }, []);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLaadFout(null);
     try {
       const current = await currentEvaluationSession();
-      if (!current || (offeredKey() && current.id !== offeredKey())) {
+      const offered = initContext.evaluationSessionId as string | undefined;
+      if (!current || (offered && current.id !== offered)) {
         setEnded(true);
         return;
       }
@@ -83,28 +110,16 @@ export function EvaluationPanel() {
         deelnemers: current.deelnemers ?? '',
         verslag: current.verslag ?? '',
       });
-      const [planTitel, types, gepland] = await Promise.all([
-        planTitle(current),
-        current.caseDefinitionKey
-          ? pdca.phaseConfigs.get(current.caseDefinitionKey)
-              .then(cfg => JSON.parse(cfg.evaluationTypes) as string[]).catch(() => [])
-          : Promise.resolve([] as string[]),
-        current.geplandContactmomentUuid
-          ? openklant.klantcontacten.listByPlan(current.planUuid)
-              .then(cms => cms.find(cm => cm.uuid === current.geplandContactmomentUuid)?.plaatsgevondenOp ?? null)
-              .catch(() => null)
-          : Promise.resolve(null),
-      ]);
-      setTitel(planTitel);
-      setEvalTypes(types);
-      setGeplandOp(gepland);
+      loadDetails(current);
       await loadWijzigingen();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setLaadFout(e);
     } finally {
       setLoading(false);
     }
-  };
+  }, [initContext, loadDetails, loadWijzigingen]);
+
+  useEffect(() => { load(); }, [load]);
 
   /**
    * Writes the queued field changes; also called right before completing.
@@ -122,9 +137,9 @@ export function EvaluationPanel() {
         setSaving(pendingDraft.current ? 'pending' : 'saved');
         return true;
       },
-      (e: any) => {
+      (e: unknown) => {
         pendingDraft.current = { ...changes, ...pendingDraft.current };
-        setError('Opslaan mislukt: ' + e.message);
+        setError('Opslaan mislukt: ' + foutmelding(e));
         setSaving('failed');
         return false;
       },
@@ -147,7 +162,7 @@ export function EvaluationPanel() {
     try {
       await updateChangeToelichting(id, toelichting);
       setWijzigingen(prev => prev.map(w => (w.id === id ? { ...w, toelichting } : w)));
-    } catch (e: any) { setError('Reden opslaan mislukt: ' + e.message); }
+    } catch (e) { setError('Reden opslaan mislukt: ' + foutmelding(e)); }
   };
 
   const handleComplete = async () => {
@@ -160,8 +175,8 @@ export function EvaluationPanel() {
       }
       await completeEvaluationSession();
       setCompleted(true);
-    } catch (e: any) {
-      setEndError(e.message);
+    } catch (e) {
+      setEndError(foutmelding(e));
     } finally {
       setBusy(false);
       setConfirm(null);
@@ -178,8 +193,8 @@ export function EvaluationPanel() {
       await cancelEvaluationSession();
       pendingDraft.current = null;
       setCancelled(true);
-    } catch (e: any) {
-      setEndError(e.message);
+    } catch (e) {
+      setEndError(foutmelding(e));
     } finally {
       setBusy(false);
       setConfirm(null);
@@ -191,18 +206,18 @@ export function EvaluationPanel() {
     if (key) withdrawPanel(key, EVALUATION_PANEL_BUNDLE_KEY);
   };
 
-  // The panel surface is GZAC's layer; its content sits one layer up so the fields stand out.
-  const shell = (content: React.ReactNode) => (
-    <Theme theme={theme} className="pdca-panel-theme"><Layer className="pdca-panel">{content}</Layer></Theme>
-  );
+  // The panel surface is GZAC's layer (PdcaRoot); its content sits one layer up so the fields stand out.
+  const shell = (content: React.ReactNode) => <Layer className="pdca-panel">{content}</Layer>;
 
   if (loading) return shell(<Loading withOverlay={false} small />);
+
+  if (laadFout) return shell(<LaadFout titel="De evaluatie kon niet geladen worden" error={laadFout} onRetry={load} />);
 
   if (completed && session) {
     return shell(<>
       <InlineNotification kind="success" title="Evaluatie afgerond" lowContrast hideCloseButton
         subtitle="Het verslag en de wijzigingen staan nu bij de evaluaties van het plan." />
-      <VolgendeEvaluatie planUuid={session.planUuid} evalTypes={evalTypes}
+      <VolgendeEvaluatie planUuid={session.planUuid} evalTypes={evalTypes ?? []}
         defaultType={draft.evaluatieType || DEFAULT_EVALUATIE_TYPE} />
       <Button size="sm" kind="secondary" onClick={closePanel}>Paneel sluiten</Button>
     </>);
@@ -238,7 +253,8 @@ export function EvaluationPanel() {
 
       <div className="pdca-info-block">
         <div className="pdca-info-label">Plan</div>
-        <div className="pdca-info-value">{titel}</div>
+        <div className="pdca-info-value">{titel ?? 'Plan'}</div>
+        {titelFout != null && <NietGeladen wat="De plantitel" error={titelFout} onRetry={() => planTitle(session).then(t => { setTitel(t); setTitelFout(null); }, setTitelFout)} />}
       </div>
       <div className="pdca-info-block">
         <div className="pdca-info-label">Gestart</div>
@@ -253,17 +269,20 @@ export function EvaluationPanel() {
         </div>
       )}
 
-      {evalTypes.length > 0 && (
+      {typesFout != null && (
+        <LaadFout titel="De contactmomenttypen konden niet geladen worden" error={typesFout} onRetry={() => loadDetails(session)} />
+      )}
+      {evalTypes && evalTypes.length > 0 && (
         <Select id="eval-type" size="sm" labelText="Type contactmoment" value={draft.evaluatieType}
-          onChange={(e: any) => updateField('evaluatieType', e.target.value)}>
+          onChange={e => updateField('evaluatieType', e.target.value)}>
           {evalTypes.map(t => <SelectItem key={t} value={t} text={evalTypeLabel(t)} />)}
         </Select>
       )}
       <TextInput id="eval-deelnemers" size="sm" labelText="Deelnemers" placeholder="Komma-gescheiden"
-        value={draft.deelnemers} onChange={(e: any) => updateField('deelnemers', e.target.value)} />
+        value={draft.deelnemers} onChange={e => updateField('deelnemers', e.target.value)} />
       <TextArea id="eval-verslag" labelText="Gespreksverslag" rows={6} enableCounter maxCount={VERSLAG_MAX_LENGTH}
         helperText="Hoe gaat het met de inwoner, wat is besproken en waarom wordt het plan aangepast."
-        value={draft.verslag} onChange={(e: any) => updateField('verslag', e.target.value)} />
+        value={draft.verslag} onChange={e => updateField('verslag', e.target.value)} />
 
       <div className="pdca-section-block">
         <div className="pdca-section-title"><span>Wijzigingen in het plan ({wijzigingen.length})</span></div>
@@ -338,8 +357,8 @@ function VolgendeEvaluatie({ planUuid, evalTypes, defaultType }: {
     try {
       await pdca.contactmomenten.create({ planUuid, datum, evaluatieType: type, afgerond: false });
       setGepland(datum);
-    } catch (e: any) {
-      setFout(e.message);
+    } catch (e) {
+      setFout(foutmelding(e));
     } finally {
       setBusy(false);
     }
@@ -355,9 +374,9 @@ function VolgendeEvaluatie({ planUuid, evalTypes, defaultType }: {
       <div className="pdca-section-title"><span>Volgende evaluatie plannen</span></div>
       <div className="pdca-panel-form">
         <TextInput id="volgende-datum" size="sm" type="date" labelText="Datum" min={vandaag()}
-          value={datum} onChange={(e: any) => setDatum(e.target.value)} />
+          value={datum} onChange={e => setDatum(e.target.value)} />
         {evalTypes.length > 0 && (
-          <Select id="volgende-type" size="sm" labelText="Type" value={type} onChange={(e: any) => setType(e.target.value)}>
+          <Select id="volgende-type" size="sm" labelText="Type" value={type} onChange={e => setType(e.target.value)}>
             {evalTypes.map(t => <SelectItem key={t} value={t} text={evalTypeLabel(t)} />)}
           </Select>
         )}

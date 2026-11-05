@@ -20,15 +20,12 @@ import com.ritense.pdca.domain.Action
 import com.ritense.pdca.domain.ActionStatus
 import com.ritense.pdca.domain.AssigneeType
 import com.ritense.pdca.domain.Priority
-import com.ritense.pdca.domain.Uitvoering
-import com.ritense.pdca.repository.DoelDetailsRepository
 import com.ritense.pdca.service.ActionService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -37,7 +34,6 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
-import org.springframework.web.server.ResponseStatusException
 import java.time.LocalDate
 import java.util.UUID
 
@@ -48,21 +44,12 @@ import java.util.UUID
 @RestController
 @RequestMapping("/api/v1/pdca/acties", produces = [MediaType.APPLICATION_JSON_VALUE])
 class ActieResource(
-    private val actionService: ActionService,
-    private val doelDetailsRepository: DoelDetailsRepository
+    private val actionService: ActionService
 ) {
 
+    /** The acties under the doelen of a plan. */
     @GetMapping
-    fun list(
-        @RequestParam(name = "doelUuid", required = false) doelUuids: List<UUID>?,
-        @RequestParam(name = "planUuid", required = false) planUuid: UUID?
-    ): List<Action> = when {
-        !doelUuids.isNullOrEmpty() -> actionService.findByDoelUuids(doelUuids)
-        planUuid != null -> actionService.findByDoelUuids(
-            doelDetailsRepository.findByPlanUuid(planUuid).map { it.doelUuid }
-        )
-        else -> throw ResponseStatusException(HttpStatus.BAD_REQUEST, "doelUuid or planUuid parameter is required")
-    }
+    fun list(@RequestParam(name = "planUuid") planUuid: UUID): List<Action> = actionService.findByPlan(planUuid)
 
     @PostMapping
     fun create(@Valid @RequestBody request: CreateActieRequest): ResponseEntity<Action> {
@@ -106,24 +93,6 @@ class ActieResource(
         )
     }
 
-    @DeleteMapping("/{id}")
-    fun delete(@PathVariable(name = "id") id: UUID): ResponseEntity<Unit> {
-        val actie = actionService.getById(id)
-        // A bouwblok action with a running process: the Operaton task is
-        // the source of completion; deleting would leave an orphaned process
-        // (cancelling is a later refinement).
-        if (actie.uitvoering == Uitvoering.BOUWBLOK &&
-            actie.status != ActionStatus.COMPLETED && actie.status != ActionStatus.REJECTED
-        ) {
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "Deze actie wordt uitgevoerd door een lopend bouwblokproces in GZAC; rond de taak daar af (of wijs hem af)"
-            )
-        }
-        actionService.delete(id)
-        return ResponseEntity.noContent().build()
-    }
-
     @PostMapping("/{id}/approve")
     fun approve(@PathVariable(name = "id") id: UUID): Action = actionService.approve(id)
 
@@ -133,9 +102,9 @@ class ActieResource(
 
 data class CreateActieRequest(
     val doelUuid: UUID,
-    /** Optional instrument the actie supports (shown in the instrument block). */
+    /** Optional instrument the actie supports (shown in the instrument block); it must belong to [doelUuid]. */
     val instrumentUuid: UUID? = null,
-    @field:NotBlank
+    @field:NotBlank(message = "Vul een titel voor de actie in")
     val title: String,
     val description: String? = null,
     val assigneeType: AssigneeType? = null,

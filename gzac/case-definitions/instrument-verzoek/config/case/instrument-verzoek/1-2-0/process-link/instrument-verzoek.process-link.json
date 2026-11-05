@@ -1,0 +1,62 @@
+[
+    {
+        "activityId": "instrument-uitvoeren",
+        "activityType": "bpmn:UserTask:create",
+        "processLinkType": "form",
+        "formDefinitionName": "instrument-afronden"
+    },
+    {
+        "activityId": "instrument-aanmaken",
+        "activityType": "bpmn:ServiceTask:start",
+        "processLinkType": "external_plugin",
+        "externalPluginConfigurationId": "00000000-0000-4000-8000-00000000dca0",
+        "actionKey": "aanmaak-instrument",
+        "pluginDefinitionKey": "pdca",
+        "pluginVersion": "0.2.0",
+        "actionProperties": {
+            "doelUuid": "doc:/doelUuid",
+            "titel": "doc:/productTitel",
+            "product": "doc:/productUrn",
+            "status": "doc:/startStatus",
+            "instrumenttype": "doc:/instrumenttype",
+            "planUuid": "doc:/planUuid"
+        },
+        "actionResultMappings": [
+            {
+                "source": "/instrumentUuid",
+                "target": "doc:/instrumentUuid"
+            }
+        ]
+    },
+    {
+        "activityId": "instrument-afronden",
+        "activityType": "bpmn:ServiceTask:start",
+        "processLinkType": "external_plugin",
+        "externalPluginConfigurationId": "00000000-0000-4000-8000-00000000dca0",
+        "actionKey": "update-instrument",
+        "pluginDefinitionKey": "pdca",
+        "pluginVersion": "0.2.0",
+        "actionProperties": {
+            "instrumentUuid": "doc:/instrumentUuid",
+            "planUuid": "doc:/planUuid",
+            "status": "afgerond",
+            "resultaat": "doc:/productResultaat",
+            "toelichting": "doc:/productToelichting"
+        }
+    },
+    {
+        "activityId": "instrument-annuleren",
+        "activityType": "bpmn:ServiceTask:start",
+        "processLinkType": "external_plugin",
+        "externalPluginConfigurationId": "00000000-0000-4000-8000-00000000dca0",
+        "actionKey": "update-instrument",
+        "pluginDefinitionKey": "pdca",
+        "pluginVersion": "0.2.0",
+        "actionProperties": {
+            "instrumentUuid": "doc:/instrumentUuid",
+            "planUuid": "doc:/planUuid",
+            "status": "geannuleerd",
+            "toelichting": "doc:/annuleringsReden"
+        }
+    }
+]

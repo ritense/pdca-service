@@ -81,16 +81,7 @@ class PhaseConfigResource(
         @Valid @RequestBody request: UpdatePhaseConfigRequest
     ): ResponseEntity<PhaseConfigResponse> {
         val existing = phaseConfigService.getByCaseDefinitionKey(caseDefKey)
-        val updated = existing.copy(
-            evaluationTypes = request.evaluationTypes ?: existing.evaluationTypes,
-            planStatussen = request.planStatussen ?: existing.planStatussen,
-            voortgangStatussen = request.voortgangStatussen ?: existing.voortgangStatussen,
-            positieTypen = request.positieTypen ?: existing.positieTypen,
-            subdoelMapping = request.subdoelMapping ?: existing.subdoelMapping,
-            prefillMapping = request.prefillMapping ?: existing.prefillMapping,
-            planCaseDefinitionKey = request.planCaseDefinitionKey ?: existing.planCaseDefinitionKey
-        )
-        val config = phaseConfigService.updateByCaseDefinitionKey(caseDefKey, updated)
+        val config = phaseConfigService.updateByCaseDefinitionKey(caseDefKey, request.applyTo(existing))
         return ResponseEntity.ok(PhaseConfigResponse(config))
     }
 

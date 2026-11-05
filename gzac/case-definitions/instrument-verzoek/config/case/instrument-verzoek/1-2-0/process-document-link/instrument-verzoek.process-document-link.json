@@ -1,0 +1,7 @@
+[
+    {
+        "processDefinitionKey": "instrument-verzoek",
+        "canInitializeDocument": true,
+        "startableByUser": false
+    }
+]

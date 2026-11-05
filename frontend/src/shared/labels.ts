@@ -4,7 +4,9 @@
  * domain values the plan tabs show.
  */
 
-import type { VoortgangBetekenis, VoortgangStatusOptie } from './api';
+import type { VoortgangBetekenis, VoortgangStatusOptie } from './types';
+import { isVerlopen } from './dates';
+import { parseSubject } from './urn';
 
 const EVAL_TYPE_LABELS: Record<string, string> = {
   INTAKE: 'Intake', PROGRESS: 'Voortgang', EVALUATION: 'Evaluatie',
@@ -15,16 +17,6 @@ const PRIORITY_LABELS: Record<string, string> = {
   HIGH: 'Hoog', NORMAL: 'Normaal', LOW: 'Laag',
 };
 
-const ASSIGNEE_TYPE_LABELS: Record<string, string> = {
-  PROFESSIONAL: 'Behandelaar', SUBJECT: 'Inwoner/Eigenaar', PROVIDER: 'Aanbieder',
-};
-
-const DOELGROEP_LABELS: Record<string, string> = {
-  burgers: 'Burgers', interne_organisatie: 'Interne organisatie',
-  samenwerkingspartners: 'Samenwerkingspartners',
-  bedrijven_en_instellingen: 'Bedrijven en instellingen',
-};
-
 /** Plantype = the dienstverlening the plan falls under. */
 const DIENSTVERLENING_LABELS: Record<string, string> = {
   werk: 'Terug naar werk', pip: 'Inburgering (PIP)', inkomen: 'Inkomensondersteuning',
@@ -32,8 +24,6 @@ const DIENSTVERLENING_LABELS: Record<string, string> = {
 
 export function evalTypeLabel(s: string): string { return EVAL_TYPE_LABELS[s] || s; }
 export function priorityLabel(s: string): string { return PRIORITY_LABELS[s] || s; }
-export function assigneeTypeLabel(s: string): string { return ASSIGNEE_TYPE_LABELS[s] || s; }
-export function doelgroepLabel(s: string): string { return DOELGROEP_LABELS[s] || s; }
 export function dienstverleningLabel(s: string): string { return DIENSTVERLENING_LABELS[s] || s; }
 
 /** Carbon tag colours (the `type` of a Carbon Tag). */
@@ -144,42 +134,10 @@ export function aantal(n: number, enkelvoud: string, meervoud: string): string {
   return `${n} ${n === 1 ? enkelvoud : meervoud}`;
 }
 
-/** Today as a plain date (yyyy-mm-dd) in local time. */
-export function vandaag(): string {
-  return isoDatum(new Date());
-}
-
-/** A plain date (yyyy-mm-dd) the given number of weeks from today. */
-export function overWeken(weken: number): string {
-  const datum = new Date();
-  datum.setDate(datum.getDate() + weken * 7);
-  return isoDatum(datum);
-}
-
-function isoDatum(datum: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${datum.getFullYear()}-${pad(datum.getMonth() + 1)}-${pad(datum.getDate())}`;
-}
-
-/** Whether a date (plain or ISO datetime) lies before today. */
-export function isVerlopen(datum: string | null | undefined): boolean {
-  return !!datum && datum.split('T')[0] < vandaag();
-}
-
-/** Formats register ISO datetimes and plain dates as dd-mm-yyyy. */
-export function formatDate(dateStr: string | undefined | null): string {
-  if (!dateStr) return '';
-  const datePart = dateStr.split('T')[0];
-  const parts = datePart.split('-');
-  if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
-  return dateStr;
-}
-
 /**
  * Doeltype register: DoelType.doelType carries the name
  * of the fixed, defined doel; the category "Hoofddoel" marks hoofddoel
- * types and every other category is a thema (below). Legacy anonymous types
- * ("hoofddoel"/"subdoel" without a name) are kept out of the choice lists.
+ * types and every other category is a thema (below).
  */
 type DoelTypeLike = { uuid: string; doelType: string; categorieen: { naam: string }[] };
 
@@ -194,15 +152,13 @@ export function isHoofddoelType(doelType: DoelTypeLike): boolean {
   return doelType.categorieen?.some(c => c.naam === HOOFDDOEL_CATEGORIE) ?? false;
 }
 
-const isLegacyType = (t: DoelTypeLike) => t.doelType === 'hoofddoel' || t.doelType === 'subdoel';
-
 export function hoofddoelTypen(doeltypen: DoelTypeLike[]): DoelTypeLike[] {
-  return doeltypen.filter(t => isHoofddoelType(t) && !isLegacyType(t));
+  return doeltypen.filter(isHoofddoelType);
 }
 
 export function subdoelTypen(doeltypen: DoelTypeLike[]): DoelTypeLike[] {
   return doeltypen
-    .filter(t => !isHoofddoelType(t) && !isLegacyType(t))
+    .filter(t => !isHoofddoelType(t))
     .sort((a, b) => a.doelType.localeCompare(b.doelType));
 }
 
@@ -215,7 +171,7 @@ export function subdoelTypen(doeltypen: DoelTypeLike[]): DoelTypeLike[] {
  *
  * Unscoped — all subdoeltypen — when there is no mapping, no hoofddoel, or
  * no entry for this hoofddoel: the same "empty = always" convention as the
- * themas of a doeltype and the doeltypen of a bouwblokkoppeling.
+ * themas of a doeltype.
  */
 export function subdoelTypenVoorHoofddoel(
   doeltypen: DoelTypeLike[], hoofddoelNaam: string | null | undefined, subdoelMapping?: string | null,
@@ -247,8 +203,8 @@ export function doelTypeThemas(doelType: DoelTypeLike | undefined): string[] {
 /**
  * The producttypen that fit under a doel: thema overlap with the doeltype,
  * within the doelgroep of the plan subject. A doeltype without themas
- * scopes nothing and a producttype without doelgroep fits everywhere — the
- * same "empty = always" convention as the doeltypen of a bouwblokkoppeling.
+ * scopes nothing and a producttype without doelgroep fits everywhere
+ * ("empty = always").
  */
 export function producttypenVoorDoel<T extends ProductTypeLike>(
   producttypen: T[], doelType: DoelTypeLike | undefined, doelgroep?: string,
@@ -261,13 +217,13 @@ export function producttypenVoorDoel<T extends ProductTypeLike>(
 
 /**
  * Open Product doelgroep of a plan subject, read from the domeinregister URN
- * (urn:pdca:brp:persoon:<bsn> or urn:pdca:objecten:object:<id>); undefined
- * for a plan without subject, which scopes nothing.
+ * (a persoon or object URN, see `urn.ts`); undefined for a plan without
+ * subject, which scopes nothing.
  */
 export function doelgroepVoorSubject(domeinregister: string | null | undefined): string | undefined {
-  const resource = domeinregister?.split(':')[3];
-  if (resource === 'persoon') return 'burgers';
-  if (resource === 'object') return 'bedrijven_en_instellingen';
+  const subject = parseSubject(domeinregister);
+  if (subject?.kind === 'persoon') return 'burgers';
+  if (subject?.kind === 'object') return 'bedrijven_en_instellingen';
   return undefined;
 }
 
@@ -322,7 +278,6 @@ const WIJZIGING_LABELS: Record<string, string> = {
   INSTRUMENT_REGISTRATIE: 'Uren/effectiviteit',
   ACTIE_TOEGEVOEGD: 'Actie toegevoegd',
   ACTIE_STATUS: 'Actiestatus',
-  BOUWBLOK_GESTART: 'Bouwblok-actie gestart',
   PRODUCT_AANGEVRAAGD: 'Instrument aangevraagd',
   HOOFDDOEL_GEWISSELD: 'Hoofddoel gewisseld',
   HOOFDDOEL_TOELICHTING: 'Toelichting bij hoofddoel',

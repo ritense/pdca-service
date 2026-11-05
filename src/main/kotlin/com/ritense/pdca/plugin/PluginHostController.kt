@@ -1,14 +1,18 @@
 package com.ritense.pdca.plugin
 
 import com.ritense.pdca.registers.Register
+import com.ritense.pdca.security.GzacInstances
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
+import java.net.URI
 
 /**
  * Implements the Valtimo "URL app" contract: this app is a remote service,
@@ -20,10 +24,15 @@ import org.springframework.web.bind.annotation.RestController
  *
  * Frontend bundle paths in the manifest resolve against
  * `/plugins/{pluginId}/{version}` (served by [BundleController]).
+ *
+ * Everything under `/api/host` is called by GZAC only and signed with the
+ * shared host secret (`HostSignatureFilter`); the health check and the
+ * manifest the GZAC frontend reads are public.
  */
 @RestController
 class PluginHostController(
-    private val configurationStore: ConfigurationStore
+    private val configurationStore: ConfigurationStore,
+    private val gzacInstances: GzacInstances
 ) {
 
     private val logger = LoggerFactory.getLogger(PluginHostController::class.java)
@@ -47,43 +56,43 @@ class PluginHostController(
         val CONTRACTS = Register.entries.map { it.contract }
 
         /**
-         * This app's GZAC API footprint: capability gzac_api plus the
-         * endpoint allowlist for the serviceToken, as the single source for
-         * the manifest below. Capability frontend_data declares the `/data`
-         * route ([PluginDataController]); the user tokens GZAC forwards there
-         * are bounded by the same allowlist intersected with the user's PBAC.
-         * Note: granted endpoints also work under /api/management (the token
-         * carries ADMIN authority for that; only GZAC's hard denylist stays
-         * closed) — this app deliberately sticks to /api/v1 endpoints.
+         * This app's GZAC API footprint, the single source for the manifest
+         * below (the dev values in gzac/dev-setup repeat it, and a
+         * test keeps the two equal). Capability gzac_api is the serviceToken
+         * with exactly these endpoints: GZAC skips PBAC for a service token
+         * and only applies this allowlist. Capability frontend_data declares
+         * the `/data` route ([PluginDataController]); the user tokens GZAC
+         * forwards there are bounded by the same allowlist intersected with
+         * the user's PBAC. Two grants are management endpoints, which the
+         * token reaches with ADMIN authority (only GZAC's hard denylist stays
+         * closed): each is the only way to its data, see its comment.
          */
         val CAPABILITIES = listOf("gzac_api", "frontend_data")
         val GRANTED_ENDPOINTS: List<Map<String, String>> = listOf(
-            // Create a dossier for a plan (plan = dossier 1:1, standalone and intake route).
+            // Create the plan dossier of a plan created from an intake (plan = dossier 1:1).
             mapOf(
                 "method" to "POST",
                 "pattern" to "/api/v1/process-document/operation/new-document-and-start-process"
             ),
-            // Look up the caseDefinitionVersionTag (blueprint of the document definition).
+            // The caseDefinitionVersionTag of a case type, from its document
+            // definition's blueprint, for creating a plan dossier.
             mapOf(
                 "method" to "GET",
                 "pattern" to "/api/v1/document-definition/*"
             ),
-            // List case definitions for the case-type dropdowns in PDCA
-            // Beheer (the list path falls outside the wildcard pattern above).
-            mapOf(
-                "method" to "GET",
-                "pattern" to "/api/v1/document-definition"
-            ),
-            // Management variant of that list: the /api/v1 list is
-            // PBAC-filtered per caller and hides case types without document
-            // permission rules (e.g. a freshly imported product dossier
-            // type); the beheer dropdowns need the full register.
+            // All case definitions, for the case-type dropdowns in PDCA
+            // Beheer, and (with the user's token) the admin check of
+            // `/data`: the /api/v1 list is PBAC-filtered per caller and hides
+            // case types without document permission rules (e.g. a freshly
+            // imported case type), and only administrators may call this one.
             mapOf(
                 "method" to "GET",
                 "pattern" to "/api/management/v1/document-definition"
             ),
-            // Read a dossier for the intake prefill and to link a planId
-            // passed via the start form under water (direct link in the overlay).
+            // Read a dossier: the intake for the prefill and plan creation,
+            // the plan dossier to check it still exists, and the dossier type
+            // that calls aanmaak-instrument; with the user's token, whether
+            // the user may read a dossier.
             mapOf(
                 "method" to "GET",
                 "pattern" to "/api/v1/document/*"
@@ -95,59 +104,12 @@ class PluginHostController(
                 "method" to "GET",
                 "pattern" to "/api/management/v1/case/*"
             ),
-            // Building blocks: list process definitions (bouwblok dropdown,
-            // recognised by versionTag "BB:<key>:<version>") and look up the
-            // latest version per key to find the start-form link.
-            mapOf(
-                "method" to "GET",
-                "pattern" to "/api/v1/process/definition"
-            ),
-            mapOf(
-                "method" to "GET",
-                "pattern" to "/api/v1/process/definition/*"
-            ),
-            // Start a building block process on the plan dossier via the
-            // building block's start-form link. The start-by-key endpoint
-            // cannot start blueprint-owned (BB:-tagged) processes; the form
-            // submission starts by process definition id and delivers the
-            // start payload to the dossier document (/bouwblokStart), from
-            // where the building-block link's input mappings copy it into
-            // the building block document.
+            // Find the plan dossier of a plan (case type + planId) before
+            // creating one, so a creation whose answer got lost is not
+            // repeated.
             mapOf(
                 "method" to "POST",
-                "pattern" to "/api/v1/process-link/*/form/submission"
-            ),
-            mapOf(
-                "method" to "GET",
-                "pattern" to "/api/v1/process-link"
-            ),
-            // Maintain the pluginConfigurationMappings on the case type's
-            // building-block link (startable-item management API): the
-            // configuration chosen in PDCA Beheer is mapped there, so the
-            // building block's process links keep their portable
-            // BUILDING_BLOCK reference.
-            mapOf(
-                "method" to "GET",
-                "pattern" to "/api/management/v1/case-definition/*/version/*/startable-item/*/version/*/properties"
-            ),
-            mapOf(
-                "method" to "PUT",
-                "pattern" to "/api/management/v1/case-definition/*/version/*/startable-item/*/version/*"
-            ),
-            // DOSSIER products: write the aanvraagdossier's own URN into its
-            // document right after creation (the process passes it to
-            // aanmaak-instrument as doc:/dossierUrn).
-            mapOf(
-                "method" to "PUT",
-                "pattern" to "/api/v1/document"
-            ),
-            // DOSSIER products: repair the product case's dangling pdca
-            // process links to the configuration chosen in PDCA Beheer
-            // (GZAC's plugin-configuration repair; zips ship no
-            // environment-specific configuration UUIDs).
-            mapOf(
-                "method" to "PUT",
-                "pattern" to "/api/management/v1/case-definition/*/version/*/plugin-configuration-mappings"
+                "pattern" to "/api/v1/document-search"
             )
         )
     }
@@ -161,27 +123,47 @@ class PluginHostController(
                 "name" to "PDCA Plan Manager",
                 "description" to "Plan management with the PDCA cycle, backed by the Open Plan and Open Product registers.",
                 "pdca-admin.title" to "PDCA Management",
-                "action.actieId.label" to "Action id",
-                "action.actieId.help" to "UUID of the PDCA action (from the building block document, typically doc:/actieId).",
-                "action.gebeurtenis.label" to "Event",
-                "action.gebeurtenis.help" to "GESTART, TER_BEOORDELING, AFGEROND or AFGEWEZEN.",
+                "action.doelUuid.label" to "Doel",
+                "action.doelUuid.help" to "UUID of the doel in Open Plan the instrument belongs to (typically doc:/doelUuid).",
+                "action.titel.label" to "Title",
+                "action.titel.help" to "Title of the instrument in the plan (typically doc:/productTitel).",
+                "action.product.label" to "Product",
+                "action.product.help" to "URN of the producttype in Open Product (typically doc:/productUrn).",
+                "action.status.label" to "Status",
+                "action.status.help" to "On creation: actief (default) or gepland; on update: afgerond or geannuleerd.",
+                "action.planUuid.label" to "Plan",
+                "action.planUuid.help" to "UUID of the plan in Open Plan (typically doc:/planUuid); without it the plan of the doel or instrument.",
+                "action.instrumenttype.label" to "Instrument type",
+                "action.instrumenttype.help" to "Name or UUID of an Open Plan instrumenttype (typically doc:/instrumenttype); without a match the register's first.",
+                "action.instrumentUuid.label" to "Instrument",
+                "action.instrumentUuid.help" to "UUID of the instrument in Open Plan, as returned by aanmaak-instrument (typically doc:/instrumentUuid).",
                 "action.resultaat.label" to "Result",
-                "action.resultaat.help" to "Result text stored on the action (e.g. doc:/resultaat).",
+                "action.resultaat.help" to "behaald or gefaald when the instrument is completed (e.g. doc:/productResultaat).",
                 "action.toelichting.label" to "Explanation",
-                "action.toelichting.help" to "Optional explanation, stored as result on AFGEWEZEN."
+                "action.toelichting.help" to "Optional explanation, stored in the PDCA overlay of the instrument."
             ),
             "nl" to mapOf(
                 "name" to "PDCA Planbeheer",
                 "description" to "Planbeheer met de PDCA-cyclus, op basis van de registers Open Plan en Open Product.",
                 "pdca-admin.title" to "PDCA Beheer",
-                "action.actieId.label" to "Actie-id",
-                "action.actieId.help" to "UUID van de PDCA-actie (uit het bouwblokdocument, doorgaans doc:/actieId).",
-                "action.gebeurtenis.label" to "Gebeurtenis",
-                "action.gebeurtenis.help" to "GESTART, TER_BEOORDELING, AFGEROND of AFGEWEZEN.",
+                "action.doelUuid.label" to "Doel",
+                "action.doelUuid.help" to "UUID van het doel in Open Plan waar het instrument onder komt (doorgaans doc:/doelUuid).",
+                "action.titel.label" to "Titel",
+                "action.titel.help" to "Titel van het instrument in het plan (doorgaans doc:/productTitel).",
+                "action.product.label" to "Product",
+                "action.product.help" to "URN van het producttype in Open Product (doorgaans doc:/productUrn).",
+                "action.status.label" to "Status",
+                "action.status.help" to "Bij aanmaken: actief (standaard) of gepland; bij bijwerken: afgerond of geannuleerd.",
+                "action.planUuid.label" to "Plan",
+                "action.planUuid.help" to "UUID van het plan in Open Plan (doorgaans doc:/planUuid); zonder het plan van het doel of instrument.",
+                "action.instrumenttype.label" to "Instrumenttype",
+                "action.instrumenttype.help" to "Naam of UUID van een instrumenttype in Open Plan (doorgaans doc:/instrumenttype); zonder overeenkomst het eerste van het register.",
+                "action.instrumentUuid.label" to "Instrument",
+                "action.instrumentUuid.help" to "UUID van het instrument in Open Plan, zoals aanmaak-instrument die teruggaf (doorgaans doc:/instrumentUuid).",
                 "action.resultaat.label" to "Resultaat",
-                "action.resultaat.help" to "Resultaattekst die op de actie komt (bv. doc:/resultaat).",
+                "action.resultaat.help" to "behaald of gefaald bij het afronden van het instrument (bv. doc:/productResultaat).",
                 "action.toelichting.label" to "Toelichting",
-                "action.toelichting.help" to "Optionele toelichting; bij AFGEWEZEN als resultaat vastgelegd."
+                "action.toelichting.help" to "Optionele toelichting; komt in de PDCA-overlay van het instrument."
             )
         ),
         "configurationSchema" to mapOf(
@@ -234,61 +216,39 @@ class PluginHostController(
                 "path" to "/bundles/create-plan.html"
             ),
             mapOf(
-                "type" to "task-form",
-                "key" to "update-goals",
-                "path" to "/bundles/update-goals.html"
-            ),
-            mapOf(
-                "type" to "task-form",
-                "key" to "evaluate",
-                "path" to "/bundles/evaluate.html"
-            ),
-            mapOf(
                 "type" to "side-panel",
                 "key" to "evaluation",
                 "path" to "/bundles/evaluation-panel.html"
             )
         ),
         // BPMN-bindable action handlers, executed by PluginActionController.
-        // Building block processes use these to report action progress and —
-        // for product building blocks — to manage the instrument in Open
-        // Plan themselves (see the building blocks in gzac/bouwblokken).
+        // The instrument dossier (gzac/case-definitions/instrument-verzoek,
+        // ARCHITECTURE §6.2) uses these to manage the instrument in Open Plan itself.
         "actions" to listOf(
-            mapOf(
-                "key" to "update-actie",
-                "title" to "Actie bijwerken",
-                "description" to "Werkt een PDCA-actie bij vanuit een bouwblokproces: " +
-                    "GESTART, TER_BEOORDELING, AFGEROND (met resultaat) of AFGEWEZEN.",
-                "activityTypes" to listOf("SERVICE_TASK_START"),
-                "properties" to listOf(
-                    mapOf("key" to "actieId", "type" to "string", "required" to true),
-                    mapOf("key" to "gebeurtenis", "type" to "string", "required" to true),
-                    mapOf("key" to "resultaat", "type" to "string", "required" to false),
-                    mapOf("key" to "toelichting", "type" to "string", "required" to false)
-                )
-            ),
             mapOf(
                 "key" to "aanmaak-instrument",
                 "title" to "Instrument aanmaken",
-                "description" to "Maakt een instrument onder een doel aan in Open Plan " +
-                    "(bijv. na toekenning van een instrumentaanvraag) en geeft de instrumentUuid " +
-                    "terug als resultaat (via een result mapping in het bouwblokdocument te zetten).",
+                "description" to "Maakt een instrument onder een lopend doel aan in Open Plan, met het " +
+                    "aanroepende dossier als zaakverwijzing, en geeft de instrumentUuid terug als " +
+                    "resultaat (via een result mapping in het dossierdocument te zetten). Veilig om " +
+                    "te herhalen: een eerder door dit dossier aangemaakt instrument wordt teruggegeven.",
                 "activityTypes" to listOf("SERVICE_TASK_START"),
                 "properties" to listOf(
                     mapOf("key" to "doelUuid", "type" to "string", "required" to true),
                     mapOf("key" to "titel", "type" to "string", "required" to true),
                     mapOf("key" to "product", "type" to "string", "required" to false),
-                    mapOf("key" to "zaak", "type" to "string", "required" to false),
-                    mapOf("key" to "status", "type" to "string", "required" to false)
+                    mapOf("key" to "status", "type" to "string", "required" to false),
+                    mapOf("key" to "instrumenttype", "type" to "string", "required" to false),
+                    mapOf("key" to "planUuid", "type" to "string", "required" to false)
                 ),
                 "outputs" to listOf("instrumentUuid")
             ),
             mapOf(
                 "key" to "update-instrument",
                 "title" to "Instrument bijwerken",
-                "description" to "Zet de status van een instrument in Open Plan op afgerond " +
+                "description" to "Zet de status van een lopend instrument in Open Plan op afgerond " +
                     "(met resultaat behaald/gefaald) of geannuleerd; een toelichting komt in " +
-                    "de PDCA-overlay.",
+                    "de PDCA-overlay. Een instrument dat al die status heeft, blijft ongemoeid.",
                 "activityTypes" to listOf("SERVICE_TASK_START"),
                 "properties" to listOf(
                     mapOf("key" to "instrumentUuid", "type" to "string", "required" to true),
@@ -323,7 +283,7 @@ class PluginHostController(
         @PathVariable(name = "version") version: String
     ): Map<String, Any> = manifest
 
-    /** Pushed configurations (without the service token — this endpoint is unauthenticated here). */
+    /** Pushed configurations, for GZAC's reconciliation; never with the service token. */
     @GetMapping("/api/host/configurations")
     fun listConfigurations(): List<Map<String, Any>> = configurationStore.getAll().values.map {
         mapOf(
@@ -336,18 +296,22 @@ class PluginHostController(
         )
     }
 
-    // TODO: Add HMAC signature verification for production use.
-    //  GZAC signs every request with the shared secret entered at registration;
-    //  the signature should be validated here.
+    /**
+     * A configuration push. With `pdca.gzac.allowed-base-urls` set, a push
+     * for a GZAC instance outside that list is refused (403), so even a
+     * holder of the host secret cannot point the app at another GZAC.
+     */
     @PostMapping("/api/host/configurations/{configId}")
     fun pushConfiguration(
         @PathVariable configId: String,
         @RequestBody body: Map<String, Any>
     ): ResponseEntity<Void> {
-        logger.info("Received configuration push for configId={}: {}", configId, body)
-
         val serviceToken = body["serviceToken"] as? String ?: ""
         val gzacBaseUrl = body["gzacBaseUrl"] as? String ?: ""
+        if (!gzacInstances.isAllowedBaseUrl(gzacBaseUrl)) {
+            logger.warn("Refused configuration push for configId={}: GZAC host {} is not allowed", configId, hostOf(gzacBaseUrl))
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
         val properties = body["properties"] as? Map<String, Any> ?: emptyMap()
 
         @Suppress("UNCHECKED_CAST")
@@ -356,7 +320,7 @@ class PluginHostController(
 
         val configuration = PluginConfiguration(
             configId = configId,
-            title = body["title"] as? String,
+            title = body["title"] as? String ?: "",
             properties = properties,
             serviceToken = serviceToken,
             gzacBaseUrl = gzacBaseUrl,
@@ -364,14 +328,41 @@ class PluginHostController(
             grantedContracts = grantedContracts
         )
 
+        // Never log the body: it carries the serviceToken.
+        logger.info(
+            "Received configuration push for configId={} ('{}', GZAC host {}, granted contracts {})",
+            configId, configuration.title, hostOf(gzacBaseUrl), grantedContracts
+        )
         configurationStore.store(configId, configuration)
-
         return ResponseEntity.ok().build()
     }
+
+    private fun hostOf(url: String): String =
+        runCatching { URI.create(url).host }.getOrNull() ?: "(none)"
 
     @DeleteMapping("/api/host/configurations/{configId}")
     fun removeConfiguration(@PathVariable configId: String): ResponseEntity<Void> {
         configurationStore.remove(configId)
+        return ResponseEntity.noContent().build()
+    }
+
+    data class GzacInstanceAnnouncement(val gzacBaseUrl: String? = null, val frontendOrigins: List<String>? = null)
+
+    /**
+     * GZAC announces itself with the browser origins of its frontend (on
+     * registration and every discovery poll); those origins may frame the
+     * bundles and call `/data` (`GzacInstances`). Refused (403) for a GZAC
+     * outside `pdca.gzac.allowed-base-urls`.
+     */
+    @PutMapping("/api/host/gzac-instances")
+    fun announceGzacInstance(@RequestBody announcement: GzacInstanceAnnouncement): ResponseEntity<Void> {
+        val gzacBaseUrl = announcement.gzacBaseUrl?.takeIf { it.isNotBlank() }
+            ?: return ResponseEntity.badRequest().build()
+        if (!gzacInstances.isAllowedBaseUrl(gzacBaseUrl)) {
+            logger.warn("Refused GZAC instance announcement: GZAC host {} is not allowed", hostOf(gzacBaseUrl))
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+        gzacInstances.announce(gzacBaseUrl, announcement.frontendOrigins ?: emptyList())
         return ResponseEntity.noContent().build()
     }
 }

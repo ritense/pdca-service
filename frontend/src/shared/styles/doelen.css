@@ -1,0 +1,213 @@
+/* Doelen & Acties: goal cards, actie and instrument rows, voortgang & notities. */
+
+/* Dropdown menu under a toolbar button (the product picker). */
+.pdca-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 10;
+  width: max-content;
+  min-width: min(260px, 90vw);
+  max-width: 90vw;
+  background: var(--cds-layer, #fff);
+  border: 1px solid var(--cds-border-subtle, #e0e0e0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+.pdca-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--cds-border-subtle, #e0e0e0);
+  cursor: pointer;
+  font: inherit;
+  white-space: normal;
+}
+
+/* Goal/Action cards */
+.pdca-goal-card {
+  background: var(--cds-layer-01, #fff);
+  margin-bottom: var(--pdca-spacing-03);
+  border-left: 4px solid var(--cds-border-subtle, #e0e0e0);
+}
+
+.pdca-goal-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-03);
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.875rem 1.25rem;
+  cursor: pointer;
+}
+
+.pdca-goal-header:hover {
+  background: var(--cds-layer-hover-01, #e8e8e8);
+}
+
+.pdca-goal-body {
+  padding: 1rem 1.25rem 1.25rem 3.25rem;
+  border-top: 1px solid var(--cds-border-subtle, #e0e0e0);
+}
+
+/* State button and overflow menu of a subdoel. */
+.pdca-goal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pdca-spacing-03);
+  margin-bottom: var(--pdca-spacing-05);
+}
+
+/* "2 acties · 1 instrument" in a collapsed subdoel header. */
+.pdca-muted-count {
+  font-size: 0.75rem;
+  color: var(--cds-text-helper, #6f6f6f);
+  white-space: nowrap;
+}
+
+/* Compact "Voortgang & notities" summary of a doel or instrument. */
+.pdca-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-02);
+}
+
+.pdca-summary-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pdca-spacing-03);
+  font-size: 0.8125rem;
+  color: var(--cds-text-primary, #161616);
+}
+
+.pdca-summary-line.pdca-text-ellipsis {
+  display: block;
+}
+
+.pdca-summary-empty {
+  color: var(--cds-text-helper, #6f6f6f);
+  font-style: italic;
+}
+
+/* Inline edit form of voortgang and notes. */
+.pdca-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-05);
+}
+
+/* Action rows */
+.pdca-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-03);
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  background: var(--cds-layer-02, #f4f4f4);
+  margin-bottom: 4px;
+  font-size: 0.8125rem;
+}
+
+.pdca-action-row:hover {
+  background: var(--cds-layer-hover-02, #e8e8e8);
+}
+
+/* Form fields side by side that stack on narrow tabs (voortgang, notes). */
+.pdca-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+  gap: var(--pdca-spacing-04);
+}
+
+.pdca-form-field {
+  margin-top: var(--pdca-spacing-04);
+}
+
+/* "Voortgang & notities" under an instrument row: one nested layer (Carbon
+   Layer) so its fields stand out against the surface. */
+.pdca-instrument-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-06);
+  background: var(--cds-layer-02, #f4f4f4);
+  padding: var(--pdca-spacing-05);
+  margin-bottom: var(--pdca-spacing-03);
+}
+
+.pdca-instrument-panel .pdca-section-title {
+  margin-bottom: var(--pdca-spacing-04);
+}
+
+.pdca-goal-card--hoofddoel {
+  margin-bottom: var(--pdca-spacing-05);
+}
+
+.pdca-goal-titel {
+  font-weight: 500;
+}
+
+.pdca-goal-titel--hoofddoel {
+  font-weight: 600;
+}
+
+.pdca-goal-beschrijving {
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.pdca-goal-toelichting {
+  margin-bottom: var(--pdca-spacing-05);
+  font-size: 0.8125rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.pdca-row-main--nowrap {
+  flex-wrap: nowrap;
+}
+
+/* An earlier hoofddoel, as a line above the subdoelen. */
+.pdca-eerder-hoofddoel {
+  align-items: center;
+  margin: 0 0 var(--pdca-spacing-03) var(--pdca-spacing-02);
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+/* An instrument under a subdoel: its row, its acties and its panel. */
+.pdca-instrument {
+  border-bottom: 1px solid var(--cds-border-subtle, #e0e0e0);
+}
+
+.pdca-instrument-acties {
+  margin: 0 0 var(--pdca-spacing-03) var(--pdca-spacing-05);
+  padding-left: var(--pdca-spacing-03);
+  border-left: 2px solid var(--cds-border-subtle, #e0e0e0);
+}
+
+.pdca-afbreekreden {
+  margin: 0 0 var(--pdca-spacing-03);
+  font-size: 0.75rem;
+  color: var(--cds-text-error, #da1e28);
+}
+
+/* The product picker opens below its button. */
+.pdca-menu-anker {
+  position: relative;
+}
+
+.pdca-menu-item-naam {
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.pdca-menu-item-sub {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--cds-text-secondary, #525252);
+}

@@ -11,19 +11,25 @@ import java.time.LocalDateTime
 
 data class PluginConfiguration(
     val configId: String,
-    /** The administrator-facing name of the configuration in GZAC (pushed along; null for older pushes). */
-    val title: String? = null,
+    /** The administrator-facing name of the configuration in GZAC (pushed along with it). */
+    val title: String,
     val properties: Map<String, Any>,
     val serviceToken: String,
     val gzacBaseUrl: String,
     val eventSubscriptions: List<String> = emptyList(),
     /** Contracts GZAC bound for this configuration (`name@major`); empty when none is bound. */
     val grantedContracts: List<String> = emptyList()
-)
+) {
+    /** Never prints the serviceToken. */
+    override fun toString(): String =
+        "PluginConfiguration(configId=$configId, title=$title, gzacBaseUrl=$gzacBaseUrl, grantedContracts=$grantedContracts)"
+}
 
 /**
  * Plugin configurations pushed by GZAC, persisted in the PDCA database so the
- * serviceToken + gzacBaseUrl survive restarts (see [com.ritense.pdca.service.GzacClient]).
+ * serviceToken + gzacBaseUrl survive restarts (the token encrypted at rest,
+ * see [com.ritense.pdca.domain.ServiceTokenConverter]). Which one the app
+ * uses is decided by [GzacAccess].
  */
 @Component
 @Transactional
@@ -38,7 +44,7 @@ class ConfigurationStore(
         repository.save(
             StoredPluginConfiguration(
                 configId = configId,
-                title = configuration.title?.takeIf { it.isNotBlank() },
+                title = configuration.title,
                 properties = objectMapper.writeValueAsString(configuration.properties),
                 serviceToken = configuration.serviceToken.ifBlank { null },
                 gzacBaseUrl = configuration.gzacBaseUrl.ifBlank { null },
@@ -66,14 +72,6 @@ class ConfigurationStore(
 
     fun getAll(): Map<String, PluginConfiguration> =
         repository.findAll().associate { it.configId to toConfiguration(it) }
-
-    /** The most recently pushed configuration that can authenticate against GZAC and matches [filter]. */
-    fun latestWithGzacAccess(filter: (PluginConfiguration) -> Boolean = { true }): PluginConfiguration? =
-        repository.findAll()
-            .filter { !it.serviceToken.isNullOrBlank() && !it.gzacBaseUrl.isNullOrBlank() }
-            .sortedByDescending { it.updatedAt }
-            .map { toConfiguration(it) }
-            .firstOrNull(filter)
 
     private fun toConfiguration(entity: StoredPluginConfiguration) = PluginConfiguration(
         configId = entity.configId,

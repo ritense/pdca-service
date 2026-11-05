@@ -27,7 +27,7 @@ import java.util.UUID
 /**
  * PDCA evaluation overlay for a contactmoment (pk = uuid of the klantcontact
  * in Open Klant). The klantcontact carries the moment, whether it took place
- * and the verslag; the structured check-fase data (type, doelvoortgang,
+ * and the verslag; the structured check-fase data (type, deelnemers,
  * actiepunten) lives here.
  * A contactmoment that is the result of a completed evaluation session
  * points to it through [evaluationSessionId] (its plan changes).
@@ -50,13 +50,6 @@ data class ContactmomentDetails(
 
     @Column(columnDefinition = "TEXT")
     var deelnemers: String? = null,
-
-    /**
-     * JSON: [{"doelUuid": "...", "status": "OP_KOERS", "statusNaam": "Op koers", "toelichting": "..."}]
-     * — the voortgangsstatus per subdoel as recorded then (code and name).
-     */
-    @Column(name = "doel_voortgang", columnDefinition = "TEXT")
-    var doelVoortgang: String? = null,
 
     /** JSON: ["actiepunt", ...] */
     @Column(columnDefinition = "TEXT")

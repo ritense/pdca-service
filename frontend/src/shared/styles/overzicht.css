@@ -1,0 +1,241 @@
+/* Planoverzicht: header, subject card, KPI tiles, cards and info blocks. */
+
+.pdca-page-header {
+  margin-bottom: var(--pdca-spacing-06);
+}
+
+.pdca-page-header h1 {
+  overflow-wrap: anywhere;
+  font-size: 1.75rem;
+  font-weight: 600;
+  margin-bottom: var(--pdca-spacing-03);
+  color: var(--cds-text-primary, #161616);
+}
+
+.pdca-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--pdca-spacing-03);
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+/* Subject card */
+.pdca-subject-card {
+  background: var(--cds-layer-01, #fff);
+  border-left: 4px solid var(--cds-interactive, #0f62fe);
+  padding: var(--pdca-spacing-05);
+  margin-bottom: var(--pdca-spacing-06);
+  display: flex;
+  gap: var(--pdca-spacing-06);
+  flex-wrap: wrap;
+}
+
+.pdca-subject-card h4 {
+  width: 100%;
+  margin-bottom: var(--pdca-spacing-03);
+  color: var(--cds-text-primary, #161616);
+}
+
+.pdca-subject-detail {
+  min-width: 140px;
+}
+
+.pdca-subject-detail .detail-label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--cds-text-secondary, #525252);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.pdca-subject-detail .detail-value {
+  font-size: 0.8125rem;
+  color: var(--cds-text-primary, #161616);
+}
+
+/* KPI grid */
+.pdca-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--pdca-spacing-05);
+  margin-bottom: var(--pdca-spacing-06);
+}
+
+.pdca-kpi-card {
+  background: var(--cds-layer-01, #fff) !important;
+  padding: var(--pdca-spacing-05) !important;
+  border-top-width: 3px;
+  border-top-style: solid;
+}
+
+.pdca-kpi-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--cds-text-secondary, #525252);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--pdca-spacing-03);
+}
+
+.pdca-kpi-value {
+  font-size: 2.25rem;
+  font-weight: 300;
+  line-height: 1.1;
+  color: var(--cds-text-primary, #161616);
+}
+
+/* A date or short phrase instead of a number: smaller, so it stays on one line. */
+.pdca-kpi-value.compact {
+  font-size: 1.75rem;
+  white-space: nowrap;
+}
+
+.pdca-kpi-sub {
+  font-size: 0.75rem;
+  color: var(--cds-text-helper, #6f6f6f);
+  margin-top: 4px;
+}
+
+/* Content grid */
+.pdca-content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: var(--pdca-spacing-06);
+  margin-bottom: var(--pdca-spacing-06);
+}
+
+.pdca-content-grid > * {
+  min-width: 0;
+}
+
+/* Card (Tile replacement) */
+.pdca-card {
+  background: var(--cds-layer-01, #fff) !important;
+  margin-bottom: var(--pdca-spacing-06);
+  padding: 0 !important;
+}
+
+.pdca-card-header {
+  padding: var(--pdca-spacing-05) 1.25rem;
+  border-bottom: 1px solid var(--cds-border-subtle, #e0e0e0);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--cds-text-primary, #161616);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-03);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pdca-card-body {
+  padding: 1.25rem;
+}
+
+/* Info blocks */
+.pdca-info-block {
+  margin-bottom: 1.25rem;
+}
+
+.pdca-info-block:last-child {
+  margin-bottom: 0;
+}
+
+.pdca-info-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--cds-text-secondary, #525252);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pdca-info-value {
+  font-size: 0.875rem;
+  color: var(--cds-text-primary, #161616);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.pdca-info-value.empty {
+  color: var(--cds-text-placeholder, #a8a8a8);
+  font-style: italic;
+}
+
+/* Evaluation list items */
+.pdca-eval-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--cds-border-subtle, #e0e0e0);
+}
+
+.pdca-eval-item:last-child {
+  border-bottom: none;
+}
+
+.pdca-eval-info {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pdca-eval-date {
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary, #525252);
+  margin-bottom: 2px;
+}
+
+.pdca-eval-summary {
+  font-size: 0.8125rem;
+  color: var(--cds-text-primary, #161616);
+}
+
+/* Status control */
+.pdca-status-control {
+  display: flex;
+  align-items: center;
+  gap: var(--pdca-spacing-03);
+  flex-wrap: wrap;
+}
+
+/* Reason or explanation of a closed plan, under the plan header. */
+.pdca-plan-reden {
+  margin-top: var(--pdca-spacing-03);
+  font-size: 0.875rem;
+  color: var(--cds-text-secondary, #525252);
+  overflow-wrap: anywhere;
+}
+
+/* Hint under a plan field that cannot be edited yet. */
+.pdca-field-hint {
+  margin-top: var(--pdca-spacing-02);
+  font-size: 0.75rem;
+  color: var(--cds-text-helper, #6f6f6f);
+}
+
+/* PDCA Beheer */
+.pdca-admin-soort {
+  margin: var(--pdca-spacing-02) 0 var(--pdca-spacing-05);
+}
+
+.pdca-admin-label {
+  margin-bottom: var(--pdca-spacing-02);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.pdca-admin-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-05);
+  margin-bottom: var(--pdca-spacing-03);
+}

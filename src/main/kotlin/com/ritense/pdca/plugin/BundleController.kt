@@ -37,8 +37,6 @@ class BundleController {
     private fun serveBundleFile(path: String): ResponseEntity<ByteArray> {
         val resource = ClassPathResource("static/bundles/react/$path")
             .takeIf { it.exists() }
-            ?: ClassPathResource("static/bundles/$path")
-                .takeIf { it.exists() }
             ?: return ResponseEntity.notFound().build()
 
         val contentType = when {

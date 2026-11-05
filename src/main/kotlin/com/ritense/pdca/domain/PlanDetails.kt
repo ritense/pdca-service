@@ -45,23 +45,20 @@ data class PlanDetails(
     var caseDefinitionKey: String? = null,
 
     /**
-     * Direct link to the GZAC dossier (documentId). Unique: plan = dossier
-     * (1:1) is enforced by the database. Null while the plan is standalone;
-     * linking/unlinking runs through the dossier endpoints in
-     * [com.ritense.pdca.web.rest.DossierResource].
+     * Direct link to the plan dossier in GZAC (documentId). Unique: plan =
+     * dossier (1:1) is enforced by the database. Set when the plan dossier is
+     * created right after the plan ([com.ritense.pdca.service.DossierLinkService]).
      */
     @Column(name = "dossier_id", unique = true)
     var dossierId: String? = null,
 
     /**
-     * The intake dossier this plan was created from, when it came in through
-     * the intake route (a case type with `planCaseDefinitionKey`). The plan
-     * itself belongs to the plan dossier in [dossierId]; this is the only
-     * trace back to the intake, and it is what makes a repeated create-plan
-     * submission from that intake idempotent instead of running into the
-     * one-active-plan-per-inwoner rule with no way out.
+     * The intake dossier this plan was created from (a case type with
+     * `planCaseDefinitionKey`); unique, one plan per intake. The plan itself
+     * belongs to the plan dossier in [dossierId]; this is the only trace back
+     * to the intake. The creation itself is tracked in [PlanIntake].
      */
-    @Column(name = "intake_dossier_id")
+    @Column(name = "intake_dossier_id", unique = true)
     var intakeDossierId: String? = null,
 
     /**
@@ -88,14 +85,6 @@ data class PlanDetails(
      */
     @Column(name = "subdoelgroep")
     var subdoelgroep: String? = null,
-
-    /**
-     * The plan's single hoofddoel: a reference to a hoofddoel doeltype in
-     * the Open Plan doeltype register (category "Hoofddoel"). Free text
-     * belongs in plan.notitie (explanation for the inwoner).
-     */
-    @Column(name = "hoofddoel_type_uuid")
-    var hoofddoelTypeUuid: UUID? = null,
 
     @Column(name = "streef_einddatum")
     var streefEinddatum: LocalDate? = null,

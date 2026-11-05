@@ -74,19 +74,6 @@ data class Action(
     @Column(name = "contactmoment_uuid")
     var contactmomentUuid: UUID? = null,
 
-    /** LOKAAL = tracked in the PDCA tab only; BOUWBLOK = executed by a GZAC building block process. */
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    var uitvoering: Uitvoering = Uitvoering.LOKAAL,
-
-    /** Process instance of the building block in GZAC; also set by the first update-actie callback. */
-    @Column(name = "gzac_process_instance_id")
-    var gzacProcessInstanceId: String? = null,
-
-    /** The bouwblok koppeling (PDCA Beheer) this action was started from. */
-    @Column(name = "bouwblok_koppeling_id")
-    var bouwblokKoppelingId: UUID? = null,
-
     @Column(name = "completed_date")
     var completedDate: LocalDate? = null,
 
@@ -103,4 +90,3 @@ data class Action(
 enum class ActionStatus { PLANNED, IN_PROGRESS, PENDING_REVIEW, COMPLETED, REJECTED }
 enum class AssigneeType { PROFESSIONAL, SUBJECT, PROVIDER }
 enum class Priority { HIGH, NORMAL, LOW }
-enum class Uitvoering { LOKAAL, BOUWBLOK }

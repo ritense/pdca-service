@@ -15,5 +15,11 @@
     <include file="config/liquibase/008-status-procesbegeleider-gepland-contactmoment.xml"/>
     <include file="config/liquibase/009-configureerbare-voortgangsstatussen.xml"/>
     <include file="config/liquibase/010-plugin-configuration-granted-contracts.xml"/>
+    <include file="config/liquibase/011-drop-actie-bouwblokken.xml"/>
+    <include file="config/liquibase/012-drop-doel-voortgang-required-fields.xml"/>
+    <include file="config/liquibase/013-clear-plaintext-service-tokens.xml"/>
+    <include file="config/liquibase/014-plan-intake-reservation.xml"/>
+    <include file="config/liquibase/015-drop-plan-hoofddoel-type.xml"/>
+    <include file="config/liquibase/016-plan-intake-claim-token.xml"/>
 
 </databaseChangeLog>

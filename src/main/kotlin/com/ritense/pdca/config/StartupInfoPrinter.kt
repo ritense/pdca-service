@@ -1,5 +1,6 @@
 package com.ritense.pdca.config
 
+import com.ritense.pdca.plugin.PluginHostController
 import com.ritense.pdca.registers.Register
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.context.event.EventListener
@@ -13,6 +14,7 @@ class StartupInfoPrinter(private val env: Environment) {
     fun onReady() {
         val port = env.getProperty("server.port", "7500")
         val base = "http://localhost:$port"
+        val plugin = "$base/plugins/${PluginHostController.PLUGIN_ID}/${PluginHostController.PLUGIN_VERSION}"
         fun via(register: Register) = "contract ${register.contract} via GZAC and the ${register.key} plugin"
 
         println("""
@@ -21,35 +23,27 @@ class StartupInfoPrinter(private val env: Environment) {
             │  PDCA App running at $base
             ├──────────────────────────────────────────────────────────────────────────┤
             │
-            │  Registers (Maykin, via docker compose):
-            │    Open Plan API:     $base/openplan/plannen/api/v0/plan
-            │                       (app → Open Plan: ${via(Register.OPENPLAN)})
-            │                       (register admin: http://localhost:7501/admin/, admin/admin)
-            │    Open Product API:  $base/openproduct/producttypen/api/v1/producttypen
-            │                       (app → Open Product: ${via(Register.OPENPRODUCT)})
-            │                       (register admin: http://localhost:7502/admin/, admin/admin)
-            │    Open Klant API:    $base/openklant/klantinteracties/api/v1/klantcontacten
-            │                       (app → Open Klant: ${via(Register.OPENKLANT)})
-            │                       (register admin: http://localhost:7504/admin/, admin/admin)
-            │    Demo plan Erika:   $base/openplan/plannen/api/v0/plan/11111111-1111-1111-1111-111111111111
-            │    Demo plan Binnenhof: .../plan/33333333-3333-3333-3333-333333333333
+            │  Registers (Maykin, via docker compose), reached only through GZAC:
+            │    Open Plan:     ${via(Register.OPENPLAN)}
+            │                   (register admin: http://localhost:7501/admin/, admin/admin)
+            │    Open Product:  ${via(Register.OPENPRODUCT)}
+            │                   (register admin: http://localhost:7502/admin/, admin/admin)
+            │    Open Klant:    ${via(Register.OPENKLANT)}
+            │                   (register admin: http://localhost:7504/admin/, admin/admin)
+            │    Objecten API:  ${via(Register.OBJECTEN)}
             │
-            │  PDCA overlay API (status/voortgang/acties, keyed by register uuid):
-            │    Plandetails:   $base/api/v1/pdca/plandetails
-            │    Doeldetails:   $base/api/v1/pdca/doeldetails?planUuid=...
-            │    Instrumenten:  $base/api/v1/pdca/instrumentdetails?planUuid=...
-            │    Acties:        $base/api/v1/pdca/acties?planUuid=...
-            │    Betrokkenen:   $base/api/v1/pdca/betrokkenen?planUuid=...
-            │    Config:        $base/api/v1/admin/phase-configs
-            │    BRP/object stub: $base/api/v1/registers/personen/111222333
-            │
-            │  Plugin host:
+            │  Plugin host (the only entry points):
             │    Health:    $base/health
-            │    Manifest:  $base/api/host/plugins
-            │    Bundles:   $base/bundles/react/plan-overview.html
+            │    Host API:  $base/api/host/*  (signed by GZAC with PDCA_HOST_SECRET)
+            │    Actions:   $plugin/actions/*  (signed by GZAC)
+            │    Data:      $plugin/data  (the bundles' API calls, with the GZAC user token)
+            │    Bundles:   $plugin/bundles/plan-overview.html
+            │
+            │  The REST API (/api/v1/...) and the register proxy are not reachable
+            │  directly: the bundles call them through GZAC and /data.
             │
             │  To connect to GZAC: register this app by URL ($base) as an
-            │  external plugin; case tabs plan-overview / plan-goals / plan-evaluations.
+            │  external plugin with the same secret as PDCA_HOST_SECRET.
             │
             └──────────────────────────────────────────────────────────────────────────┘
 

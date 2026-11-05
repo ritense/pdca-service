@@ -119,7 +119,7 @@ class PhaseConfigService(
         val opties = try {
             parseVoortgangStatussen(raw)
         } catch (e: Exception) {
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Voortgangsstatussen zijn ongeldig: ${e.message}")
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Voortgangsstatussen zijn geen geldige lijst")
         }
         if (opties.isEmpty()) return null
         val namen = mutableSetOf<String>()

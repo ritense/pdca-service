@@ -1,28 +1,18 @@
 {
   "name": "openklant-plugin",
-  "version": "1.0.0",
-  "description": "Valtimo external plugin providing the nl.ritense.openklant@1 contract on top of Open Klant",
+  "version": "2.0.0",
+  "description": "Valtimo external plugin providing the nl.ritense.openklant@2 contract on top of Open Klant",
   "private": true,
   "scripts": {
     "build": "valtimo-plugin-build --input src/plugin.ts --output dist/plugin.wasm",
+    "build:frontend": "node ../register-core/build-frontend.mjs",
     "pack": "valtimo-plugin-pack --wasm dist/plugin.wasm --output dist",
-    "build:pack": "npm run build && npm run pack",
-    "test": "vitest run"
+    "build:pack": "npm run build && npm run build:frontend && npm run pack",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p ."
   },
   "engines": {
     "node": ">=22"
-  },
-  "devDependencies": {
-    "@carbon/react": "^1.118.0",
-    "@extism/js-pdk": "^1.1.0",
-    "@types/react": "^18.3.31",
-    "@types/react-dom": "^18.3.7",
-    "@valtimo/plugin-sdk": "file:../../../valtimo/plugin-host/plugin-sdk",
-    "esbuild": "^0.25.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "typescript": "^5.4.0",
-    "vitest": "^3.2.0"
   },
   "license": "EUPL-1.2"
 }

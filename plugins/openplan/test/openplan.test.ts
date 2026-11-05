@@ -15,130 +15,68 @@
  */
 
 import {describe, expect, it} from "vitest";
-import {handleOperation, type HttpCall, type HttpReply} from "../src/openplan";
+import {handleOperation, type HttpCall, type HttpReply} from "../../register-core/src/contract";
+import {expectManifestMatchesSpec} from "../../register-core/test/manifest-support";
+import {OPENPLAN} from "../src/openplan";
+import manifest from "../manifest.json";
+import pkg from "../package.json";
 
-const PLAN_UUID = "11111111-1111-1111-1111-111111111111";
+const UUID = "11111111-1111-1111-1111-111111111111";
 const CONFIG = {openPlanUrl: "http://openplan.example:7501/", openPlanToken: "secret-token"};
+const reply: HttpReply = {status: 200, headers: {"content-type": "application/json", date: "x"}, body: {}};
 
-function recorder(reply: HttpReply) {
+function call(operation: Parameters<typeof handleOperation>[1], payload: unknown) {
   const calls: HttpCall[] = [];
-  return {
-    calls,
-    transport: (call: HttpCall) => {
-      calls.push(call);
-      return reply;
-    },
-  };
+  const out = handleOperation(OPENPLAN, operation, payload, CONFIG, (c) => (calls.push(c), reply));
+  return {out, calls};
 }
 
-const registerReply = (status: number, body: unknown): HttpReply => ({
-  status,
-  headers: {"content-type": "application/json", date: "Tue, 14 Oct 2026 10:00:00 GMT", "content-length": "2"},
-  body,
-});
+describe("nl.ritense.openplan@2", () => {
+  it("declares in its manifest exactly what it serves", () => {
+    expectManifestMatchesSpec(manifest, OPENPLAN, pkg.version);
+  });
 
-describe("request mapping", () => {
-  it("lists with the query string and the token header", () => {
-    const {calls, transport} = recorder(registerReply(200, {count: 0, results: []}));
-    const out = handleOperation("list", {resource: "doel", query: {plannen__uuid: PLAN_UUID, page: "2"}}, CONFIG, transport);
-
-    expect(out).toEqual({status: "completed", result: {status: 200, body: {count: 0, results: []}}});
-    expect(calls[0].method).toBe("GET");
-    expect(calls[0].url).toBe(`http://openplan.example:7501/plannen/api/v0/doel?plannen__uuid=${PLAN_UUID}&page=2`);
+  it("calls the Plannen API v0 with the configured token", () => {
+    const {calls} = call("list", {resource: "doel", query: {plannen__uuid: UUID}});
+    expect(calls[0].url).toBe(`http://openplan.example:7501/plannen/api/v0/doel?plannen__uuid=${UUID}`);
     expect(calls[0].headers.Authorization).toBe("Token secret-token");
-    expect(calls[0].body).toBeUndefined();
   });
 
-  it("encodes query values", () => {
-    const {calls, transport} = recorder(registerReply(200, {count: 0, results: []}));
-    handleOperation("list", {resource: "instrument", query: {doelen__uuid__in: "a,b", naam: "x y"}}, CONFIG, transport);
-    expect(calls[0].url).toBe("http://openplan.example:7501/plannen/api/v0/instrument?doelen__uuid__in=a%2Cb&naam=x%20y");
-  });
-
-  it("gets by uuid", () => {
-    const {calls, transport} = recorder(registerReply(200, {uuid: PLAN_UUID}));
-    handleOperation("get", {resource: "plan", uuid: PLAN_UUID}, CONFIG, transport);
-    expect(calls[0]).toMatchObject({method: "GET", url: `http://openplan.example:7501/plannen/api/v0/plan/${PLAN_UUID}`});
-  });
-
-  it("creates with a JSON body", () => {
-    const {calls, transport} = recorder(registerReply(201, {uuid: PLAN_UUID}));
-    const out = handleOperation("create", {resource: "plan", body: {titel: "Plan"}}, CONFIG, transport);
-    expect(calls[0]).toMatchObject({method: "POST", body: {titel: "Plan"}});
-    expect(calls[0].headers["Content-Type"]).toBe("application/json");
-    expect(out.result).toEqual({status: 201, body: {uuid: PLAN_UUID}});
-  });
-
-  it("updates with PATCH, or PUT when replace is set", () => {
-    const {calls, transport} = recorder(registerReply(200, {}));
-    handleOperation("update", {resource: "doel", uuid: PLAN_UUID, body: {status: "afgerond"}}, CONFIG, transport);
-    handleOperation("update", {resource: "doel", uuid: PLAN_UUID, body: {}, replace: true}, CONFIG, transport);
-    expect(calls.map((c) => c.method)).toEqual(["PATCH", "PUT"]);
-  });
-
-  it("deletes and turns an empty answer into a null body", () => {
-    const {calls, transport} = recorder(registerReply(204, ""));
-    const out = handleOperation("delete", {resource: "instrument", uuid: PLAN_UUID}, CONFIG, transport);
-    expect(calls[0].method).toBe("DELETE");
-    expect(out).toEqual({status: "completed", result: {status: 204, body: null}});
-  });
-});
-
-describe("register answers", () => {
-  it("passes a register validation error through as a completed call", () => {
-    const error = {code: "invalid", title: "Invalid input.", invalidParams: [{name: "titel", reason: "Dit veld is vereist."}]};
-    const out = handleOperation("create", {resource: "plan", body: {}}, CONFIG, recorder(registerReply(400, error)).transport);
-    expect(out).toEqual({status: "completed", result: {status: 400, body: error}});
-  });
-
-  it("passes a register 404 through", () => {
-    const out = handleOperation("get", {resource: "plan", uuid: PLAN_UUID}, CONFIG, recorder(registerReply(404, {detail: "Niet gevonden."})).transport);
-    expect(out.result).toEqual({status: 404, body: {detail: "Niet gevonden."}});
-  });
-});
-
-describe("plugin-level failures", () => {
-  const hostReply = (status: number, error: string): HttpReply => ({
-    status,
-    headers: {"content-type": "application/json"},
-    body: {error},
-  });
-
-  it("reports an egress refusal", () => {
-    const out = handleOperation("list", {resource: "plan"}, CONFIG, recorder(hostReply(400, "Origin not allowed")).transport);
-    expect(out).toMatchObject({status: "error", errorCode: "REQUEST_REFUSED"});
-  });
-
-  it("reports an unreachable register", () => {
-    const out = handleOperation("list", {resource: "plan"}, CONFIG, recorder(hostReply(502, "http_request failed: ECONNREFUSED")).transport);
-    expect(out).toMatchObject({status: "error", errorCode: "OPENPLAN_UNREACHABLE"});
-  });
-
-  it("refuses a missing configuration without calling out", () => {
-    const {calls, transport} = recorder(registerReply(200, {}));
-    const out = handleOperation("list", {resource: "plan"}, {openPlanUrl: "http://x"}, transport);
-    expect(out).toMatchObject({status: "error", errorCode: "CONFIGURATION_INCOMPLETE"});
-    expect(calls).toHaveLength(0);
-  });
-
-  it("refuses an unknown resource", () => {
-    const out = handleOperation("list", {resource: "zaak"}, CONFIG, recorder(registerReply(200, {})).transport);
-    expect(out).toMatchObject({status: "error", errorCode: "UNKNOWN_RESOURCE"});
-  });
-
-  it("requires a valid uuid for get, update and delete", () => {
-    const {transport} = recorder(registerReply(200, {}));
-    for (const operation of ["get", "update", "delete"] as const) {
-      expect(handleOperation(operation, {resource: "plan"}, CONFIG, transport)).toMatchObject({errorCode: "INVALID_UUID"});
-      expect(handleOperation(operation, {resource: "plan", uuid: "../plan"}, CONFIG, transport)).toMatchObject({errorCode: "INVALID_UUID"});
+  it("serves what the PDCA app uses", () => {
+    for (const [operation, payload] of [
+      ["get", {resource: "plan", uuid: UUID}],
+      ["create", {resource: "plan", body: {}}],
+      ["update", {resource: "plan", uuid: UUID, body: {}}],
+      ["delete", {resource: "doel", uuid: UUID}],
+      ["delete", {resource: "instrument", uuid: UUID}],
+      ["create", {resource: "persoon", body: {}}],
+      ["list", {resource: "overkoepelendplan"}],
+    ] as const) {
+      expect(call(operation, payload).out, `${operation} ${payload.resource}`).toMatchObject({status: "completed"});
     }
   });
 
-  it("refuses payload fields that do not belong to the operation", () => {
-    const {transport} = recorder(registerReply(200, {}));
-    expect(handleOperation("list", {resource: "plan", uuid: PLAN_UUID}, CONFIG, transport)).toMatchObject({errorCode: "INVALID_PAYLOAD"});
-    expect(handleOperation("get", {resource: "plan", uuid: PLAN_UUID, body: {}}, CONFIG, transport)).toMatchObject({errorCode: "INVALID_PAYLOAD"});
-    expect(handleOperation("create", {resource: "plan", replace: true}, CONFIG, transport)).toMatchObject({errorCode: "INVALID_PAYLOAD"});
-    expect(handleOperation("list", "plan", CONFIG, transport)).toMatchObject({errorCode: "INVALID_PAYLOAD"});
+  it("refuses everything else", () => {
+    for (const [operation, payload] of [
+      ["delete", {resource: "plan", uuid: UUID}],
+      ["get", {resource: "persoon", uuid: UUID}],
+      ["update", {resource: "persoon", uuid: UUID, body: {}}],
+      ["create", {resource: "doeltype", body: {}}],
+      ["update", {resource: "plantype", uuid: UUID, body: {}}],
+    ] as const) {
+      const {out, calls} = call(operation, payload);
+      expect(out, `${operation} ${payload.resource}`).toMatchObject({errorCode: "OPERATION_NOT_ALLOWED"});
+      expect(calls).toHaveLength(0);
+    }
+    expect(call("list", {resource: "zaak"}).out).toMatchObject({errorCode: "UNKNOWN_RESOURCE"});
+  });
+
+  it("reports an unreachable Open Plan", () => {
+    const out = handleOperation(OPENPLAN, "list", {resource: "plan"}, CONFIG, () => ({
+      status: 502,
+      headers: {"content-type": "application/json"},
+      body: {error: "http_request failed: ECONNREFUSED"},
+    }));
+    expect(out).toMatchObject({status: "error", errorCode: "OPENPLAN_UNREACHABLE"});
   });
 });
