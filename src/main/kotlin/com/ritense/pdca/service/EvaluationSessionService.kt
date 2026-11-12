@@ -17,6 +17,7 @@
 package com.ritense.pdca.service
 
 import com.ritense.pdca.domain.ContactmomentDetails
+import com.ritense.pdca.domain.DocumentAanvraag
 import com.ritense.pdca.domain.EvaluationChange
 import com.ritense.pdca.domain.EvaluationSession
 import com.ritense.pdca.domain.EvaluationSessionStatus
@@ -89,6 +90,7 @@ class EvaluationSessionService(
     private val contactmomentDetailsRepository: ContactmomentDetailsRepository,
     private val phaseConfigService: PhaseConfigService,
     private val klantcontactService: KlantcontactService,
+    private val documentAanvraagService: DocumentAanvraagService,
     private val transactionTemplate: TransactionTemplate
 ) {
 
@@ -224,7 +226,12 @@ class EvaluationSessionService(
      * row pointing back to this session. When the session carries out a
      * planned contactmoment that is still planned, that klantcontact is
      * recorded as having taken place; otherwise a new klantcontact is created
-     * in Open Klant. The session is marked completed.
+     * in Open Klant. The session is marked completed; in the same
+     * transaction its evaluatieverslag is requested, so whoever sees the
+     * evaluation completed also sees its verslag being made. The process
+     * that makes it is started after the commit
+     * ([DocumentAanvraagService.startProcess]). Document generation never
+     * fails the completion.
      */
     fun complete(userLogin: String): EvaluationSession {
         val session = running(userLogin)
@@ -252,7 +259,10 @@ class EvaluationSessionService(
                 )
             )
         }
-        return transactionTemplate.execute {
+        // Taken before the transaction: the snapshot reads the registers.
+        val report = documentAanvraagService.prepareEvaluatieverslag(session, contactmomentUuid)
+        var requested: DocumentAanvraag? = null
+        val completed = transactionTemplate.execute {
             val details = contactmomentDetailsRepository.findById(contactmomentUuid).orElse(null)?.apply {
                 this.evaluatieType = evaluatieType
                 this.deelnemers = deelnemers ?: this.deelnemers
@@ -272,8 +282,11 @@ class EvaluationSessionService(
             session.contactmomentUuid = contactmomentUuid
             session.status = EvaluationSessionStatus.COMPLETED
             session.endedAt = now
+            requested = report?.let { documentAanvraagService.record(it) }
             repository.save(session)
         }!!
+        requested?.let { documentAanvraagService.startProcess(it) }
+        return completed
     }
 
     /**

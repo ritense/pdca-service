@@ -25,6 +25,29 @@ the three PDCA tabs** — no standard Valtimo tabs — and all three set
 other zips only the first tab sets `showTasks`, so GZAC's task panel shows
 next to the first tab and the other tabs use the full width.
 
+## The document process and its Epistola templates
+
+Next to the case definitions the app needs two artefacts for its documents
+(the evaluatieverslag of a completed evaluation), described in
+[`../system-processes/README.md`](../system-processes/README.md):
+
+- **`../system-processes/pdca-document.zip`** — the global process
+  `pdca-document`, outside any case definition, which the app starts on the
+  plan dossier. Its PDCA process links carry the placeholder
+  `00000000-0000-4000-8000-00000000dca0` (as in the zips here), its
+  Epistola process links the placeholder
+  `00000000-0000-4000-8000-0000dca00005`. Import it in Admin → Process
+  management → **Import** and map both placeholders: the PDCA one to your
+  PDCA configuration, the Epistola one to GZAC's Epistola plugin
+  configuration.
+- **`../epistola/catalogs/pdca-documenten/`** — the Epistola catalog with
+  the template `evaluatieverslag` the process renders; import it into the
+  tenant of that Epistola configuration and release it.
+
+`./gradlew buildGzacZips` also builds the system process zip
+(`../system-processes/build-zips.sh` on its own). For the local stack the
+dev setup ([`../dev-setup/`](../dev-setup/README.md)) puts both in place.
+
 ## Importing
 
 Admin → Case definitions → **Import** and pick the zip, or via the API:

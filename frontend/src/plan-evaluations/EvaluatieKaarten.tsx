@@ -1,9 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, InlineNotification, Layer, Select, SelectItem, Tag, type TagProps } from '@carbon/react';
 import { ArrowRight, ChevronRight } from '@carbon/react/icons';
-import { CompletedEvaluation, ContactmomentDetails, Doel, Klantcontact, pdca } from '../shared/api';
+import { CompletedEvaluation, ContactmomentDetails, Doel, DocumentAanvraag, Klantcontact, pdca } from '../shared/api';
 import { jsonLijst } from '../shared/caseConfig';
 import { formatDate, formatTime } from '../shared/dates';
+import { Evaluatieverslag } from '../shared/Evaluatieverslag';
 import {
   currentEvaluationSession, EvaluationChange, EvaluationSession, listEvaluationChanges,
 } from '../shared/evaluationSession';
@@ -89,13 +90,24 @@ export function LopendeEvaluatieKaart({ session, uitgevoerd, uitgevoerdOp, onSes
   );
 }
 
-/** One contactmoment: planned (with Starten/Verzetten) or taken place (with its verslag, changes and actiepunten). */
-export function ContactmomentKaart({ cm, details, datum, evaluatie, subdoelen, startenUit, onStart, onVerzet }: {
+/**
+ * One contactmoment: planned (with Starten/Verzetten) or taken place (with
+ * its verslag, changes, evaluatieverslag and actiepunten).
+ */
+export function ContactmomentKaart({
+  cm, details, datum, evaluatie, verslag, verslagMaken, onMaakVerslag, subdoelen, startenUit, onStart, onVerzet,
+}: {
   cm: Klantcontact;
   details: ContactmomentDetails | undefined;
   /** Planned date or the moment it took place. */
   datum: string;
   evaluatie: CompletedEvaluation | undefined;
+  /** The evaluation's evaluatieverslag; null when it has none, undefined while that is not known. */
+  verslag: DocumentAanvraag | null | undefined;
+  /** Whether a verslag can be made: without one, the section only shows when it can. */
+  verslagMaken: boolean;
+  /** Makes the evaluatieverslag of the evaluation session (again). */
+  onMaakVerslag: (sessieId: string) => Promise<unknown>;
   subdoelen: Doel[];
   /** Starting is not possible while an evaluation runs or one is being started. */
   startenUit: boolean;
@@ -139,6 +151,9 @@ export function ContactmomentKaart({ cm, details, datum, evaluatie, subdoelen, s
                 ? <p className="pdca-empty-inline">Tijdens deze evaluatie is het plan niet gewijzigd</p>
                 : <WijzigingenLijst wijzigingen={evaluatie.wijzigingen} />}
             </div>
+          )}
+          {evaluatie && verslag !== undefined && (verslag !== null || verslagMaken) && (
+            <Evaluatieverslag aanvraag={verslag} onMaak={() => onMaakVerslag(evaluatie.sessie.id)} inklapbaar />
           )}
           {actiepunten.length > 0 && (
             <div className="pdca-section-block">

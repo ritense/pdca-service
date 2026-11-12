@@ -5,6 +5,8 @@ the PDCA app.** Every change to a feature, endpoint, data model, integration,
 configuration or flow updates it in the same change. Setup and operation
 live in [`README.md`](./README.md); the GZAC case definitions in
 [`gzac/case-definitions/README.md`](./gzac/case-definitions/README.md), the
+GZAC system processes in
+[`gzac/system-processes/README.md`](./gzac/system-processes/README.md), the
 local GZAC dev setup in
 [`gzac/dev-setup/README.md`](./gzac/dev-setup/README.md) and the
 register plugins in [`plugins/README.md`](./plugins/README.md).
@@ -44,8 +46,9 @@ which a product is requested; Objects API v2).
 The app runs inside **Valtimo/GZAC** as an external plugin of the *URL app*
 kind: GZAC discovers it by URL, embeds its React bundles as sandboxed iframes
 (case tabs, a task form, an admin page and a side panel), runs the dossiers
-and processes around the plans, and brokers the app's access to the
-registers through plugin contracts. The app is one Spring Boot service
+and processes around the plans, makes the app's documents (the
+evaluatieverslag, with the Epistola Document Suite) and brokers the app's
+access to the registers through plugin contracts. The app is one Spring Boot service
 (Kotlin, Spring Boot 3.5, JDK 21, port 7500) with its own PostgreSQL
 database for the overlay: only what the registers do not model.
 
@@ -75,13 +78,15 @@ database for the overlay: only what the registers do not model.
    plan's hoofddoel and status live in Open Plan only (§6.3).
 7. **GZAC dossiers drive processes.** Plan = plan dossier (1:1, created
    together, §6.1); every requested product runs in its own instrument
-   dossier (§6.2). The app runs no process of its own.
+   dossier (§6.2); a document is made by a GZAC system process the app
+   starts on the plan dossier (§6.6). The app runs no process of its own.
 8. **Trust is explicit**: a request is signed by GZAC, a user's call through
    `/data`, or a public file; everything else is refused (§4).
 9. **No outbound HTTP inside a database transaction; every multi-step use
    case is safe to repeat** (§7).
 10. **Configuration as code, without environment values**: case definitions
-    are versioned zips in `gzac/`; configuration UUIDs and objecttype URLs
+    and system processes are versioned zips in `gzac/`, the document
+    templates an Epistola catalog; configuration UUIDs and objecttype URLs
     are resolved at import or read from the registers (§12).
 
 ## 3. Components and responsibilities
@@ -90,7 +95,7 @@ database for the overlay: only what the registers do not model.
 flowchart LR
     subgraph GZAC["GZAC (8080)"]
         UI["GZAC console<br/>(tabs / tasks / admin / side panel)"]
-        ENGINE["process engine<br/>+ Verzoek plugin"]
+        ENGINE["process engine<br/>+ Verzoek and Epistola plugins"]
         BROKER["contract broker<br/>/api/v1/plugin-contract/call"]
     end
     subgraph APP["pdca-app (7500)"]
@@ -108,6 +113,7 @@ flowchart LR
     OPR["Open Product (7502)"]
     OK["Open Klant (7504)"]
     OBJ["Objecten API (GZAC stack)"]
+    EPS["Epistola Suite (4000)"]
 
     UI -- "iframe + postMessage" --> FE
     FE -- "proxyRequest (postMessage)" --> UI
@@ -125,6 +131,7 @@ flowchart LR
     OBJ -. "notification via Open Notificaties" .-> ENGINE
     API -- "serviceToken (granted endpoints)" --> GZAC
     ENGINE -- "plugin actions + configuration push<br/>(HMAC-signed)" --> API
+    ENGINE -- "document process" --> EPS
 ```
 
 ### 3.1 App backend (`src/main/kotlin/com/ritense/pdca/`)
@@ -137,7 +144,7 @@ flowchart LR
 | `registers/` | The register descriptions (`Register`), the contract transport (`RegisterContractRequestFactory`) with its limiter (`ContractCallLimiter`), the pager (`RegisterPager`), the error mapping (`RegisterException`), the typed gateways per register (`openplan/`, `openproduct/`, `openklant/`, `objecten/` on `RegisterGateway`), the register proxy (`RegisterProxyController`) and the display-only stubs (`RegisterStubController`, `StubRegisterService`) |
 | `repository/` | Spring Data repositories, including the atomic reserve/claim of `PlanIntakeRepository` |
 | `security/` | The trust boundary (§4): `HostSignatureVerifier`/`HostSignatureFilter`, `GzacInstances`, `UserVerifier`, `PdcaUser`, `DataRateLimiter`, `DataAccessPolicy`, `PlanScope`, `DataDispatch` |
-| `service/` | The use cases: `PlanIntakeService` (plan from intake) and `IntakeService` (prefill), `DossierLinkService`, `InstrumentAanvraagService` (verzoeken) and `InstrumentActionService` (plugin actions), `PlanLifecycleService`, `DoelLifecycleService`, `InstrumentLifecycleService`, `PlanOverlayService`, `ContactmomentService` and `KlantcontactService`, `EvaluationSessionService`, `BetrokkeneService`, `ActionService`, `PhaseConfigService`, and `GzacClient` (all GZAC calls) |
+| `service/` | The use cases: `PlanIntakeService` (plan from intake) and `IntakeService` (prefill), `DossierLinkService`, `InstrumentAanvraagService` (verzoeken) and `InstrumentActionService` (plugin actions), `PlanLifecycleService`, `DoelLifecycleService`, `InstrumentLifecycleService`, `PlanOverlayService`, `ContactmomentService` and `KlantcontactService`, `EvaluationSessionService`, `DocumentAanvraagService` (document requests and their plugin actions) and `DocumentGegevensService` (the data snapshot of a document), `BetrokkeneService`, `ActionService`, `PhaseConfigService`, and `GzacClient` (all GZAC calls) |
 | `web/rest/` | REST resources under `/api/v1/pdca/*` and `/api/v1/admin/*` (§9) and `ErrorResponseAdvice` (§7) |
 
 Controllers only map HTTP to service calls; the rules live in the services.
@@ -218,7 +225,15 @@ Inside the app:
   in `gzac/` (§12) run the intake, the plan dossier and the instrument
   dossier, which calls back with the plugin actions `aanmaak-instrument` and
   `update-instrument`; GZAC's Verzoek plugin turns a verzoek into an
-  instrument dossier (§6.2).
+  instrument dossier (§6.2). The global system process `pdca-document`
+  (§12), started by the app on a plan dossier, makes a document with GZAC's
+  Epistola plugin and calls back with `document-aanvraag-ophalen` and
+  `document-gereed` (§6.6).
+- **Configuration properties.** The PDCA configuration in GZAC has one
+  property of its own (manifest `configurationSchema`, pushed with the
+  configuration, §4.3): `documentProces` ("Documentproces"), the key of the
+  GZAC process that makes documents. Default `pdca-document`; blank switches
+  document generation off.
 - **GZAC API for the app.** The app calls GZAC with the pushed serviceToken,
   limited to the endpoints the manifest grants
   (`PluginHostController.GRANTED_ENDPOINTS`, the single source):
@@ -231,17 +246,20 @@ Inside the app:
   | `GET /api/v1/document/*` | read a dossier (intake, plan dossier existence, the dossier type behind `aanmaak-instrument`); with the user's token, dossier access |
   | `GET /api/management/v1/case/*` | the dossier content when `/api/v1/document/*` omits it (GZAC without `valtimo.includeDocumentContentInResponse`) |
   | `POST /api/v1/document-search` | find the plan dossier of a plan (case type + `planId`) before creating one |
+  | `POST /api/v1/process-document/operation/modify-document-and-start-process` | start the document process on the plan dossier (§6.6) |
 
   The dev values of the local GZAC setup (`gzac/dev-setup/dev-values.json`)
-  repeat these grants; `GzacConfigurationTest` fails when its grants,
-  contract bindings or register plugin properties and capabilities differ
-  from what the app and the plugins declare, and when the case definitions
-  drift from the manifest: a process link's action, properties or result
-  mapping not declared (or the action not handled by
+  repeat these grants and the configuration properties;
+  `GzacConfigurationTest` fails when its grants, properties, contract
+  bindings or register plugin properties and capabilities differ from what
+  the app and the plugins declare, and when the case definitions or system
+  processes drift from the manifest: a process link's action, properties or
+  result mapping not declared (or the action not handled by
   `PluginActionController`), a tab or process link naming another plugin,
-  plugin version, configuration or an undeclared bundle, or a case
-  definition whose directory, `versionTag` and BPMN version tag disagree on
-  its version.
+  plugin version, configuration or an undeclared bundle, a PDCA action of a
+  system process not run as an asynchronous job with retries, a system
+  process zip that differs from its source, or a case definition whose
+  directory, `versionTag` and BPMN version tag disagree on its version.
 - **Manifest versioning.** The manifest keeps version `0.2.0` when its
   footprint changes: GZAC pins a hash of the manifest and asks the
   administrator to review and accept the change, after which the existing
@@ -249,7 +267,8 @@ Inside the app:
   declared contract itself when exactly one provider exists. Until the
   administrator has accepted a newly granted endpoint (such as the document
   search) the app's calls to it are refused, and the use case that needs it
-  answers 502 asking for exactly that.
+  answers 502 asking for exactly that; a document process that cannot be
+  started leaves its verslag MISLUKT (§6.6).
 
 ## 4. Trust model
 
@@ -402,8 +421,9 @@ The complete route table is in §9.2. In short:
 - **Plan data** — the user must be able to read the plan's dossier.
   `PlanScope` resolves the target to its plan(s) — a doel or instrument
   through its overlay row, else Open Plan (`doel.plannen`,
-  `instrument.doelen`); a contactmoment, actie or betrokkene through the
-  overlay; an upsert also through the `planUuid` in its body — and each plan
+  `instrument.doelen`); a contactmoment, actie, betrokkene, evaluation
+  session or document request through the overlay; an upsert also through
+  the `planUuid` in its body — and each plan
   to its dossier (`plan_details.dossier_id`). No dossier, no access (403).
 - **Dossier routes** — the plan of a dossier, the prefill, plan creation and
   an evaluation start check the dossier they name.
@@ -468,6 +488,8 @@ signature or GZAC's answers about a user.
 | Betrokkenen and which one is procesbegeleider | overlay `InvolvedParty` | procesbegeleider mirrored to Open Plan `plan.medewerker` |
 | Acties | overlay `Action` | |
 | Evaluation sessions and the plan changes recorded in them | overlay `EvaluationSession`, `EvaluationChange` | |
+| Generated documents (the evaluatieverslag PDF) and their requests | overlay `DocumentAanvraag` | the data snapshot only while the request is open (§6.6) |
+| Document templates (catalog `pdca-documenten`, template `evaluatieverslag`) | Epistola Suite | authored in `gzac/epistola/` (§12) |
 | Case configuration per case type | overlay `PhaseConfig` (§10.2) | |
 | Pushed plugin configurations | overlay `StoredPluginConfiguration` | token encrypted |
 | Announced GZAC frontend origins | app memory | re-announced on every poll |
@@ -816,12 +838,123 @@ navigation; closing the panel only hides it.
 - **Complete** (`…/current/complete`, needs a gespreksverslag ≤ 1000
   characters) records the contactmoment as taken place at the session's
   start — the planned klantcontact it carries out, or a new one (§6.4) —
-  with type, deelnemers and `evaluationSessionId` in its overlay row.
+  with type, deelnemers and `evaluationSessionId` in its overlay row. Once
+  the session is completed — the evaluation is final then — the app
+  requests its **evaluatieverslag** (§6.6); the panel shows it as it is
+  being made. Document generation never fails the completion.
   **Cancel** (`…/current/cancel`) writes nothing to Open Klant; the recorded
   changes stay with the cancelled session, which is never shown, and the
   plan changes themselves stay.
 - **History** — `GET /evaluaties?planUuid=` lists completed evaluations with
-  their changes and reasons; running ones never appear there.
+  their changes and reasons; running ones never appear there. The Evaluaties
+  tab shows each one's evaluatieverslag with it.
+
+### 6.6 Document generation
+
+The app has GZAC make its documents — the evaluatieverslag of a completed
+evaluation, a PDF shared with the inwoner — in a GZAC **system process**: a
+global BPMN process outside any case definition, whose key is the PDCA
+configuration property `documentProces` (default `pdca-document`, §3.4).
+The app knows nothing of how the document is made; the shipped process
+`pdca-document` renders it with the Epistola Document Suite (§12). Any
+process that honours the contract works: it is started on the plan dossier,
+calls `document-aanvraag-ophalen` first and ends with `document-gereed`
+(`DocumentAanvraagService`).
+
+```mermaid
+sequenceDiagram
+    participant UI as Side panel / Evaluaties tab
+    participant APP as pdca-app
+    participant G as GZAC (system process pdca-document)
+    participant EP as Epistola Suite
+
+    UI->>APP: POST /evaluation-sessions/current/complete
+    APP->>APP: data snapshot; complete + DocumentAanvraag AANGEVRAAGD (one transaction)
+    APP->>G: modify-document-and-start-process {documentProces, plan dossier}
+    G-->>APP: processInstanceId (recorded on the request)
+    G->>APP: document-aanvraag-ophalen
+    APP-->>G: variables pdcaAanvraagId, pdcaBestandsnaam, pdcaGegevens (BEZIG)
+    G->>EP: epistola-generate-document (pdca-documenten / evaluatieverslag)
+    EP-->>G: message EpistolaDocumentGenerated
+    G->>G: epistola-download-document (pdcaDocumentInhoud)
+    G->>APP: document-gereed {aanvraagId, uitkomst GEREED, inhoud base64}
+    UI->>APP: poll GET /documenten?planUuid (every 3 s while open)
+    UI->>APP: GET /documenten/{id}/inhoud (base64 PDF, drawn with pdf.js)
+```
+
+- **Request.** Completing an evaluation takes the data snapshot (it reads
+  the registers, so before any transaction) and records a `DocumentAanvraag`
+  (soort `EVALUATIEVERSLAG`, bron the evaluation session, the plan dossier,
+  the snapshot and file name `evaluatieverslag-<date>.pdf`) **in the same
+  transaction as the completion**: whoever sees the evaluation completed
+  also sees its verslag being made. After the commit the app starts the
+  process with the granted `modify-document-and-start-process` (§3.4) on
+  the plan dossier, with empty content, and records the
+  `processInstanceId` GZAC answers with on the request. A start that fails
+  ends the request MISLUKT (*"Het documentproces kon niet worden gestart"*)
+  unless a process claimed it meanwhile. Either way the completion stands.
+  With `documentProces` blank nothing is requested. A document has at most
+  one open request (a partial unique index on soort and bron).
+- **The process pulls its data.** GZAC's start endpoint ignores process
+  variables passed with it, so the app cannot hand the data over at start.
+  The process's first task calls `document-aanvraag-ophalen` (no
+  properties). Its request is the one recorded with its
+  `processInstanceId`; when the start's answer is not recorded yet (the
+  first job can run before it is), the process claims the **oldest request
+  of its dossier that no process has**, younger than the ten-minute
+  timeout (`documentId` of the action call, the process's business key;
+  `FOR UPDATE SKIP LOCKED`, so two processes claiming at once each get
+  their own). The process id is unique on the requests, and a start's
+  answer is not recorded on a request another process has. The request
+  becomes BEZIG and the action answers with the process variables
+  `pdcaAanvraagId`, `pdcaBestandsnaam` and `pdcaGegevens` (the `variables`
+  channel of the action answer, §7.4); a retry gets the same request.
+- **The data snapshot** (`DocumentGegevensService`, `pdcaGegevens`) is the
+  template's data model: `schemaVersie`, `titel`, `gemaaktOp`, `plan`
+  (titel, inwoner, procesbegeleider), `evaluatie` (datum, type,
+  uitgevoerdDoor, deelnemers, verslag), `wijzigingen` (onderdeel,
+  omschrijving, toelichting, grouped per onderdeel, worded as the panel
+  words them) and `actiepunten`. Every key is always present and every text
+  a string; a register lookup that fails leaves its field empty. The
+  inwoner is the display stub's name of the plan subject (with
+  `pdca.display-stubs.enabled`, §5.1), or else the `naam` the plan dossier
+  carries from the intake. It is taken
+  when the evaluation is completed, so the document shows the evaluation as
+  it was then. The verslag is shared with the inwoner, so data marked
+  internal never enters it: changes of soort `INTERNE_NOTITIE` are left
+  out. The snapshot is a temporary copy, kept in
+  `document_aanvraag.gegevens` only until the request ends; the process
+  removes `pdcaGegevens` and the PDF from its variables when it ends.
+- **The outcome.** `document-gereed` (`aanvraagId`, `uitkomst` `GEREED` or
+  `MISLUKT`, `inhoud` the base64 PDF — required and checked for the PDF
+  signature with GEREED —, optional `bestandsnaam` and `foutmelding`) is
+  only taken from the process that has the request (its
+  `processInstanceId` and dossier). GEREED stores the PDF in
+  `document_aanvraag.inhoud`; MISLUKT records *"Het document kon niet worden
+  gemaakt"* and only logs the generator's own `foutmelding`, which is not
+  for the user. Both clear the snapshot. A request that already ended stays
+  as it is.
+- **One document per evaluation.** The app keeps the latest request per
+  soort and bron; when a request is GEREED, the older ended requests of the
+  same evaluation are deleted. `GET /documenten?planUuid=` lists the latest
+  per evaluation without snapshot or PDF, `GET /documenten/{id}/inhoud`
+  returns the PDF base64 (404 until GEREED), and `POST /documenten`
+  (`{soort, bronUuid}`) requests it again from the current data — the
+  bundles' **"Opnieuw maken"** after a failure and **"Verslag maken"** for an
+  evaluation without one. While the document is being made it returns that
+  request instead of a second one; 422 when document generation is off.
+  `GET /documenten/instellingen` tells the bundles whether documents can be
+  made at all, so they only offer "Verslag maken" when it works. Deleting a
+  plan deletes its requests and documents.
+- **Timeout.** Every minute the app ends the requests still open
+  (AANGEVRAAGD or BEZIG) ten minutes after their last update as MISLUKT
+  (*"Het document is niet op tijd gemaakt"*) and clears their snapshot, so a
+  stuck or never started process neither keeps the bundles waiting nor
+  leaves a request a later process could pick up. A late GEREED of the
+  request's own process still lands.
+- **Size.** The PDF travels base64 in the signed `document-gereed` call,
+  whose body the app accepts up to 1 MB (§4.2), and in the `/data` response
+  of `…/inhoud`; that bounds a document to roughly 750 KB.
 
 ## 7. Failure and idempotency model
 
@@ -896,6 +1029,7 @@ navigation; closing the panel only hides it.
   | Instrument request (§6.2) | 409 while a verzoek for that doel and product is open |
   | `aanmaak-instrument` | returns the instrument this dossier already created |
   | `update-instrument`, instrument afronden/afbreken | the requested end state already reached is a success without a write |
+  | Evaluatieverslag (§6.6) | the request is committed with the completion, before the process starts; `document-aanvraag-ophalen` returns this process instance's request; `document-gereed` is only taken from that process and leaves an ended request as it is; "Opnieuw maken" returns the request still being made, otherwise records a new one |
 
 ### 7.4 Plugin action answers
 
@@ -904,8 +1038,8 @@ non-2xx answer into a failed job carrying `errorCode` and `errorMessage`.
 
 | Answer | When | What GZAC does |
 |---|---|---|
-| 200 `{status: "completed", result?}` | done, also a retry that finds the work done | continues; result mapping |
-| 422 `{status: "error", errorCode, errorMessage}` | a refusal a retry does not change: `DOEL_NIET_ACTIEF`, `PLAN_NIET_ACTIEF`, `INSTRUMENT_NIET_ACTIEF`, `DOEL_ONBEKEND`, `INSTRUMENT_ONBEKEND`, invalid properties, `REGISTER_WEIGERT`, `GEWEIGERD`, `CONFIGURATIE_NIET_ACTIEF` | the job fails; after its retries an incident |
+| 200 `{status: "completed", result?, variables?}` | done, also a retry that finds the work done | continues; `result` (declared outputs, `aanmaak-instrument`) goes through the result mapping, `variables` (`document-aanvraag-ophalen`) become process variables |
+| 422 `{status: "error", errorCode, errorMessage}` | a refusal a retry does not change: `DOEL_NIET_ACTIEF`, `PLAN_NIET_ACTIEF`, `INSTRUMENT_NIET_ACTIEF`, `DOEL_ONBEKEND`, `INSTRUMENT_ONBEKEND`, invalid properties, `REGISTER_WEIGERT`, `GEWEIGERD`, `CONFIGURATIE_NIET_ACTIEF`; for the document actions `GEEN_AANVRAAG` (no request for this process, or it already ended), `AANVRAAG_HOORT_NIET_BIJ_PROCES` (the request belongs to another process or dossier), `AANVRAAGID_ONTBREEKT`, `AANVRAAG_ONBEKEND`, `UITKOMST_ONGELDIG`, `INHOUD_ONTBREEKT`, `INHOUD_ONGELDIG` (not base64 or not a PDF) | the job fails; after its retries an incident |
 | 503 `{status: "error", errorCode, errorMessage}` | temporary: `REGISTER_ONBEREIKBAAR`, `DOSSIER_ONBEREIKBAAR`, `TIJDELIJK_NIET_BESCHIKBAAR` (also while no configuration is active) | the job is retried; after its retries an incident an administrator retries |
 
 The instrument dossier runs every plugin action — `aanmaak-instrument` and
@@ -916,7 +1050,10 @@ completes at once and the instrument's status in the plan follows when the
 job has run (usually within seconds). A refusal (422) or an outage that
 outlasts the five retries becomes an incident on the dossier, which an
 administrator retries once the cause is fixed; both actions are safe to
-repeat.
+repeat. The system process `pdca-document` runs its PDCA tasks the same way
+(`asyncBefore`, `R5/PT1M`); an incident there leaves the request open,
+which the document listing reports as not made in time after ten minutes
+(§6.6).
 
 ### 7.5 Frontend
 
@@ -949,6 +1086,21 @@ state; a failure is never turned into an empty list (§13.2).
   configured for the `InstrumentVerzoek` objecttype
   ([`gzac/case-definitions/README.md`](./gzac/case-definitions/README.md),
   "Setting up the verzoek route in GZAC").
+- **Document generation** with the shipped process `pdca-document` needs a
+  GZAC with the Epistola plugin and an Epistola Document Suite whose tenant
+  holds the catalog `pdca-documenten`. The Valtimo dev app on its Epistola
+  branch provides both: the plugin (backend jar and frontend module), the
+  Suite containers (on port 4000) and an autodeployed "Epistola Document
+  Suite" configuration. Elsewhere an administrator imports the process zip
+  once, mapping its PDCA and Epistola placeholders, and imports the catalog
+  into the tenant
+  ([`gzac/system-processes/README.md`](./gzac/system-processes/README.md)).
+  Without them the evaluation still completes; its verslag ends MISLUKT,
+  and a blank `documentProces` switches document generation off.
+- **Downloads from a bundle** need `allow-downloads` in the sandbox of
+  GZAC's plugin iframe, which the Valtimo branch with Epistola has. Without
+  it the browser silently ignores the verslag's "Downloaden" button; showing
+  the verslag works either way.
 - **Dossier content.** GZAC serializes a document's content on
   `GET /api/v1/document/{id}` only with
   `valtimo.includeDocumentContentInResponse: true`; otherwise the app reads
@@ -972,7 +1124,7 @@ state; a failure is never turned into an empty list (§13.2).
 | POST | `/api/host/configurations/{configId}` | configuration push (§4.3) | GZAC-signed, allowed base URL |
 | DELETE | `/api/host/configurations/{configId}` | remove a configuration | GZAC-signed |
 | PUT | `/api/host/gzac-instances` | announce frontend origins | GZAC-signed, allowed base URL |
-| POST | `/plugins/pdca/{version}/actions/{actionKey}` | `aanmaak-instrument`, `update-instrument` (§6.2) | GZAC-signed, active configuration |
+| POST | `/plugins/pdca/{version}/actions/{actionKey}` | `aanmaak-instrument`, `update-instrument` (§6.2); `document-aanvraag-ophalen`, `document-gereed` (§6.6) | GZAC-signed, active configuration |
 | POST | `/plugins/pdca/{version}/data` | the bundles' only API entry (§4.4) | user token via GZAC's frontend |
 
 ### 9.2 Routes reachable through `/data`
@@ -998,6 +1150,10 @@ path, query parameters) is a 403. *Caller*: **user** = any verified user;
 | POST | `…/contactmomenten` | create a contactmoment, taken place or planned (§6.4) | plan (body `planUuid`) |
 | PATCH | `…/contactmomenten/{uuid}` | reschedule a planned contactmoment | plan (overlay) |
 | GET | `…/evaluaties?planUuid` | completed evaluations with their changes | plan |
+| GET | `…/documenten?planUuid` | the plan's documents, the latest request per evaluation (§6.6) | plan |
+| GET | `…/documenten/instellingen` | whether documents can be made (`{actief}`) | any user |
+| GET | `…/documenten/{id}/inhoud` | a finished document, base64 (404 until GEREED) | plan (of the request) |
+| POST | `…/documenten` | make an evaluatieverslag (again) from the current data, or the request still being made; 422 when document generation is off | plan (of the evaluation session in body `bronUuid`) |
 | GET | `…/acties?planUuid` | acties of the plan | plan |
 | POST | `…/acties` | create an actie under a doel; an `instrumentUuid` it supports must be an instrument of that doel (400 otherwise) | plan (of body `doelUuid`) |
 | PATCH | `…/acties/{id}` | edit an actie; status only forward up to PENDING_REVIEW (409 otherwise) | plan |
@@ -1090,6 +1246,7 @@ the demo case types.
 | `Action` (`action`) | id | `doelUuid`, optional `instrumentUuid` and `contactmomentUuid`, title, description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED), assignee type and name, priority, dates, result |
 | `EvaluationSession` (`evaluation_session`) | id | `dossierId`, `planUuid`, `caseDefinitionKey`, `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED/CANCELLED; at most one RUNNING per user), start/end, `evaluatieType`, `deelnemers`, `verslag`, `geplandContactmomentUuid`, `contactmomentUuid` |
 | `EvaluationChange` (`evaluation_change`) | id | `sessionId`, `subjectType` (PLAN, HOOFDDOEL, SUBDOEL, INSTRUMENT, ACTIE), `subjectUuid`, `subjectTitel`, `soort`, `vanWaarde`, `naarWaarde`, `toelichting` |
+| `DocumentAanvraag` (`document_aanvraag`) | id | a document made by the document process (§6.6): `planUuid`, `dossierId` (the plan dossier the process runs on), `soort` (EVALUATIEVERSLAG), `bronUuid` (the evaluation session), `status` (AANGEVRAAGD → BEZIG → GEREED/MISLUKT), `processInstanceId` (its GZAC process; unique), `gegevens` (JSON data snapshot, cleared when the request ends), `bestandsnaam`, `mediatype`, `inhoud` (the PDF, GEREED only), `foutmelding` (MISLUKT only), `aangevraagdDoor`, `aangevraagdOp`, `bijgewerktOp`; at most one open request per (`soort`, `bronUuid`) |
 | `PhaseConfig` (`phase_config`) | id, unique `caseDefinitionKey` | the case configuration (§10.2) |
 | `StoredPluginConfiguration` (`plugin_configuration`) | `configId` | pushed configuration: `title`, `properties`, `serviceToken` (encrypted), `gzacBaseUrl`, `eventSubscriptions`, `grantedContracts`; never returned by any API |
 
@@ -1149,6 +1306,9 @@ tolerance), `pdca.encryption`, `pdca.registers` (pager and contract
 limiter), `pdca.data.rate-limit`, `pdca.display-stubs`, and Spring's
 datasource and HTTP client timeouts. There is no register configuration:
 register URLs and tokens live in the register plugin configurations in GZAC.
+The one functional setting kept in GZAC is the PDCA configuration property
+`documentProces` (§3.4), pushed with the configuration; the app holds no
+Epistola settings.
 
 ## 12. GZAC configuration as code
 
@@ -1167,16 +1327,34 @@ register URLs and tokens live in the register plugin configurations in GZAC.
   real "PDCA Planbeheer" configuration.
 - **Released versions are immutable** (`"final": true`); every change goes
   into a new version directory `config/case/<key>/<x-y-z>/`.
+- **`gzac/system-processes/`** — global processes outside any case
+  definition, imported through Process management: `pdca-document.zip`
+  (`config/global/bpmn/pdca-document.bpmn` and its process links, built by
+  `./gradlew buildGzacZips` like the case zips). Its PDCA links carry the
+  same placeholder as the case zips, its Epistola links
+  (`epistola-generate-document`, `epistola-download-document`) the
+  placeholder `00000000-0000-4000-8000-0000dca00005`; the import's
+  `pluginConfigurationMappings` map both. The BPMN has no version tag: GZAC
+  deploys a new version only for a changed BPMN, and an import replaces the
+  latest version's process links, so importing again is safe.
+- **`gzac/epistola/catalogs/pdca-documenten/`** — the authored Epistola
+  catalog with the theme `pdca` and the template `evaluatieverslag`, whose
+  data model is the snapshot of §6.6. It is imported into the Suite tenant
+  of GZAC's Epistola configuration and released with the version of its
+  `catalog.json`; a change to the catalog raises that version.
 - **`gzac/dev-setup/`** — the local dev setup: a small Kotlin program
   (Gradle source set `devSetup`) that configures a running local GZAC (a
   Valtimo checkout's dev app with its gzac-docker-compose stack) through
   GZAC's admin REST API, logged in as the dev administrator, with the values
   of `dev-values.json`: the register plugins (upload, configurations), the
   verzoek route (objecttype, object management, Verzoek plugin, Notificaties
-  callback), the app's registration and, once GZAC has discovered the
-  running app, its configuration with grants and contract bindings and the
-  case zips (placeholder mapped, `instrument-verzoek` with the stack's zaak
-  type link). Every step looks up and creates or updates, so it can be run
+  callback), the Epistola templates (the catalog imported and released in
+  the Suite tenant, called directly with the tenant's API key), the app's
+  registration and, once GZAC has discovered the running app, its
+  configuration with grants, properties and contract bindings, the case zips
+  (placeholder mapped, `instrument-verzoek` with the stack's zaak type link)
+  and the document process (both placeholders mapped, the Epistola one to
+  the dev app's Epistola configuration). Every step looks up and creates or updates, so it can be run
   again at any time; a `--check` mode reports, without changing anything,
   what GZAC still lacks. `./gradlew gzacDevSetup` runs it in the
   foreground; `bootRunWithDocker` prints a checklist of the local GZAC
@@ -1186,7 +1364,8 @@ register URLs and tokens live in the register plugin configurations in GZAC.
   the app, so either may start first.
 
 Details, versions and the manual setup steps:
-[`gzac/case-definitions/README.md`](./gzac/case-definitions/README.md) and
+[`gzac/case-definitions/README.md`](./gzac/case-definitions/README.md),
+[`gzac/system-processes/README.md`](./gzac/system-processes/README.md) and
 [`gzac/dev-setup/README.md`](./gzac/dev-setup/README.md).
 
 ## 13. Frontend surfaces and UI behaviour
@@ -1197,14 +1376,15 @@ Details, versions and the manual setup steps:
 |---|---|---|---|
 | `plan-overview` | `plan-overview` | case tab *Planoverzicht* | plan header and actions, KPIs, plan data, hoofddoel, verantwoordelijken |
 | `plan-goals` | `plan-goals` | case tab *Doelen & Acties* | hoofddoel and subdoelen, instruments, acties, voortgang and notes |
-| `plan-evaluations` | `plan-evaluations` | case tab *Evaluaties* | planned and past evaluations, start of an evaluation |
+| `plan-evaluations` | `plan-evaluations` | case tab *Evaluaties* | planned and past evaluations with their evaluatieverslag, start of an evaluation |
 | `pdca-admin` | `pdca-admin` | page *PDCA Beheer* | case configuration per case type |
 | `create-plan` | `create-plan` | task form | prefilled plan creation from an intake (§6.1) |
-| `evaluation-panel` | `evaluation` | side panel | the running evaluation (§6.5) |
+| `evaluation-panel` | `evaluation` | side panel | the running evaluation (§6.5); once completed, its evaluatieverslag and planning the next one |
 
 GZAC loads each bundle as an iframe sandboxed with `allow-scripts
-allow-forms` (no `allow-same-origin`), so each runs at an opaque origin of
-its own and can reach nothing but its parent window. UI language is Dutch;
+allow-forms` (no `allow-same-origin`; `allow-downloads` too where the
+platform has it, §8), so each runs at an opaque origin of its own and can
+reach nothing but its parent window. UI language is Dutch;
 components are Carbon. Carbon's styles are compiled per used component
 (`shared/styles/carbon.scss`), and the IBM Plex fonts are served with the
 bundles, so nothing is loaded from third parties.
@@ -1249,8 +1429,9 @@ bundles, so nothing is loaded from third parties.
 - **Shared hooks** — `usePlanVoorDossier` behind `PlanDossierPagina` (the
   frame of the three plan tabs; 404 = no plan yet), `usePlanData` (the parts
   of a plan a tab needs, in parallel), `useEvaluatieSessie`,
-  `useOpenVerzoeken`, `useCaseConfig`, and `useSubmit` (blocks a second
-  submit; a failure stays in the modal or form).
+  `useOpenVerzoeken`, `useDocumenten` (the plan's documents, §13.3),
+  `useCaseConfig`, and `useSubmit` (blocks a second submit; a failure stays
+  in the modal or form).
 - **Dates** (`shared/dates.ts`) — a plain date is a calendar day and never
   converted; a datetime shows its local date and time.
 
@@ -1279,6 +1460,33 @@ bundles, so nothing is loaded from third parties.
   the Evaluaties tab shows the running evaluation on top (owner only).
   Completing writes a pending draft first, so the latest verslag is the one
   recorded.
+- **Evaluatieverslag** (`shared/Evaluatieverslag.tsx`) — after completing,
+  the side panel shows the verslag of the evaluation (nothing when document
+  generation is off); the Evaluaties tab shows it on every completed
+  evaluation's card, behind "Verslag bekijken", and "Downloaden" saves the
+  PDF under its file name (a blob link clicked from the button; the PDF
+  already read for the viewer is reused). While it is being made the
+  component says so, a failure shows the reason with "Opnieuw maken", an
+  evaluation without verslag offers "Verslag maken" when documents can be
+  made (`…/documenten/instellingen`) and shows nothing otherwise.
+  `useDocumenten` reads the plan's documents again every 3 seconds while
+  one of them is open (one read at a time; a failed read keeps the last list
+  and the polling going) and stops on unmount; the PDF itself is read only
+  when it is shown. The request is recorded with the completion, so when
+  the Evaluaties tab sees the evaluation end (its session polling, §6.5) and
+  reloads the plan data and the documents, the evaluation appears with its
+  verslag being made, without reloading the tab. A failed listing is
+  reported in place and never fails the tab.
+- **PDF in the sandbox** (`shared/PdfViewer.tsx`, `shared/pdfjs.ts`) — the
+  sandboxed iframe cannot open the browser's PDF viewer, so the PDF is drawn
+  with pdf.js (legacy build, loaded as a lazy chunk on
+  first use), every page on a canvas as wide as the viewer, sharp on
+  high-density screens and drawn again after a resize. At an opaque origin
+  a web worker cannot be started from the bundle's URL, so pdf.js runs its
+  worker code on the main thread (importing the worker module sets
+  `globalThis.pdfjsWorker`, which makes pdf.js skip `new Worker`) and
+  fetches nothing: no wasm decoders, cMaps or standard font data, the
+  generated PDFs embed their fonts.
 - **Create-plan form** — a backend refusal is shown above the button and
   leaves the form usable; a 409 says the plan is still being created; after
   an interrupted creation it says that submitting again reuses what exists;

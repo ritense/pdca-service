@@ -14,7 +14,9 @@ plugin contracts and the register plugins in [`plugins/`](./plugins/README.md).
 - Design and workings: [`ARCHITECTURE.md`](./ARCHITECTURE.md) (the single
   source of truth).
 - GZAC case definitions: [`gzac/case-definitions/`](./gzac/case-definitions/README.md);
-  the local GZAC dev setup: [`gzac/dev-setup/`](./gzac/dev-setup/README.md).
+  the document process and its Epistola templates:
+  [`gzac/system-processes/`](./gzac/system-processes/README.md); the local
+  GZAC dev setup: [`gzac/dev-setup/`](./gzac/dev-setup/README.md).
 - Register plugins: [`plugins/README.md`](./plugins/README.md).
 
 This file covers setup, configuration, operation and development.
@@ -35,6 +37,11 @@ This file covers setup, configuration, operation and development.
   `feature/external-plugin-contracts` branch, not yet in a release; iframe
   navigation additionally needs a GZAC frontend change that is pending
   upstream (ARCHITECTURE §8).
+- **For the evaluatieverslag: GZAC's Epistola plugin and an Epistola
+  Document Suite.** Locally the Valtimo dev app on the branch
+  `feature/epistola-dev-app` provides both (the plugin, the Suite on
+  <http://localhost:4000> and its plugin configuration); without them
+  evaluations still complete, but their verslag fails (ARCHITECTURE §8).
 
 ## Getting started
 
@@ -96,8 +103,9 @@ GZAC is the Valtimo monorepo's dev app with its `gzac-docker-compose` stack,
 run from a Valtimo checkout (`../valtimo`, or `-PvaltimoDir=<path>`) that is
 never changed. In any order:
 
-1. In the Valtimo checkout: `./gradlew :backend:apps:dev:bootRunWithDocker`
-   (GZAC's backend and its docker stack).
+1. In the Valtimo checkout (on `feature/epistola-dev-app` for the
+   evaluatieverslag): `./gradlew :backend:apps:dev:bootRunWithDocker`
+   (GZAC's backend and its docker stack, with the Epistola Suite).
 2. Here: `./gradlew bootRunWithDocker`, and answer its questions. It prints
    a checklist of the local GZAC and, when GZAC is not set up for PDCA yet,
    asks *Configure GZAC for PDCA? [y/n]*; *y* sets it up in the background
@@ -143,6 +151,15 @@ A few steps in the GZAC admin; the PDCA side provisions itself.
    "Setting up the verzoek route in GZAC"); then give the producttypen their
    `StartInstrument` actie with that objecttype URL
    ([Registers outside docker compose](#registers-outside-docker-compose)).
+6. **Document process** — for the evaluatieverslag: import the Epistola
+   catalog `gzac/epistola/catalogs/pdca-documenten/` into the Suite tenant
+   of GZAC's Epistola plugin configuration and release it, then import
+   `gzac/system-processes/pdca-document.zip` in *Admin → Process
+   management*, mapping its two placeholders to the "PDCA Planbeheer" and
+   the Epistola configuration
+   ([`gzac/system-processes/README.md`](./gzac/system-processes/README.md)).
+   The PDCA configuration's property *Documentproces* names the process
+   (`pdca-document`); leave it blank to make no documents.
 
 ### Using it
 
@@ -154,6 +171,12 @@ instruments' verzoeken; each instrument appears in the plan once its own
 instrument dossier has created it. The intake's *Aangemaakt plan* widget
 leads to the plan dossier, whose tabs Planoverzicht, Doelen & Acties and
 Evaluaties are the PDCA bundles.
+
+On the Evaluaties tab, "Start evaluatie" opens the evaluation in GZAC's side
+panel. Completing it records the contactmoment and has GZAC make the
+evaluatieverslag, a PDF that the side panel shows once it is ready and that
+stays with the evaluation on the Evaluaties tab ("Verslag bekijken"; "Opnieuw
+maken" when it failed).
 
 ## Configuration
 
@@ -194,6 +217,7 @@ Variables of the local stack and tooling, not of the app:
 | `PDCA_APP_IMAGE` | compose `pdca-app` | run a pre-built image instead of building from source |
 | `GZAC_DEV_URL`, `GZAC_DEV_KEYCLOAK_URL`, `GZAC_DEV_CLIENT_ID`, `GZAC_DEV_USERNAME`, `GZAC_DEV_PASSWORD` | `gzacDevSetup`, `bootRunWithDocker` | the local GZAC and its dev administrator login (defaults: `http://localhost:8080`, the dev Keycloak realm, `valtimo-console`, `admin`/`admin`; gzac/dev-setup/README.md) |
 | `GZAC_COMPOSE_PROJECT` | `gzacDevSetup` | compose project name of the GZAC stack (default `gzac-docker-compose`) |
+| `PDCA_EPISTOLA_URL`, `PDCA_EPISTOLA_TENANT`, `PDCA_EPISTOLA_API_KEY` | `gzacDevSetup`, `bootRunWithDocker` | the Epistola Suite API, tenant and API key the document templates are imported into (defaults: `http://localhost:4000/api`, `demo`, the demo tenant's key; gzac/dev-setup/README.md) |
 
 ## Docker
 
@@ -286,6 +310,12 @@ Rerunning the Open Product seed with the variable updates the existing
   one). GZAC asks the administrator to review and accept the changed
   footprint; until then plan creation from an intake answers 502 with that
   request.
+- **Document process grant** — the manifest grants
+  `POST /api/v1/process-document/operation/modify-document-and-start-process`
+  (starting the document process) and declares the configuration property
+  `documentProces`. Until the administrator accepts the changed footprint,
+  completed evaluations get a failed verslag; "Opnieuw maken" requests it
+  again.
 - **Instrument dossier 1.2.0** — import `instrument-verzoek.zip` 1.2.0 (all
   three plugin actions asynchronous with retries). Dossiers already running
   keep the process version they started with; new dossiers start on 1.2.0.
@@ -297,7 +327,7 @@ Rerunning the Open Product seed with the variable updates the existing
 ./gradlew build -PskipFrontend   # no frontend tasks; the jar packages whatever bundles exist
 ./gradlew test -PskipIntegrationTests   # backend unit tests only
 ./gradlew frontendCheck          # frontend typecheck, lint and tests
-./gradlew buildGzacZips          # rebuild the GZAC case-definition zips (commit source and zips together)
+./gradlew buildGzacZips          # rebuild the GZAC case-definition and system process zips (commit source and zips together)
 ./gradlew buildPlugins           # register plugins -> plugins/<name>/dist/<name>-2.0.0.zip
 ./gradlew buildOpenPlanPlugin    # one plugin (also OpenProduct, OpenKlant, Objecten)
 ./gradlew testPlugins            # tests of the register plugins and their core

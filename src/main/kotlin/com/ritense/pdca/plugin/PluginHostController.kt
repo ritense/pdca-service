@@ -2,6 +2,7 @@ package com.ritense.pdca.plugin
 
 import com.ritense.pdca.registers.Register
 import com.ritense.pdca.security.GzacInstances
+import com.ritense.pdca.service.DocumentAanvraagService
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -110,6 +111,13 @@ class PluginHostController(
             mapOf(
                 "method" to "POST",
                 "pattern" to "/api/v1/document-search"
+            ),
+            // Start the document process (configuration property
+            // documentProces) on a plan dossier, e.g. for the
+            // evaluatieverslag of a completed evaluation.
+            mapOf(
+                "method" to "POST",
+                "pattern" to "/api/v1/process-document/operation/modify-document-and-start-process"
             )
         )
     }
@@ -140,7 +148,17 @@ class PluginHostController(
                 "action.resultaat.label" to "Result",
                 "action.resultaat.help" to "behaald or gefaald when the instrument is completed (e.g. doc:/productResultaat).",
                 "action.toelichting.label" to "Explanation",
-                "action.toelichting.help" to "Optional explanation, stored in the PDCA overlay of the instrument."
+                "action.toelichting.help" to "Optional explanation, stored in the PDCA overlay of the instrument.",
+                "action.aanvraagId.label" to "Document request",
+                "action.aanvraagId.help" to "Id of the document request, as returned by document-aanvraag-ophalen (typically pv:pdcaAanvraagId).",
+                "action.uitkomst.label" to "Outcome",
+                "action.uitkomst.help" to "GEREED when the document was made, MISLUKT when it was not.",
+                "action.inhoud.label" to "Content",
+                "action.inhoud.help" to "The PDF, base64 encoded (typically pv:pdcaDocumentInhoud); required for GEREED.",
+                "action.bestandsnaam.label" to "File name",
+                "action.bestandsnaam.help" to "Optional file name of the document (typically pv:pdcaBestandsnaam).",
+                "action.foutmelding.label" to "Error message",
+                "action.foutmelding.help" to "Optional reason for MISLUKT, shown with the document in the plan."
             ),
             "nl" to mapOf(
                 "name" to "PDCA Planbeheer",
@@ -163,14 +181,31 @@ class PluginHostController(
                 "action.resultaat.label" to "Resultaat",
                 "action.resultaat.help" to "behaald of gefaald bij het afronden van het instrument (bv. doc:/productResultaat).",
                 "action.toelichting.label" to "Toelichting",
-                "action.toelichting.help" to "Optionele toelichting; komt in de PDCA-overlay van het instrument."
+                "action.toelichting.help" to "Optionele toelichting; komt in de PDCA-overlay van het instrument.",
+                "action.aanvraagId.label" to "Documentaanvraag",
+                "action.aanvraagId.help" to "Id van de documentaanvraag, zoals document-aanvraag-ophalen die teruggaf (doorgaans pv:pdcaAanvraagId).",
+                "action.uitkomst.label" to "Uitkomst",
+                "action.uitkomst.help" to "GEREED als het document is gemaakt, MISLUKT als dat niet lukte.",
+                "action.inhoud.label" to "Inhoud",
+                "action.inhoud.help" to "De PDF, base64-gecodeerd (doorgaans pv:pdcaDocumentInhoud); verplicht bij GEREED.",
+                "action.bestandsnaam.label" to "Bestandsnaam",
+                "action.bestandsnaam.help" to "Optionele bestandsnaam van het document (doorgaans pv:pdcaBestandsnaam).",
+                "action.foutmelding.label" to "Foutmelding",
+                "action.foutmelding.help" to "Optionele reden bij MISLUKT; staat bij het document in het plan."
             )
         ),
         "configurationSchema" to mapOf(
             "\$schema" to "https://json-schema.org/draft/2020-12/schema",
             "type" to "object",
             "properties" to mapOf(
-                "title" to mapOf("type" to "string", "title" to "Configuration name")
+                "title" to mapOf("type" to "string", "title" to "Configuration name"),
+                DocumentAanvraagService.DOCUMENT_PROCESS_PROPERTY to mapOf(
+                    "type" to "string",
+                    "title" to "Documentproces",
+                    "description" to "Sleutel van het GZAC-systeemproces dat documenten maakt (evaluatieverslag); " +
+                        "leeg = geen documenten",
+                    "default" to DocumentAanvraagService.DEFAULT_DOCUMENT_PROCESS
+                )
             ),
             "additionalProperties" to false
         ),
@@ -223,7 +258,10 @@ class PluginHostController(
         ),
         // BPMN-bindable action handlers, executed by PluginActionController.
         // The instrument dossier (gzac/case-definitions/instrument-verzoek,
-        // ARCHITECTURE §6.2) uses these to manage the instrument in Open Plan itself.
+        // ARCHITECTURE §6.2) uses the first two to manage the instrument in
+        // Open Plan itself; the document process (documentProces) the last
+        // two to fetch a document's data and hand the document back. Those
+        // answer with process variables (the `variables` channel), not outputs.
         "actions" to listOf(
             mapOf(
                 "key" to "aanmaak-instrument",
@@ -256,6 +294,31 @@ class PluginHostController(
                     mapOf("key" to "resultaat", "type" to "string", "required" to false),
                     mapOf("key" to "toelichting", "type" to "string", "required" to false),
                     mapOf("key" to "planUuid", "type" to "string", "required" to false)
+                )
+            ),
+            mapOf(
+                "key" to "document-aanvraag-ophalen",
+                "title" to "Documentaanvraag ophalen",
+                "description" to "Neemt de oudste openstaande documentaanvraag van het aanroepende plandossier " +
+                    "in behandeling en zet de gegevens voor het document in de procesvariabelen " +
+                    "pdcaAanvraagId, pdcaBestandsnaam en pdcaGegevens. Veilig om te herhalen: hetzelfde " +
+                    "proces krijgt dezelfde aanvraag terug.",
+                "activityTypes" to listOf("SERVICE_TASK_START"),
+                "properties" to emptyList<Map<String, Any>>()
+            ),
+            mapOf(
+                "key" to "document-gereed",
+                "title" to "Document gereed",
+                "description" to "Geeft de uitkomst van een documentaanvraag terug aan PDCA: bij GEREED het " +
+                    "gemaakte document (PDF, base64), bij MISLUKT een foutmelding. Een aanvraag die al " +
+                    "is afgerond, blijft ongemoeid.",
+                "activityTypes" to listOf("SERVICE_TASK_START"),
+                "properties" to listOf(
+                    mapOf("key" to "aanvraagId", "type" to "string", "required" to true),
+                    mapOf("key" to "uitkomst", "type" to "string", "required" to true),
+                    mapOf("key" to "inhoud", "type" to "string", "required" to false),
+                    mapOf("key" to "bestandsnaam", "type" to "string", "required" to false),
+                    mapOf("key" to "foutmelding", "type" to "string", "required" to false)
                 )
             )
         )

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  A document request belongs to at most one GZAC process, and a document
+  (soort + bron) has at most one open request: the process id is unique, and
+  a partial unique index keeps a second request for a document that is
+  still being made from being recorded.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="018-01-document-aanvraag-process-instance-unique" author="pdca">
+        <createIndex tableName="document_aanvraag" indexName="ux_document_aanvraag_process_instance" unique="true">
+            <column name="process_instance_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="018-02-document-aanvraag-one-open-per-document" author="pdca">
+        <sql>
+            CREATE UNIQUE INDEX ux_document_aanvraag_open ON document_aanvraag (soort, bron_uuid)
+            WHERE status IN ('AANGEVRAAGD', 'BEZIG')
+        </sql>
+        <rollback>
+            <dropIndex tableName="document_aanvraag" indexName="ux_document_aanvraag_open"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

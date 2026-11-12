@@ -53,7 +53,7 @@ class DevSetup(private val repoDir: File, private val settings: Settings) {
         Console.line(
             when {
                 failedSteps.isNotEmpty() -> "Not finished: ${failedSteps.joinToString(", ")} failed (above); fix it, then $RETRY"
-                !appUp -> "Not finished: the PDCA configuration and the case definitions need the running PDCA app " +
+                !appUp -> "Not finished: the PDCA configuration, the case definitions and the document process need the running PDCA app " +
                     "(${app.healthUrl}; $START_APP); then $RETRY"
                 else -> "GZAC set up for PDCA: open ${values.app.frontendOrigins.firstOrNull() ?: settings.gzacUrl}"
             }
@@ -66,6 +66,7 @@ class DevSetup(private val repoDir: File, private val settings: Settings) {
         step("Verzoek objecttype in the stack's Objecttypen and Objecten API") { RegisterScripts(repoDir).run() }
         step("Register plugins on the plugin host") { RegisterPlugins(api, values, repoDir).apply() }
         step("Verzoek route") { VerzoekRoute(api, values).apply() }
+        step("Epistola templates") { EpistolaCatalogs(values, repoDir).apply() }
         step("PDCA app as external app") { PdcaApp(api, values).registerHost() }
     }
 
@@ -74,6 +75,7 @@ class DevSetup(private val repoDir: File, private val settings: Settings) {
             app.configure(RegisterPlugins(api, values, repoDir).existingConfigurations())
         } ?: return
         step("Case definitions") { CaseDefinitions(api, values, repoDir).apply(configurationId) }
+        step("Document process") { SystemProcesses(api, values, repoDir).apply(configurationId) }
     }
 
     /**

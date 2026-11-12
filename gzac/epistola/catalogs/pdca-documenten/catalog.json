@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 4,
+  "catalog": {
+    "slug": "pdca-documenten",
+    "name": "PDCA documenten",
+    "description": "Documentsjablonen voor PDCA-plannen"
+  },
+  "publisher": {
+    "name": "Ritense"
+  },
+  "release": {
+    "version": "1.0.0",
+    "releasedAt": "2026-11-11T00:00:00Z"
+  },
+  "resources": [
+    {
+      "type": "theme",
+      "slug": "pdca",
+      "name": "PDCA",
+      "detailUrl": "./resources/theme/pdca.json"
+    },
+    {
+      "type": "template",
+      "slug": "evaluatieverslag",
+      "name": "Evaluatieverslag",
+      "detailUrl": "./resources/template/evaluatieverslag.json"
+    }
+  ]
+}

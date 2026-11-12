@@ -18,12 +18,16 @@ package com.ritense.pdca.security
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.ritense.pdca.domain.DoelDetails
+import com.ritense.pdca.domain.EvaluationSession
+import com.ritense.pdca.domain.EvaluationSessionStatus
 import com.ritense.pdca.domain.PlanDetails
 import com.ritense.pdca.domain.UitvoeringsStatus
 import com.ritense.pdca.registers.openplan.OpenPlanGateway
 import com.ritense.pdca.repository.ActionRepository
 import com.ritense.pdca.repository.ContactmomentDetailsRepository
+import com.ritense.pdca.repository.DocumentAanvraagRepository
 import com.ritense.pdca.repository.DoelDetailsRepository
+import com.ritense.pdca.repository.EvaluationSessionRepository
 import com.ritense.pdca.repository.InstrumentDetailsRepository
 import com.ritense.pdca.repository.InvolvedPartyRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
@@ -46,11 +50,13 @@ class DataAccessPolicyTest {
     private val planDetails = mock(PlanDetailsRepository::class.java)
     private val doelDetails = mock(DoelDetailsRepository::class.java)
     private val openPlan = mock(OpenPlanGateway::class.java)
+    private val sessions = mock(EvaluationSessionRepository::class.java)
+    private val documenten = mock(DocumentAanvraagRepository::class.java)
     private val policy = DataAccessPolicy(
         PlanScope(
             planDetails, doelDetails, mock(InstrumentDetailsRepository::class.java),
             mock(ContactmomentDetailsRepository::class.java), mock(ActionRepository::class.java),
-            mock(InvolvedPartyRepository::class.java), openPlan
+            mock(InvolvedPartyRepository::class.java), sessions, documenten, openPlan
         )
     )
     private val json = ObjectMapper()
@@ -99,6 +105,36 @@ class DataAccessPolicyTest {
             policy.resolve(call("POST", "/api/v1/pdca/evaluation-sessions", context = mapOf("documentId" to "tab-dossier"))).requirement
         )
         assertFailsWith<ResponseStatusException> { policy.resolve(call("POST", "/api/v1/pdca/evaluation-sessions")) }
+    }
+
+    @Test
+    fun `documents resolve to the plan of the query, of the request or of the evaluation they are about`() {
+        val sessionId = UUID.randomUUID()
+        val aanvraagId = UUID.randomUUID()
+        `when`(sessions.findById(any() ?: sessionId)).thenReturn(Optional.empty())
+        `when`(sessions.findById(sessionId)).thenReturn(
+            Optional.of(
+                EvaluationSession(
+                    id = sessionId, dossierId = "plan-dossier", planUuid = planUuid, userLogin = "jan",
+                    status = EvaluationSessionStatus.COMPLETED
+                )
+            )
+        )
+        `when`(documenten.findPlanUuidById(aanvraagId)).thenReturn(planUuid)
+
+        assertEquals(planDossier, policy.resolve(call("GET", "/api/v1/pdca/documenten", mapOf("planUuid" to "$planUuid"))).requirement)
+        assertEquals(Requirement.AnyUser, policy.resolve(call("GET", "/api/v1/pdca/documenten/instellingen")).requirement)
+        assertEquals(planDossier, policy.resolve(call("GET", "/api/v1/pdca/documenten/$aanvraagId/inhoud")).requirement)
+        assertEquals(
+            planDossier,
+            policy.resolve(call("POST", "/api/v1/pdca/documenten", body = """{"soort":"EVALUATIEVERSLAG","bronUuid":"$sessionId"}""")).requirement
+        )
+
+        denied(call("GET", "/api/v1/pdca/documenten"))
+        denied(call("GET", "/api/v1/pdca/documenten/${UUID.randomUUID()}/inhoud"))
+        denied(call("POST", "/api/v1/pdca/documenten", body = """{"soort":"EVALUATIEVERSLAG","bronUuid":"${UUID.randomUUID()}"}"""))
+        denied(call("POST", "/api/v1/pdca/documenten", body = """{"soort":"EVALUATIEVERSLAG"}"""))
+        denied(call("DELETE", "/api/v1/pdca/documenten/$aanvraagId"))
     }
 
     @Test

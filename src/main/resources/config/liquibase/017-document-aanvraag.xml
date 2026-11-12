@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Document requests (document_aanvraag): a document PDCA has GZAC's document
+  process make for a plan, such as the evaluatieverslag of a completed
+  evaluation (bron_uuid = the evaluation session). The row holds the data
+  snapshot until the process has fetched and used it (gegevens, cleared once
+  the request ends) and the finished PDF (inhoud). A process without a
+  recorded request claims an open one of its plan dossier, hence the index
+  on (dossier_id, status).
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="017-01-create-document-aanvraag" author="pdca">
+        <createTable tableName="document_aanvraag">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="plan_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="dossier_id" type="VARCHAR(64)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="soort" type="VARCHAR(32)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="bron_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(16)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="process_instance_id" type="VARCHAR(64)"/>
+            <column name="gegevens" type="TEXT"/>
+            <column name="bestandsnaam" type="VARCHAR(255)"/>
+            <column name="mediatype" type="VARCHAR(100)"/>
+            <column name="inhoud" type="BYTEA"/>
+            <column name="foutmelding" type="VARCHAR(1000)"/>
+            <column name="aangevraagd_door" type="VARCHAR(255)"/>
+            <column name="aangevraagd_op" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="bijgewerkt_op" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <createIndex tableName="document_aanvraag" indexName="idx_document_aanvraag_dossier_status">
+            <column name="dossier_id"/>
+            <column name="status"/>
+        </createIndex>
+        <createIndex tableName="document_aanvraag" indexName="idx_document_aanvraag_plan_uuid">
+            <column name="plan_uuid"/>
+        </createIndex>
+        <createIndex tableName="document_aanvraag" indexName="idx_document_aanvraag_bron_uuid">
+            <column name="bron_uuid"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

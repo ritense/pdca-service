@@ -5,10 +5,12 @@ import java.io.File
 /**
  * Reports, without changing anything, whether GZAC holds what the setup puts
  * in: the register plugin configurations, the verzoek route's Verzoek plugin
- * configuration and Notificaties API callback URL, the PDCA app's
- * registration and configuration with its contract bindings, and the case
- * definitions, imported and active. `bootRunWithDocker` runs it to decide
- * whether to offer the setup.
+ * configuration and Notificaties API callback URL, the Epistola catalogs,
+ * released in the Suite, the PDCA app's registration and configuration with
+ * its contract bindings and properties, the case definitions, imported and
+ * active, and the system processes, imported and linked to the PDCA and
+ * Epistola configurations. `bootRunWithDocker` runs it to decide whether to
+ * offer the setup.
  *
  * Output: one `missing: <what>` line per gap, or one `unknown: <why>` line
  * when GZAC cannot be asked. Exit code: 0 configured, 1 something missing,
@@ -32,8 +34,10 @@ class SetupCheck(private val repoDir: File, private val settings: Settings) {
         val registerConfigurations = RegisterPlugins(api, values, repoDir).currentConfigurations()
         return registerConfigurations.filterValues { it == null }.keys.map { "$it configuration" } +
             VerzoekRoute(api, values).missing() +
+            EpistolaCatalogs(values, repoDir).missing() +
             PdcaApp(api, values).missing(registerConfigurations) +
-            CaseDefinitions(api, values, repoDir).missing()
+            CaseDefinitions(api, values, repoDir).missing() +
+            SystemProcesses(api, values, repoDir).missing()
     }
 
     private fun unknown(reason: String): Int {

@@ -5,10 +5,13 @@ import { withdrawPanel } from '../shared/bridge';
 import { openklant, pdca } from '../shared/api';
 import { laadCaseConfig } from '../shared/caseConfig';
 import { formatDate, formatTime, overWeken, vandaag } from '../shared/dates';
+import { verslagVan } from '../shared/documenten';
+import { Evaluatieverslag } from '../shared/Evaluatieverslag';
 import { foutmelding } from '../shared/http';
 import { evalTypeLabel } from '../shared/labels';
 import { LaadFout, NietGeladen } from '../shared/Meldingen';
 import { useInitContext } from '../shared/PdcaRoot';
+import { useDocumenten } from '../shared/useDocumenten';
 import {
   EVALUATION_PANEL_BUNDLE_KEY, EvaluationSession, EvaluationChange,
   currentEvaluationSession, completeEvaluationSession, cancelEvaluationSession, updateEvaluationDraft,
@@ -31,8 +34,9 @@ const DEFAULT_EVALUATIE_TYPE = 'EVALUATION';
  * those changes and holds the contactmoment fields (type, deelnemers,
  * gespreksverslag). The evaluation ends explicitly: completing records it as
  * a contactmoment (the planned one it carries out, if any), after which the
- * next evaluation can be planned; cancelling records nothing and leaves the
- * plan changes made during it in place.
+ * panel shows its evaluatieverslag as it is being made and the next
+ * evaluation can be planned; cancelling records nothing and leaves the plan
+ * changes made during it in place.
  */
 export function EvaluationPanel() {
   const [loading, setLoading] = useState(true);
@@ -173,7 +177,8 @@ export function EvaluationPanel() {
         setEndError('Het verslag is nog niet opgeslagen. Probeer het opnieuw.');
         return;
       }
-      await completeEvaluationSession();
+      // The completed session is the bron of its evaluatieverslag.
+      setSession(await completeEvaluationSession());
       setCompleted(true);
     } catch (e) {
       setEndError(foutmelding(e));
@@ -217,6 +222,7 @@ export function EvaluationPanel() {
     return shell(<>
       <InlineNotification kind="success" title="Evaluatie afgerond" lowContrast hideCloseButton
         subtitle="Het verslag en de wijzigingen staan nu bij de evaluaties van het plan." />
+      <VerslagSectie planUuid={session.planUuid} sessieId={session.id} />
       <VolgendeEvaluatie planUuid={session.planUuid} evalTypes={evalTypes ?? []}
         defaultType={draft.evaluatieType || DEFAULT_EVALUATIE_TYPE} />
       <Button size="sm" kind="secondary" onClick={closePanel}>Paneel sluiten</Button>
@@ -334,6 +340,21 @@ export function EvaluationPanel() {
       </>}
     </>}
   </>);
+}
+
+/**
+ * After completing: the evaluatieverslag the completion requested (recorded
+ * with it), followed until it is ready. Without an aanvraag document
+ * generation is off, and the section stays away.
+ */
+function VerslagSectie({ planUuid, sessieId }: { planUuid: string; sessieId: string }) {
+  const { documenten, maakVerslag } = useDocumenten(planUuid);
+  if (documenten.error && !documenten.data) {
+    return <NietGeladen wat="Het evaluatieverslag" error={documenten.error} onRetry={documenten.reload} />;
+  }
+  const aanvraag = documenten.data ? verslagVan(documenten.data, sessieId) : null;
+  if (!aanvraag) return null;
+  return <Evaluatieverslag aanvraag={aanvraag} onMaak={() => maakVerslag(sessieId)} />;
 }
 
 /**

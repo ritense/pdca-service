@@ -68,7 +68,8 @@ class DataRoute(
  *   the user's own evaluation session: any verified user.
  * - Plan data: the user must be able to read the plan's dossier
  *   ([PlanScope]); the intake prefill and plan creation check the intake
- *   dossier, an evaluation start the dossier of its tab.
+ *   dossier, an evaluation start the dossier of its tab; a document the plan
+ *   of its request or of the evaluation it is about.
  * - PDCA Beheer (case configuration writes, the case-type lists): GZAC
  *   administrators.
  */
@@ -160,6 +161,10 @@ class DataAccessPolicy(private val scope: PlanScope) {
         api("POST", "$pdca/contactmomenten", requirement = planInBody)
         api("PATCH", "$pdca/contactmomenten/{}") { _, v -> scope.plans(listOfNotNull(scope.planOfContactmoment(uuid(v[0])))) }
         api("GET", "$pdca/evaluaties", "planUuid", requirement = planInQuery)
+        api("GET", "$pdca/documenten", "planUuid", requirement = planInQuery)
+        api("GET", "$pdca/documenten/instellingen", requirement = anyUser)
+        api("GET", "$pdca/documenten/{}/inhoud") { _, v -> scope.plans(listOf(scope.planOfDocumentAanvraag(uuid(v[0])))) }
+        api("POST", "$pdca/documenten") { c, _ -> scope.plans(listOf(scope.planOfEvaluatie(uuid(c.body.text("bronUuid"))))) }
 
         api("GET", "$pdca/acties", "planUuid", requirement = planInQuery)
         api("POST", "$pdca/acties") { c, _ -> scope.plans(scope.plansOfDoelen(listOf(uuid(c.body.text("doelUuid"))))) }

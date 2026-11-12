@@ -9,4 +9,5 @@ import './base.css';
 import './overzicht.css';
 import './doelen.css';
 import './evaluaties.css';
+import './documenten.css';
 import './smal.css';

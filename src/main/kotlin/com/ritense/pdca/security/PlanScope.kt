@@ -19,7 +19,9 @@ package com.ritense.pdca.security
 import com.ritense.pdca.registers.openplan.OpenPlanGateway
 import com.ritense.pdca.repository.ActionRepository
 import com.ritense.pdca.repository.ContactmomentDetailsRepository
+import com.ritense.pdca.repository.DocumentAanvraagRepository
 import com.ritense.pdca.repository.DoelDetailsRepository
+import com.ritense.pdca.repository.EvaluationSessionRepository
 import com.ritense.pdca.repository.InstrumentDetailsRepository
 import com.ritense.pdca.repository.InvolvedPartyRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
@@ -43,10 +45,10 @@ sealed interface Requirement {
 /**
  * Resolves the plan data a call addresses to the GZAC dossier(s) that guard
  * it: plan → its plan dossier (`plan_details.dossier_id`); doel, instrument,
- * contactmoment, actie and betrokkene → their plan(s) through the overlay,
- * falling back to Open Plan for a doel or instrument without overlay row. A
- * target that does not resolve to a dossier is refused (403): no dossier,
- * no access.
+ * contactmoment, actie, betrokkene, evaluation and document request → their
+ * plan(s) through the overlay, falling back to Open Plan for a doel or
+ * instrument without overlay row. A target that does not resolve to a
+ * dossier is refused (403): no dossier, no access.
  */
 @Component
 class PlanScope(
@@ -56,6 +58,8 @@ class PlanScope(
     private val contactmomentDetailsRepository: ContactmomentDetailsRepository,
     private val actionRepository: ActionRepository,
     private val involvedPartyRepository: InvolvedPartyRepository,
+    private val evaluationSessionRepository: EvaluationSessionRepository,
+    private val documentAanvraagRepository: DocumentAanvraagRepository,
     private val openPlanGateway: OpenPlanGateway
 ) {
 
@@ -104,6 +108,12 @@ class PlanScope(
 
     fun planOfBetrokkene(betrokkeneId: UUID): UUID =
         involvedPartyRepository.findById(betrokkeneId).orElse(null)?.planUuid ?: throw denied()
+
+    fun planOfEvaluatie(sessionId: UUID): UUID =
+        evaluationSessionRepository.findById(sessionId).orElse(null)?.planUuid ?: throw denied()
+
+    fun planOfDocumentAanvraag(aanvraagId: UUID): UUID =
+        documentAanvraagRepository.findPlanUuidById(aanvraagId) ?: throw denied()
 
     companion object {
         fun denied() = ResponseStatusException(HttpStatus.FORBIDDEN, GEEN_TOEGANG)

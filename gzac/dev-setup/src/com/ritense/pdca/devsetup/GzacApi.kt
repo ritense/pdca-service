@@ -44,7 +44,26 @@ class ApiResponse(val status: Int, val body: String) {
 }
 
 /** One part of a multipart/form-data request. */
-class Part(val name: String, val content: ByteArray, val contentType: String, val fileName: String? = null)
+class Part(val name: String, val content: ByteArray, val contentType: String, val fileName: String? = null) {
+    companion object {
+        fun text(name: String, value: String) = Part(name, value.toByteArray(), "text/plain; charset=UTF-8")
+    }
+}
+
+/** A multipart/form-data body of [Part]s, with the content type that names its boundary. */
+class MultipartBody(parts: List<Part>) {
+    private val boundary = "pdca-dev-setup-${UUID.randomUUID()}"
+    val contentType = "multipart/form-data; boundary=$boundary"
+    val bytes: ByteArray = ByteArrayOutputStream().also { bytes ->
+        parts.forEach { part ->
+            val disposition = "form-data; name=\"${part.name}\"" + (part.fileName?.let { "; filename=\"$it\"" } ?: "")
+            bytes.write("--$boundary\r\nContent-Disposition: $disposition\r\nContent-Type: ${part.contentType}\r\n\r\n".toByteArray())
+            bytes.write(part.content)
+            bytes.write("\r\n".toByteArray())
+        }
+        bytes.write("--$boundary--\r\n".toByteArray())
+    }.toByteArray()
+}
 
 /**
  * GZAC's REST API, called as the local dev administrator: a password-grant
@@ -84,19 +103,11 @@ class GzacApi(private val settings: Settings) {
     }
 
     fun multipart(path: String, parts: List<Part>): ApiResponse {
-        val boundary = "pdca-dev-setup-${UUID.randomUUID()}"
-        val bytes = ByteArrayOutputStream()
-        parts.forEach { part ->
-            val disposition = "form-data; name=\"${part.name}\"" + (part.fileName?.let { "; filename=\"$it\"" } ?: "")
-            bytes.write("--$boundary\r\nContent-Disposition: $disposition\r\nContent-Type: ${part.contentType}\r\n\r\n".toByteArray())
-            bytes.write(part.content)
-            bytes.write("\r\n".toByteArray())
-        }
-        bytes.write("--$boundary--\r\n".toByteArray())
+        val body = MultipartBody(parts)
         val builder = authorized(path)
             .header("Accept", "application/json")
-            .header("Content-Type", "multipart/form-data; boundary=$boundary")
-            .POST(BodyPublishers.ofByteArray(bytes.toByteArray()))
+            .header("Content-Type", body.contentType)
+            .POST(BodyPublishers.ofByteArray(body.bytes))
         return execute(builder)
     }
 

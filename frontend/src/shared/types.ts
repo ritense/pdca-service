@@ -264,6 +264,37 @@ export interface OpenVerzoek {
   minutenOpen: number | null;
 }
 
+/** The kinds of document the app generates. */
+export type DocumentSoort = 'EVALUATIEVERSLAG';
+
+/** AANGEVRAAGD and BEZIG are open: the document is still being made. */
+export type DocumentStatus = 'AANGEVRAAGD' | 'BEZIG' | 'GEREED' | 'MISLUKT';
+
+/** A request for a generated document of a bron (for an evaluatieverslag: the evaluation session). */
+export interface DocumentAanvraag {
+  id: string;
+  planUuid: string;
+  soort: DocumentSoort;
+  bronUuid: string;
+  status: DocumentStatus;
+  /** ISO datetimes. */
+  aangevraagdOp: string;
+  bijgewerktOp: string | null;
+  bestandsnaam: string | null;
+  /** Why it failed (MISLUKT). */
+  foutmelding: string | null;
+}
+
+/** The content of a finished document, base64-encoded. */
+/** Whether documents can be made (a document process is configured). */
+export interface DocumentInstellingen { actief: boolean }
+
+export interface DocumentInhoud {
+  bestandsnaam: string;
+  mediatype: string;
+  inhoud: string;
+}
+
 /** The subdoelen a lifecycle step started along with an instrument. */
 export interface LevenscyclusResultaat {
   gestarteSubdoelen: { uuid: string; titel: string | null }[];
