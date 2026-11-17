@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Actions only record the name of whoever carries them out; the assignee type
+  (behandelaar/inwoner/aanbieder) is not used.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="012-01-drop-action-assignee-type" author="pdca">
+        <dropColumn tableName="action" columnName="assignee_type"/>
+    </changeSet>
+
+</databaseChangeLog>
