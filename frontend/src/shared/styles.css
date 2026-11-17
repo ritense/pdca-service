@@ -428,6 +428,11 @@ html, body {
   white-space: nowrap;
 }
 
+/* A beoogde einddatum that has passed while its doel or plan still runs. */
+.pdca-muted-count--verlopen {
+  color: var(--cds-text-error, #da1e28);
+}
+
 .pdca-empty-inline {
   font-size: 0.75rem;
   font-style: italic;

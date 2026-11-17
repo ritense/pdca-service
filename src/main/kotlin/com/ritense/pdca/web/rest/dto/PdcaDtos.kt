@@ -42,7 +42,11 @@ data class DoelDetailsRequest(
     val voortgangStatus: String? = null,
     val interneNotitie: String? = null,
     val externeNotitie: String? = null,
-    val sortering: Int? = null
+    val sortering: Int? = null,
+    /** Beoogde einddatum of a subdoel: not before today, not after the plan's streefEinddatum. */
+    val streefEinddatum: LocalDate? = null,
+    /** Clears [streefEinddatum] (a null field leaves it unchanged). */
+    val streefEinddatumWissen: Boolean = false
 )
 
 /**

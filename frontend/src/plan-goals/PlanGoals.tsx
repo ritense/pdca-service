@@ -19,7 +19,7 @@ import {
 import {
   aantal, doelStatus, instrumentStatus, actieStatus, doelTypeNaam, subdoelTypen, subdoelTypenVoorHoofddoel, isHoofddoelType,
   doelTypeThemas, producttypenVoorDoel, doelgroepVoorSubject,
-  priorityLabel, formatDate, voortgangStatus,
+  priorityLabel, formatDate, voortgangStatus, vandaag, isVerlopen,
 } from '../shared/labels';
 
 type AfbreekTarget = { kind: 'doel' | 'instrument'; uuid: string; titel: string } | null;
@@ -155,6 +155,7 @@ export function PlanGoals() {
   /** Records a plan change in the running evaluation of this plan (no-op without one). */
   const rec = (change: EvaluationChangeInput) => { if (plan) recordEvaluationChange(plan.uuid, change); };
   const evaluatieLoopt = !!plan && session?.planUuid === plan.uuid;
+  const planLoopt = plan?.status === 'actief';
 
   const detailsByDoel = useMemo(() => new Map(doelDetails.map(d => [d.doelUuid, d])), [doelDetails]);
   const detailsByInstrument = useMemo(() => new Map(instrumentDetails.map(d => [d.instrumentUuid, d])), [instrumentDetails]);
@@ -291,8 +292,20 @@ export function PlanGoals() {
   // Doelen come from the doeltype register: the title is the register name
   // of the chosen doeltype; free text only as explanation for the inwoner.
   // Modal saves throw, so the modal keeps the error and stays open.
-  const handleSaveDoel = async (data: { titel: string; toelichting: string; doeltypeUuid: string }) => {
-    if (editDoel) {
+  const handleSaveDoel = async (data: DoelInvoer) => {
+    if (editDoel && plan) {
+      // The beoogde einddatum goes first: the backend checks it against
+      // today and the plan's date before anything else is written.
+      const oudeEinddatum = detailsByDoel.get(editDoel.uuid)?.streefEinddatum || '';
+      if (oudeEinddatum !== data.streefEinddatum) {
+        await pdca.doeldetails.upsert(editDoel.uuid, data.streefEinddatum
+          ? { planUuid: plan.uuid, streefEinddatum: data.streefEinddatum }
+          : { planUuid: plan.uuid, streefEinddatumWissen: true });
+        rec({
+          subjectType: 'SUBDOEL', subjectUuid: editDoel.uuid, subjectTitel: data.titel, soort: 'BEOOGDE_EINDDATUM',
+          samenvoegen: true, vanWaarde: formatDate(oudeEinddatum) || null, naarWaarde: formatDate(data.streefEinddatum) || null,
+        });
+      }
       await openplan.doelen.update(editDoel.uuid, {
         titel: data.titel,
         beschrijving: data.toelichting,
@@ -317,7 +330,9 @@ export function PlanGoals() {
         // New subdoelen hang under the plan's active hoofddoel (W&P hierarchy).
         ...(actiefHoofddoel ? { hoofdDoel: actiefHoofddoel.uuid } : {}),
       });
-      await pdca.doeldetails.upsert(doel.uuid, { planUuid: plan.uuid, uitvoeringsStatus: 'GEPLAND' });
+      await pdca.doeldetails.upsert(doel.uuid, {
+        planUuid: plan.uuid, uitvoeringsStatus: 'GEPLAND', ...(data.streefEinddatum ? { streefEinddatum: data.streefEinddatum } : {}),
+      });
       rec({ subjectType: 'SUBDOEL', subjectUuid: doel.uuid, subjectTitel: doel.titel, soort: 'SUBDOEL_TOEGEVOEGD' });
     }
     setGoalModal(false); setEditDoel(null); await reload();
@@ -540,6 +555,8 @@ export function PlanGoals() {
                   )}
                 </div>
                 <div className="pdca-row-actions">
+                  {/* The plan's beoogde einddatum: the subdoel dates below are read against it. */}
+                  <BeoogdDatum datum={details?.streefEinddatum} lopend={planLoopt} />
                   {hd?.voortgangStatus && <VoortgangTag code={hd.voortgangStatus} opties={voortgangOpties} />}
                   <Tag size="sm" type={status.tag}>{status.label}</Tag>
                 </div>
@@ -601,6 +618,7 @@ export function PlanGoals() {
                       {aantal(aantalActies, 'actie', 'acties')} · {aantal(di.length, 'instrument', 'instrumenten')}
                     </span>
                   )}
+                  <BeoogdDatum datum={dd?.streefEinddatum} lopend={planLoopt && actief} />
                   {actief && dd?.voortgangStatus && <VoortgangTag code={dd.voortgangStatus} opties={voortgangOpties} />}
                   <Tag size="sm" type={status.tag}>{status.label}</Tag>
                 </div>
@@ -765,6 +783,8 @@ export function PlanGoals() {
 
         <DoelModal open={goalModal} doel={editDoel} doeltypen={doeltypen}
           hoofddoelNaam={actiefHoofddoelNaam} subdoelMapping={phaseConfig?.subdoelMapping}
+          huidigeEinddatum={editDoel ? detailsByDoel.get(editDoel.uuid)?.streefEinddatum : undefined}
+          planEinddatum={details?.streefEinddatum}
           onClose={() => { setGoalModal(false); setEditDoel(null); }} onSave={handleSaveDoel} />
         <ActieModal open={!!actionModal} ctx={actionModal}
           onClose={() => setActionModal(null)} onSave={handleSaveActie} />
@@ -892,6 +912,21 @@ function NotitiesSamenvatting({ details }: { details?: Partial<Notities> }) {
     {intern && <p className="pdca-summary-line pdca-text-ellipsis">Interne notitie: {intern}</p>}
     {extern && <p className="pdca-summary-line pdca-text-ellipsis">Externe notitie: {extern}</p>}
   </>;
+}
+
+/**
+ * A beoogde einddatum in a card header. A date cannot be set in the past but
+ * time moves on: once it has passed on a doel that still runs, it is marked
+ * verlopen instead of blocked.
+ */
+function BeoogdDatum({ datum, lopend }: { datum?: string; lopend: boolean }) {
+  if (!datum) return null;
+  const verlopen = lopend && isVerlopen(datum);
+  return (
+    <span className={verlopen ? 'pdca-muted-count pdca-muted-count--verlopen' : 'pdca-muted-count'}>
+      Beoogd: {formatDate(datum)}{verlopen && ' · verlopen'}
+    </span>
+  );
 }
 
 /** The voortgangsstatus of a doel as a tag, looked up in the plan's list. */
@@ -1152,21 +1187,45 @@ function VerwijderModal({ target, onClose, onSubmit }: {
  * the doeltype register and the title is the register name — no free text.
  * Free text is allowed only as explanation for the inwoner.
  */
-function DoelModal({ open, doel, doeltypen, hoofddoelNaam, subdoelMapping, onClose, onSave }: {
+/** What the subdoel modal saves; streefEinddatum is yyyy-mm-dd, empty for none. */
+type DoelInvoer = { titel: string; toelichting: string; doeltypeUuid: string; streefEinddatum: string };
+
+/**
+ * Why a beoogde einddatum is not allowed (same rules as the backend), or
+ * null. Only a new or changed date is checked, so a date that has since
+ * passed can stay.
+ */
+function einddatumFout(datum: string, huidig: string, planEinddatum?: string): string | null {
+  if (!datum || datum === huidig) return null;
+  if (datum < vandaag()) return 'De beoogde einddatum kan niet in het verleden liggen';
+  if (planEinddatum && datum > planEinddatum.slice(0, 10)) {
+    return `De beoogde einddatum mag niet na die van het plan (${formatDate(planEinddatum)}) liggen`;
+  }
+  return null;
+}
+
+function DoelModal({ open, doel, doeltypen, hoofddoelNaam, subdoelMapping, huidigeEinddatum, planEinddatum, onClose, onSave }: {
   open: boolean; doel: Doel | null; doeltypen: DoelType[];
   hoofddoelNaam?: string | null; subdoelMapping?: string | null;
-  onClose: () => void; onSave: (data: { titel: string; toelichting: string; doeltypeUuid: string }) => Promise<void>;
+  /** The subdoel's current beoogde einddatum (when editing). */
+  huidigeEinddatum?: string;
+  /** The plan's beoogde einddatum: the latest date a subdoel can get. */
+  planEinddatum?: string;
+  onClose: () => void; onSave: (data: DoelInvoer) => Promise<void>;
 }) {
   const [toelichting, setToelichting] = useState('');
   const [doeltypeUuid, setDoeltypeUuid] = useState('');
+  const [streefEinddatum, setStreefEinddatum] = useState('');
   const { saving, fout, submit, reset } = useSubmit();
   useEffect(() => {
     if (open) {
       setToelichting(doel?.beschrijving || '');
       setDoeltypeUuid(doel?.doeltype?.uuid || '');
+      setStreefEinddatum(huidigeEinddatum?.slice(0, 10) || '');
       reset();
     }
   }, [open, doel]);
+  const datumFout = einddatumFout(streefEinddatum, huidigeEinddatum?.slice(0, 10) || '', planEinddatum);
 
   const opties = subdoelTypenVoorHoofddoel(doeltypen, hoofddoelNaam, subdoelMapping);
   const gescoped = opties.length < subdoelTypen(doeltypen).length;
@@ -1179,9 +1238,10 @@ function DoelModal({ open, doel, doeltypen, hoofddoelNaam, subdoelMapping, onClo
   return (
     <Modal open={open} modalHeading={doel ? 'Subdoel bewerken' : 'Subdoel toevoegen'}
       primaryButtonText={saving ? 'Opslaan…' : 'Opslaan'} secondaryButtonText="Annuleren"
-      primaryButtonDisabled={saving || !doeltypeUuid || !titel}
+      primaryButtonDisabled={saving || !doeltypeUuid || !titel || !!datumFout}
       onRequestClose={onClose}
-      onRequestSubmit={() => doeltypeUuid && titel && submit(() => onSave({ titel, toelichting, doeltypeUuid }))}>
+      onRequestSubmit={() => doeltypeUuid && titel && !datumFout
+        && submit(() => onSave({ titel, toelichting, doeltypeUuid, streefEinddatum }))}>
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
         <Select id="doel-type" labelText="Subdoel" value={doeltypeUuid} onChange={(e: any) => setDoeltypeUuid(e.target.value)}
@@ -1196,6 +1256,13 @@ function DoelModal({ open, doel, doeltypen, hoofddoelNaam, subdoelMapping, onClo
         </Select>
         <TextArea id="doel-toelichting" labelText="Toelichting" helperText="Uitleg voor de inwoner" value={toelichting}
           onChange={(e: any) => setToelichting(e.target.value)} />
+        <TextInput id="doel-einddatum" type="date" labelText="Beoogde einddatum (optioneel)"
+          helperText={planEinddatum
+            ? `Uiterlijk de beoogde einddatum van het plan (${formatDate(planEinddatum)})`
+            : 'Laat zien in welke volgorde de subdoelen aan bod komen'}
+          min={vandaag()} max={planEinddatum?.slice(0, 10) || undefined}
+          value={streefEinddatum} onChange={(e: any) => setStreefEinddatum(e.target.value)}
+          invalid={!!datumFout} invalidText={datumFout || undefined} />
       </div>
     </Modal>
   );

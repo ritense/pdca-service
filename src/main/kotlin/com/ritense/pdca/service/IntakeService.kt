@@ -228,6 +228,16 @@ class IntakeService(
         validatePositie(planCaseDefinitionKey, "beginPositie", request.beginPositie)
         // Statuses are checked before anything is written to the registers.
         val doelStatussen = request.doelen.map { doelStatus(it.status) }
+        val planEinddatum = datum("streefEinddatum", request.streefEinddatum)
+        val doelEinddata = request.doelen.mapIndexed { index, doel ->
+            datum("beoogde einddatum van subdoel '${doel.doelType}'", doel.streefEinddatum)?.also { einddatum ->
+                // An afgerond subdoel is history: its target may lie in the past.
+                if (doelStatussen[index].registerStatus == "afgerond") return@also
+                SubdoelEinddatumValidator.violation(einddatum, planEinddatum, java.time.LocalDate.now())?.let {
+                    throw ResponseStatusException(HttpStatus.BAD_REQUEST, "$it (subdoel '${doel.doelType}')")
+                }
+            }
+        }
         val instrumentStatussen = request.instrumenten.map { instrumentStatus(it.status) }
         val procesbegeleider = request.betrokkenen.firstOrNull { it.procesbegeleider }
 
@@ -293,8 +303,7 @@ class IntakeService(
                 beginPositie = request.beginPositie,
                 subdoelgroep = request.subdoelgroep?.takeIf { it.isNotBlank() },
                 hoofddoelTypeUuid = (hoofddoelType?.get("uuid") as? String)?.let { UUID.fromString(it) },
-                streefEinddatum = request.streefEinddatum?.takeIf { it.isNotBlank() }
-                    ?.let { java.time.LocalDate.parse(it) }
+                streefEinddatum = planEinddatum
             )
         )
 
@@ -359,6 +368,7 @@ class IntakeService(
                     planUuid = planUuid,
                     uitvoeringsStatus = intakeStatus.uitvoeringsStatus ?: UitvoeringsStatus.GEPLAND,
                     voortgangToelichting = doel.toelichting,
+                    streefEinddatum = doelEinddata[index],
                     sortering = index
                 )
             )
@@ -481,6 +491,19 @@ class IntakeService(
         GEPLAND("actief", UitvoeringsStatus.GEPLAND),
         GESTART("actief", UitvoeringsStatus.GESTART),
         AFGEROND("afgerond", null)
+    }
+
+    /**
+     * A date from the intake: `yyyy-MM-dd`, or a form.io date value (with
+     * time and offset) read by its date part. Blank is no date.
+     */
+    private fun datum(veld: String, waarde: String?): java.time.LocalDate? {
+        val tekst = waarde?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return try {
+            java.time.LocalDate.parse(tekst.take(10))
+        } catch (e: java.time.format.DateTimeParseException) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Ongeldige datum voor $veld: '$tekst'")
+        }
     }
 
     /** Legacy `actief` (also the default) means gepland. */

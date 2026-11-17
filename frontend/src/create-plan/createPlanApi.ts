@@ -58,7 +58,7 @@ export interface PlanIntakeRequest {
   beginPositie: string | null;
   startdatum: string | null;
   streefEinddatum: string | null;
-  doelen: (Record<string, unknown> & { doelType: string; beschrijving: string; status: DoelStatus })[];
+  doelen: (Record<string, unknown> & { doelType: string; beschrijving: string; status: DoelStatus; streefEinddatum: string | null })[];
   instrumenten: (Record<string, unknown> & { titel: string; product: string; doel: string; status: DoelStatus })[];
   contactmomenten: (Record<string, unknown> & { datum: string; evaluatieType: string; status: EvaluatieStatus; notitie: string })[];
   betrokkenen: (Record<string, unknown> & {

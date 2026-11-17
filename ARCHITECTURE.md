@@ -125,7 +125,7 @@ flowchart LR
 | `PdcaResource` | `/api/v1/pdca/{plandetails,doeldetails,instrumentdetails,contactmomentdetails}`, `/api/v1/pdca/voortgangstatussen` | Overlay CRUD per register object; the voortgangsstatussen of a plan (§5.2) |
 | `PdcaResource` | `POST /api/v1/pdca/contactmomenten`, `PATCH /api/v1/pdca/contactmomenten/{uuid}` | Create a contactmoment (took place or planned) and reschedule a planned one: the klantcontact in Open Klant plus its overlay row (§5.1); contactmomenten cannot be deleted |
 | `ActieResource` | `/api/v1/pdca/acties` | Actions per doel (local and building block) |
-| `BetrokkeneResource` | `/api/v1/pdca/betrokkenen` (+ `PUT /{id}/procesbegeleider`) | Responsibilities/involved parties per plan and the plan's procesbegeleider (§5.2) |
+| `BetrokkeneResource` | `/api/v1/pdca/betrokkenen` (+ `PUT /{id}/procesbegeleider`) | Betrokkenen per plan and the plan's procesbegeleider (§5.2) |
 | `EvaluatieResource` | `/api/v1/pdca/evaluaties?planUuid=` | Completed evaluations with their plan changes (§6.1); running ones are never listed here (the owner reads theirs through `/data`) |
 | `DossierResource` | `/api/v1/pdca/dossiers/...`, `/plan-intake`, `/plans/{uuid}/dossier`, `/case-definitions` | Plan↔dossier link, prefill and creation routes (§7, §8) |
 | `PhaseConfigResource` | `/api/v1/admin/phase-configs` | Case configuration per case definition (§10) |
@@ -142,14 +142,14 @@ demo case configs, `003-subdoel-mapping.xml` for the subdoelmapping,
 `004-drop-doelpositie.xml`, `005-plan-details-intake-dossier.xml`,
 `006-evaluation-session.xml`, `007-evaluation-content.xml`,
 `008-status-procesbegeleider-gepland-contactmoment.xml`,
-`009-configureerbare-voortgangsstatussen.xml` and
-`010-plugin-configuration-granted-contracts.xml`; new changes continue the
-numbering). Core:
+`009-configureerbare-voortgangsstatussen.xml`,
+`010-plugin-configuration-granted-contracts.xml` and
+`011-doel-streef-einddatum.xml`; new changes continue the numbering). Core:
 
 | Entity | Key | Holds |
 |---|---|---|
 | `PlanDetails` | `planUuid` | `dossierId` (1:1, unique), `intakeDossierId` (the intake this plan came from, §7), `caseDefinitionKey`, `persoonUuid`, plan display status, positie, subdoelgroep (W&P segmentation, advised by the intake DMN), hoofddoel type, `streefEinddatum` |
-| `DoelDetails` | `doelUuid` | subdoelen and the hoofddoel: `UitvoeringsStatus` (GEPLAND or GESTART, §5.2), `voortgangStatus` (the code of one of the plan's voortgangsstatussen, §5.2) with its explanation `voortgangToelichting`, internal and external note, sort order (the hoofddoel's row has -1) |
+| `DoelDetails` | `doelUuid` | subdoelen and the hoofddoel: `UitvoeringsStatus` (GEPLAND or GESTART, §5.2), `voortgangStatus` (the code of one of the plan's voortgangsstatussen, §5.2) with its explanation `voortgangToelichting`, internal and external note, the beoogde einddatum of a subdoel (`streefEinddatum`, §6.2), sort order (the hoofddoel's row has -1) |
 | `InstrumentDetails` | `instrumentUuid` | `uitvoeringsStatus` (GEPLAND or GESTART, §5.2; null on an actief instrument means gestart), hours, effectiveness with its explanation (`effectiviteitToelichting`), internal and external note, abort reason |
 | `ContactmomentDetails` | `contactmomentUuid` (= klantcontact uuid in Open Klant) | evaluation type, planned date (`geplandeDatum`), deelnemers, doelvoortgang (per subdoel the voortgangsstatus as recorded then: code, name and explanation; `evaluate` task form) and action points (intake and `evaluate` task form), `evaluationSessionId` when the contactmoment is a completed evaluation |
 | `InvolvedParty` | own id | involved parties per plan; `isPrimary` marks the plan's **procesbegeleider** (at most one per plan, partial unique index; §5.2) |
@@ -491,6 +491,35 @@ fields.
   (§5.2; `DoelDetails.voortgangStatus`) with an explanation
   (`voortgangToelichting`), shown as a tag in the card header. A closed doel
   shows no voortgang.
+- **Beoogde einddatum per subdoel** — optional
+  (`DoelDetails.streefEinddatum`), so the procesbegeleider can see in which
+  order the subdoelen come up. Open Plan's `doel.einddatum` is the actual
+  end date (written on Afronden/Afbreken), so the target lives in the
+  overlay. It is set in the subdoel modal (Toevoegen/Bewerken), the
+  `update-goals` task form, the create-plan task form and the intake forms
+  (§8), and shown as "Beoogd: <datum>" in the card header; it does not
+  change the order of the list. The rules (`SubdoelEinddatumValidator`):
+  - a new or changed date is not in the past; an unchanged date that has
+    since passed does not block saving the doel's other fields;
+  - it is never after the plan's `streefEinddatum` (no upper bound when the
+    plan has none). `PUT /doeldetails/{uuid}` refuses a violation with 400;
+    `streefEinddatumWissen` clears the date (a null field leaves it as is);
+  - from the other side, `PUT /plandetails/{uuid}` refuses (409) to move
+    the plan's `streefEinddatum` before the date of a subdoel that is still
+    `actief` in Open Plan; closed subdoelen no longer count.
+  The forms apply the same rules before saving, so a refusal is the
+  exception. During an evaluation a change is recorded as
+  `BEOOGDE_EINDDATUM` (§6.1).
+- **Beoogde einddatum of the plan next to the hoofddoel** — the hoofddoel
+  card header shows the plan's `PlanDetails.streefEinddatum` as "Beoogd:
+  <datum>", in the same place as the subdoel dates below it, so the
+  procesbegeleider can judge whether the subdoelen can be finished in time.
+  The plan header shows the same date.
+- **Verlopen** — a beoogde einddatum cannot be set in the past, but time
+  moves on. Once a date has passed while its doel (or, for the plan's date,
+  the plan) is still `actief`, it is shown in red as "Beoogd: <datum> ·
+  verlopen" (`isVerlopen`, as for an overdue evaluation) — flagged, never
+  blocked. On a closed doel or plan a past date is normal and stays plain.
 - **Voortgang per instrument** — hours spent, effectiveness (1–5) and an
   explanation (`InstrumentDetails.effectiviteitToelichting`).
 - **Internal and external note** on every subdoel, on the active hoofddoel
@@ -653,7 +682,8 @@ task form) attach to the active hoofddoel too. Switching the hoofddoel on
 the overview tab completes the current hoofddoel-doel (it stays visible as
 history in the goals tab), creates a new one and re-points the subdoelen.
 The goals tab renders the active hoofddoel as a fixed card (the strategy,
-expandable for its notes) above the flat subdoelen list. Both get a
+expandable for its notes, with the plan's beoogde einddatum in its header,
+§6.2) above the flat subdoelen list. Both get a
 voortgangsstatus from the same list (§5.2); the Voortgang KPI and the
 doelvoortgang of the `evaluate` task form cover only the subdoelen.
 2. **Via the dossier content** — a `planId` in the dossier content (the app
@@ -735,7 +765,8 @@ which the dossier grows per conversation and a first mock of the DVKM
    afwijkgronden (`adviesOvergenomen`/`afwijkGrond`). Also records the
    subdoelen and beoogde instrumenten (status *Gepland*, *Gestart* or
    *Afgerond*, §5.2; no progress is recorded at intake time — the titel of
-   an instrument is its product's name). The betrokkenen (intakegesprek)
+   an instrument is its product's name). A subdoel can get a beoogde
+   einddatum (`streefEinddatum`, a date picker per row, §6.2). The betrokkenen (intakegesprek)
    mark at most one *Procesbegeleider*.
 5. **Plan aanmaken (PDCA)** — the `create-plan` task form (React/Carbon,
    §11), prefilled from the dossier content, creates plan + overlay + plan
@@ -755,6 +786,12 @@ which the dossier grows per conversation and a first mock of the DVKM
    register, the one-active-plan rule) is shown above the button and leaves
    the form usable, so the task is never stuck on an error the user cannot
    read.
+   A subdoel's beoogde einddatum comes along from the intake (both intake
+   case types; the form.io value is read by its date part) and is checked
+   against the rules of §6.2 in the form and by `POST /plan-intake`, except
+   for an afgerond subdoel. A date from the intake that has passed by now,
+   or lies after the plan's beoogde einddatum, marks its row as invalid
+   instead of being dropped.
 
 There is deliberately **no planafspraken step**: the W&P intake carries no
 plan administration (titel, weergavestatus, looptijd, contactmomenten). The

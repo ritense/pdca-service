@@ -495,6 +495,15 @@
                                     "afgerond": "Afgerond"
                                 }
                             }
+                        },
+                        {
+                            "key": "streefEinddatum",
+                            "title": "Beoogde einddatum",
+                            "value": "streefEinddatum",
+                            "displayProperties": {
+                                "type": "date",
+                                "format": "DD-MM-YYYY"
+                            }
                         }
                     ]
                 }

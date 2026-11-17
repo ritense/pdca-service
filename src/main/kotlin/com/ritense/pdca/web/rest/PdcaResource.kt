@@ -31,6 +31,7 @@ import com.ritense.pdca.repository.PlanDetailsRepository
 import com.ritense.pdca.service.KlantcontactService
 import com.ritense.pdca.service.NewContactmoment
 import com.ritense.pdca.service.PhaseConfigService
+import com.ritense.pdca.service.SubdoelEinddatumValidator
 import com.ritense.pdca.web.rest.dto.ContactmomentDatumRequest
 import com.ritense.pdca.web.rest.dto.ContactmomentDetailsRequest
 import com.ritense.pdca.web.rest.dto.ContactmomentRequest
@@ -65,7 +66,7 @@ import java.util.UUID
  * from Open Plan / Open Product, contactmomenten (klantcontacten) from Open
  * Klant, through the [com.ritense.pdca.registers.RegisterProxyController];
  * this resource only stores what those registers do not model
- * (uitvoeringsstatus, voortgang, internal/external notes, weergavestatus,
+ * (uitvoeringsstatus, voortgang, beoogde einddata, internal/external notes, weergavestatus,
  * uren/effectiviteit, evaluatietype, doelvoortgang, actiepunten) plus the
  * GZAC case link.
  *
@@ -88,6 +89,7 @@ class PdcaResource(
     private val involvedPartyRepository: InvolvedPartyRepository,
     private val phaseConfigService: PhaseConfigService,
     private val klantcontactService: KlantcontactService,
+    private val subdoelEinddatumValidator: SubdoelEinddatumValidator,
     private val openPlanRestClient: RestClient
 ) {
 
@@ -119,6 +121,9 @@ class PdcaResource(
         val configKey = existing?.caseDefinitionKey ?: request.caseDefinitionKey
         request.weergaveStatus?.let { validateWeergaveStatus(configKey, it) }
         request.beginPositie?.let { validatePositie(configKey, "beginPositie", it) }
+        request.streefEinddatum
+            ?.takeIf { existing != null && it != existing.streefEinddatum }
+            ?.let { subdoelEinddatumValidator.validatePlan(planUuid, it) }
 
         val details = if (existing == null) {
             PlanDetails(
@@ -186,6 +191,13 @@ class PdcaResource(
         request.voortgangStatus
             ?.takeIf { it != existing?.voortgangStatus }
             ?.let { validateVoortgangStatus(planUuid, doelUuid, it) }
+        // Only a new or changed date is checked: a date that has since
+        // passed does not block saving the doel's other fields.
+        val streefEinddatum =
+            if (request.streefEinddatumWissen) null else request.streefEinddatum ?: existing?.streefEinddatum
+        streefEinddatum
+            ?.takeIf { it != existing?.streefEinddatum }
+            ?.let { subdoelEinddatumValidator.validateSubdoel(planUuid, it) }
 
         val details = if (existing == null) {
             val sortering = request.sortering
@@ -198,6 +210,7 @@ class PdcaResource(
                 voortgangStatus = request.voortgangStatus,
                 interneNotitie = request.interneNotitie,
                 externeNotitie = request.externeNotitie,
+                streefEinddatum = streefEinddatum,
                 sortering = sortering
             )
         } else {
@@ -207,6 +220,7 @@ class PdcaResource(
                 voortgangStatus = request.voortgangStatus ?: voortgangStatus
                 interneNotitie = request.interneNotitie ?: interneNotitie
                 externeNotitie = request.externeNotitie ?: externeNotitie
+                this.streefEinddatum = streefEinddatum
                 sortering = request.sortering ?: sortering
                 updatedAt = LocalDateTime.now()
             }

@@ -328,8 +328,8 @@ export function PlanOverview() {
       key: 'procesbegeleider', label: 'Procesbegeleider', emptyText: 'Nog geen procesbegeleider',
       value: procesbegeleider?.id || '', display: procesbegeleider ? betrokkeneNaam(procesbegeleider) : '',
       options: betrokkenen.map(b => ({ value: b.id, text: betrokkeneNaam(b) })),
-      placeholder: '-- Kies een verantwoordelijke --',
-      hint: betrokkenen.length === 0 ? 'Voeg eerst een verantwoordelijke toe onder Verantwoordelijkheden.' : undefined,
+      placeholder: '-- Kies een betrokkene --',
+      hint: betrokkenen.length === 0 ? 'Voeg eerst een betrokkene toe onder Betrokkenen.' : undefined,
     },
     {
       key: 'hoofddoelTypeUuid', label: 'Hoofddoel', emptyText: 'Nog geen hoofddoel gekozen',
@@ -413,7 +413,7 @@ export function PlanOverview() {
     }
   }, [plan, editingField, editValue, doelen, doeltypen, details, procesbegeleider, fieldSubmit, showSuccess, rec]);
 
-  // A plan without procesbegeleider gets its first verantwoordelijke as procesbegeleider by default.
+  // A plan without procesbegeleider gets its first betrokkene as procesbegeleider by default.
   const openPartyModal = useCallback(() => {
     setPartyForm({ name: '', role: '', email: '', phone: '', isPrimary: !procesbegeleider });
     partySubmit.reset();
@@ -440,7 +440,7 @@ export function PlanOverview() {
     });
     if (ok) {
       setModalOpen(false);
-      showSuccess('Verantwoordelijkheid toegevoegd');
+      showSuccess('Betrokkene toegevoegd');
     }
   }, [plan, partyForm, procesbegeleider, partySubmit, showSuccess, rec]);
 
@@ -455,7 +455,7 @@ export function PlanOverview() {
     });
     if (ok) {
       setPartyToDelete(null);
-      showSuccess('Verantwoordelijkheid verwijderd');
+      showSuccess('Betrokkene verwijderd');
     }
   }, [partyToDelete, deleteSubmit, showSuccess, rec]);
 
@@ -501,7 +501,7 @@ export function PlanOverview() {
     { key: 'actions', header: '' },
   ];
 
-  // Responsibilities model: roles from the Open Plan relatietype register;
+  // Betrokkenen: roles from the Open Plan relatietype register;
   // one of them is the plan's procesbegeleider.
   const partyRows = betrokkenen.map(p => ({
     id: p.id,
@@ -513,6 +513,8 @@ export function PlanOverview() {
 
   const status = planStatus(plan.status, details?.weergaveStatus);
   const actief = plan.status === 'actief';
+  // The beoogde einddatum cannot be set in the past, but it can pass while the plan runs.
+  const einddatumVerlopen = actief && isVerlopen(details?.streefEinddatum);
   const huidigeWeergave = details?.weergaveStatus || 'Concept';
 
   return (
@@ -567,7 +569,11 @@ export function PlanOverview() {
               <Tag size="sm" type="purple">Positie: {details.beginPositie}</Tag>
             )}
             {plan.startdatum && <span>Start: {formatDate(plan.startdatum)}</span>}
-            {details?.streefEinddatum && <span>Streefdatum: {formatDate(details.streefEinddatum)}</span>}
+            {details?.streefEinddatum && (
+              <span className={einddatumVerlopen ? 'pdca-muted-count--verlopen' : undefined}>
+                Beoogd: {formatDate(details.streefEinddatum)}{einddatumVerlopen && ' · verlopen'}
+              </span>
+            )}
             {plan.einddatum && <span>Einde: {formatDate(plan.einddatum)}</span>}
           </div>
           {!actief && plan.redenEinde && (
@@ -735,17 +741,17 @@ export function PlanOverview() {
             </Tile>
           </div>
 
-          {/* Right column: Verantwoordelijkheden */}
+          {/* Right column: Betrokkenen */}
           <div>
             <Tile className="pdca-card">
               <Layer>
                 <div className="pdca-card-header">
-                  <h4>Verantwoordelijkheden</h4>
+                  <h4>Betrokkenen</h4>
                   <Button size="sm" kind="ghost" onClick={openPartyModal}>Toevoegen</Button>
                 </div>
                 <div className="pdca-card-body">
                   {betrokkenen.length === 0 ? (
-                    <p className="pdca-empty">Geen verantwoordelijkheden</p>
+                    <p className="pdca-empty">Geen betrokkenen</p>
                   ) : (
                     <div className="pdca-table-scroll">
                     <DataTable rows={partyRows} headers={partyHeaders}>
@@ -798,10 +804,10 @@ export function PlanOverview() {
           </div>
         </div>
 
-        {/* Add verantwoordelijkheid modal — roles from the Open Plan relatietype register */}
+        {/* Add betrokkene modal — roles from the Open Plan relatietype register */}
         <Modal
           open={modalOpen}
-          modalHeading="Verantwoordelijkheid toevoegen"
+          modalHeading="Betrokkene toevoegen"
           primaryButtonText={partySubmit.saving ? 'Toevoegen…' : 'Toevoegen'}
           secondaryButtonText="Annuleren"
           primaryButtonDisabled={partySubmit.saving || !partyForm.name.trim() || !partyForm.role}
@@ -856,11 +862,11 @@ export function PlanOverview() {
           </div>
         </Modal>
 
-        {/* Remove verantwoordelijkheid */}
+        {/* Remove betrokkene */}
         <Modal
           open={!!partyToDelete}
           danger
-          modalHeading="Verantwoordelijke verwijderen"
+          modalHeading="Betrokkene verwijderen"
           primaryButtonText={deleteSubmit.saving ? 'Verwijderen…' : 'Verwijderen'}
           secondaryButtonText="Annuleren"
           primaryButtonDisabled={deleteSubmit.saving}
@@ -873,7 +879,7 @@ export function PlanOverview() {
               <InlineNotification kind="error" title="Verwijderen mislukt" subtitle={deleteSubmit.fout} lowContrast hideCloseButton />
             )}
             <p>
-              <strong>{partyToDelete?.name}</strong> ({partyToDelete?.role}) wordt verwijderd als verantwoordelijke bij dit plan.
+              <strong>{partyToDelete?.name}</strong> ({partyToDelete?.role}) wordt verwijderd als betrokkene bij dit plan.
               {partyToDelete?.isPrimary && ' Het plan heeft daarna geen procesbegeleider meer.'}
             </p>
           </div>

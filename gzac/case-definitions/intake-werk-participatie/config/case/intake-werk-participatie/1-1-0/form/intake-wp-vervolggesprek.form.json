@@ -360,6 +360,31 @@
             ]
           },
           "defaultValue": "gepland"
+        },
+        {
+          "label": "Beoogde einddatum",
+          "key": "streefEinddatum",
+          "type": "datetime",
+          "input": true,
+          "tableView": true,
+          "format": "dd-MM-yyyy",
+          "enableDate": true,
+          "enableTime": false,
+          "datePicker": {
+            "disableWeekends": false,
+            "disableWeekdays": false
+          },
+          "widget": {
+            "type": "calendar",
+            "enableTime": false,
+            "format": "dd-MM-yyyy",
+            "allowInput": true,
+            "mode": "single"
+          },
+          "validate": {
+            "custom": "// Same rule as the PDCA app: a beoogde einddatum is not in the past\n// (an afgerond subdoel is history and is not checked).\nvar d = input ? String(input).substring(0, 10) : '';\nvalid = !d || row.status === 'afgerond' || d >= moment().format('YYYY-MM-DD')\n  || 'De beoogde einddatum kan niet in het verleden liggen';"
+          },
+          "description": "Optioneel; laat zien in welke volgorde de subdoelen aan bod komen."
         }
       ],
       "addAnother": "Subdoel toevoegen",

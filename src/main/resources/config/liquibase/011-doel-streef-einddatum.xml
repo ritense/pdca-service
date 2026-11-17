@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The beoogde einddatum of a subdoel. Open Plan's doel.einddatum is the
+  actual end date (set when the doel is closed), so the target lives in the
+  overlay, like plan_details.streef_einddatum.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="011-01-doel-streef-einddatum" author="pdca">
+        <addColumn tableName="doel_details">
+            <column name="streef_einddatum" type="DATE"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

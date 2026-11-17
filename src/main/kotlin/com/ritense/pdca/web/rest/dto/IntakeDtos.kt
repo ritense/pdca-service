@@ -71,13 +71,18 @@ data class PlanIntakeRequest(
     val betrokkenen: List<IntakeBetrokkene> = emptyList()
 )
 
-/** [status]: gepland, gestart or afgerond (legacy `actief` = gepland). */
+/**
+ * [status]: gepland, gestart or afgerond (legacy `actief` = gepland).
+ * [streefEinddatum]: the beoogde einddatum, `yyyy-MM-dd` (a form.io date
+ * value with time and offset is read by its date part).
+ */
 data class IntakeDoel(
     val doelType: String,
     val beschrijving: String? = null,
     val status: String? = null,
     val resultaat: String? = null,
-    val toelichting: String? = null
+    val toelichting: String? = null,
+    val streefEinddatum: String? = null
 )
 
 /** [status]: gepland, gestart or afgerond (legacy `actief` = gestart). */

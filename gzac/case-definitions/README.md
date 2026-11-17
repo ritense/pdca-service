@@ -213,7 +213,7 @@ of the `create-plan` prefill:
 
 | Grid | Row fields |
 |---|---|
-| `doelen` | `doelType`, `beschrijving`, `status` |
+| `doelen` | `doelType`, `beschrijving`, `status`, `streefEinddatum` |
 | `instrumenten` | `product` (producttype code; the select shows the product name), `titel` (hidden; the product name, editable in the create-plan step), `doel`, `status` |
 | `betrokkenen` | `naam`, `rol`, `organisatie`, `email`, `procesbegeleider` |
 | `contactmomenten` (renovatie-intake only) | `datum`, `evaluatieType`, `status`, `notitie`, `deelnemers` |
@@ -221,6 +221,13 @@ of the `create-plan` prefill:
 - **Status** of doelen and instrumenten: `gepland`, `gestart` or
   `afgerond` (Gepland / Gestart / Afgerond); of contactmomenten: `gepland`
   or `afgerond`.
+- **Beoogde einddatum** (`streefEinddatum`) of a doel: an optional date
+  picker per row, stored as form.io's date value (date, time and offset;
+  the app reads the date part). Custom validation on the field applies the
+  app's rules for a subdoel: not in the past and, in `renovatie-intake`,
+  not after the plan's `streefEinddatum`; an afgerond doel is not checked.
+  The intake-werk-participatie Samenvatting tab shows it as a column in the
+  Doelen table.
 - **Procesbegeleider**: a checkbox column in the betrokkenen grid. At most
   one betrokkene can be marked (custom validation on the grid); that
   betrokkene becomes the plan's procesbegeleider.

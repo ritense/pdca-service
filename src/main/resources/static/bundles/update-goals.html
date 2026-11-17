@@ -12,7 +12,7 @@
   .subtitle{color:#525252;font-size:13px;margin-bottom:20px}
   .form-group{margin-bottom:14px}
   label{display:block;font-size:12px;font-weight:500;color:#525252;margin-bottom:4px;letter-spacing:.32px}
-  input[type=text],textarea,select{
+  input[type=text],input[type=date],textarea,select{
     width:100%;padding:10px 14px;border:1px solid #8d8d8d;border-radius:0;background:#fff;
     font-family:inherit;font-size:14px;color:#161616;outline:none;
   }
@@ -55,6 +55,7 @@
   <h3>Subdoel toevoegen</h3>
   <div class="form-group"><label>Subdoel (uit doeltype-register)</label><select id="newDoeltype"></select></div>
   <div class="form-group"><label>Toelichting (t.b.v. de inwoner)</label><textarea id="newDesc" placeholder="Optionele toelichting"></textarea></div>
+  <div class="form-group"><label>Beoogde einddatum (optioneel)</label><input type="date" id="newEinddatum"></div>
   <button class="btn btn-primary btn-sm" onclick="addGoal()">Toevoegen</button>
 </div>
 
@@ -75,6 +76,7 @@ var API=location.origin.indexOf('http')===0?location.origin:'http://localhost:75
 var OPENPLAN=API+'/openplan/plannen/api/v0';
 var planId=null;
 var persoonUuid=null;
+var planEinddatum='';
 var doeltypen=[];
 var goals=[];
 var goalDetails={};
@@ -116,6 +118,10 @@ function init(context,naResolve){
     if(!details){document.getElementById('planTitle').textContent='Geen plan voor dit dossier. Maak eerst een plan aan.';return Promise.reject('no plan')}
     planId=details.planUuid;
     persoonUuid=details.persoonUuid;
+    planEinddatum=(details.streefEinddatum||'').substring(0,10);
+    var datum=document.getElementById('newEinddatum');
+    datum.min=vandaag();
+    if(planEinddatum)datum.max=planEinddatum;
     doeltypen=res[1].results||[];
     fetch(OPENPLAN+'/plan/'+planId).then(function(r){return r.json()})
       .then(function(plan){document.getElementById('planTitle').textContent=plan.titel})
@@ -160,6 +166,8 @@ function goalCard(g,verwijderbaar){
   var html='<div class="goal-card"><div class="goal-info"><div class="goal-title">'
     +(isHoofddoelDoel(g)?'&#9733; ':'')+esc(g.titel)+'</div>';
   html+='<div class="goal-meta"><span class="status-badge status-'+g.status+'">'+esc(statusTekst+(g.resultaat?' ('+g.resultaat+')':''))+'</span>';
+  var einddatum=(goalDetails[g.uuid]||{}).streefEinddatum;
+  if(einddatum)html+=' &middot; Beoogd: '+esc(datumNl(einddatum));
   if(g.beschrijving)html+=' &middot; '+esc(g.beschrijving.substring(0,80))+(g.beschrijving.length>80?'...':'');
   html+='</div></div>';
   if(verwijderbaar)html+='<button class="btn-danger" onclick="deleteGoal(\''+g.uuid+'\')">Verwijder</button>';
@@ -185,6 +193,12 @@ function addGoal(){
   var doeltypeUuid=document.getElementById('newDoeltype').value;
   if(!doeltypeUuid){alert('Kies een doel uit het register');return}
   if(!persoonUuid){showError('Plan mist PDCA-details');return}
+  // Same rules as the backend, checked before the doel is created.
+  var einddatum=document.getElementById('newEinddatum').value;
+  if(einddatum&&einddatum<vandaag()){showError('De beoogde einddatum kan niet in het verleden liggen');return}
+  if(einddatum&&planEinddatum&&einddatum>planEinddatum){
+    showError('De beoogde einddatum mag niet na die van het plan ('+datumNl(planEinddatum)+') liggen');return;
+  }
   var gekozen=doeltypen.filter(function(dt){return dt.uuid===doeltypeUuid})[0];
   var hoofddoel=actiefHoofddoel();
   fetch(OPENPLAN+'/doel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
@@ -198,10 +212,12 @@ function addGoal(){
   })})
   .then(function(r){if(!r.ok)throw new Error('Fout');return r.json()})
   .then(function(doel){
-    return fetch(API+'/api/v1/pdca/doeldetails/'+doel.uuid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({planUuid:planId,uitvoeringsStatus:'GEPLAND'})});
+    return fetch(API+'/api/v1/pdca/doeldetails/'+doel.uuid,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({planUuid:planId,uitvoeringsStatus:'GEPLAND',streefEinddatum:einddatum||null})});
   })
-  .then(function(){
+  .then(function(r){
+    if(!r.ok)throw new Error('doeldetails opslaan mislukt ('+r.status+')');
     document.getElementById('newDesc').value='';
+    document.getElementById('newEinddatum').value='';
     showSuccess('Doel toegevoegd');
     return loadGoals();
   }).catch(function(err){showError('Fout: '+err.message)});
@@ -223,6 +239,9 @@ function submitForm(){
 
 function showSuccess(msg){var el=document.getElementById('successMsg');el.textContent=msg;el.style.display='block';setTimeout(function(){el.style.display='none'},3000)}
 function showError(msg){var el=document.getElementById('errorMsg');el.textContent=msg;el.style.display='block';setTimeout(function(){el.style.display='none'},5000)}
+function pad(n){return(n<10?'0':'')+n}
+function vandaag(){var d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+function datumNl(iso){var p=iso.substring(0,10).split('-');return p.length===3?p[2]+'-'+p[1]+'-'+p[0]:iso}
 function esc(s){if(!s)return'';var d=document.createElement('div');d.textContent=s;return d.innerHTML}
 
 </script>

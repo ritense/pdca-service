@@ -150,7 +150,8 @@ export const pdca = {
     request<VoortgangStatusOptie[]>(`${PDCA}/voortgangstatussen${planUuid ? `?planUuid=${planUuid}` : ''}`),
   doeldetails: {
     listByPlan: (planUuid: string) => request<DoelDetails[]>(`${PDCA}/doeldetails?planUuid=${planUuid}`),
-    upsert: (doelUuid: string, data: Partial<DoelDetails>) =>
+    /** Null fields stay unchanged; streefEinddatumWissen clears the beoogde einddatum. */
+    upsert: (doelUuid: string, data: Partial<DoelDetails> & { streefEinddatumWissen?: boolean }) =>
       request<DoelDetails>(`${PDCA}/doeldetails/${doelUuid}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (doelUuid: string) => request<void>(`${PDCA}/doeldetails/${doelUuid}`, { method: 'DELETE' }),
   },
@@ -531,6 +532,8 @@ export interface DoelDetails {
   interneNotitie?: string;
   /** Note that may be shared with the inwoner. */
   externeNotitie?: string;
+  /** Beoogde einddatum of a subdoel (yyyy-mm-dd): not in the past when set, not after the plan's streefEinddatum. */
+  streefEinddatum?: string;
   sortering: number;
 }
 

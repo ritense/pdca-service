@@ -1,3 +1,5 @@
+import java.nio.file.Files
+
 plugins {
     id("org.springframework.boot") version "3.5.15"
     id("io.spring.dependency-management") version "1.1.7"
@@ -274,8 +276,22 @@ val pluginBuildTasks = registerPlugins.map { (name, taskName) ->
         description = "Install the $name plugin's npm dependencies"
         workingDir(pluginDir)
         inputs.files(pluginDir.file("package.json"), pluginDir.file("package-lock.json"))
+        inputs.property("pluginSdkDir", pluginSdkDir.map { it.path })
         outputs.dir(pluginDir.dir("node_modules"))
         useNode("install", "--no-audit", "--no-fund")
+        // package.json pins the SDK to the sibling ../valtimo checkout; re-point the installed
+        // link at the SDK chosen with -PvaltimoDir so the bundle uses that checkout's SDK.
+        doLast {
+            val link = pluginDir.dir("node_modules/@valtimo/plugin-sdk").asFile
+            val target = pluginSdkDir.get()
+            if (Files.isSymbolicLink(link.toPath())) {
+                Files.delete(link.toPath())
+            } else if (link.exists()) {
+                link.deleteRecursively()
+            }
+            link.parentFile.mkdirs()
+            Files.createSymbolicLink(link.toPath(), target.toPath())
+        }
     }
     tasks.register<Exec>("build${taskName}Plugin") {
         group = "plugin"

@@ -51,7 +51,8 @@ const EVALUATIE_STATUSSEN: { value: EvaluatieStatus; text: string }[] = [
  */
 type Rij<T> = T & { key: number; extra: Record<string, unknown> };
 
-type SubdoelRij = Rij<{ doelType: string; beschrijving: string; status: DoelStatus }>;
+/** `streefEinddatum`: the beoogde einddatum (yyyy-mm-dd), empty for none. */
+type SubdoelRij = Rij<{ doelType: string; beschrijving: string; status: DoelStatus; streefEinddatum: string }>;
 type InstrumentRij = Rij<{ titel: string; product: string; doel: string; status: DoelStatus }>;
 /** `auto`: the default first evaluation, whose date follows the startdatum until the row is edited. */
 type EvaluatieRij = Rij<{ datum: string; evaluatieType: string; status: EvaluatieStatus; notitie: string; auto: boolean }>;
@@ -93,6 +94,20 @@ let volgendeSleutel = 0;
 const sleutel = () => ++volgendeSleutel;
 
 const tekst = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : String(v));
+
+/**
+ * Why a subdoel's beoogde einddatum is not allowed (same rules as the
+ * backend), or null: not in the past, not after the plan's beoogde
+ * einddatum. An afgerond subdoel is history, so its date is not checked.
+ * A date prefilled from an older intake can have passed by now; the row
+ * then shows the error instead of the date being dropped silently.
+ */
+function subdoelEinddatumFout(d: SubdoelRij, planEinddatum: string): string | null {
+  if (!d.streefEinddatum || d.status === 'afgerond') return null;
+  if (d.streefEinddatum < vandaag()) return 'Ligt in het verleden';
+  if (planEinddatum && d.streefEinddatum > planEinddatum) return `Na de beoogde einddatum van het plan (${formatDate(planEinddatum)})`;
+  return null;
+}
 
 const foutmelding = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
@@ -364,10 +379,12 @@ export function CreatePlan() {
     const bekend = (registers.doeltypen ?? []).map(t => t.doelType);
     const nieuweSubdoelen: SubdoelRij[] = prefillRijen(p.doelen).map(d => ({
       key: sleutel(),
-      extra: overige(d, ['doelType', 'beschrijving', 'status', 'voortgang']),
+      extra: overige(d, ['doelType', 'beschrijving', 'status', 'voortgang', 'streefEinddatum']),
       doelType: tekst(d.doelType),
       beschrijving: tekst(d.beschrijving),
       status: doelStatusUit(d.status, 'gepland'),
+      // A form.io date value carries time and offset; the date part is the day picked.
+      streefEinddatum: tekst(d.streefEinddatum).slice(0, 10),
     }));
     nieuweSubdoelen.forEach(d => {
       if (d.doelType && !bekend.includes(d.doelType)) nietGezet.push(`subdoel "${d.doelType}"`);
@@ -415,7 +432,8 @@ export function CreatePlan() {
     setEvaluaties(nieuweEvaluaties);
     setBetrokkenen(nieuweBetrokkenen);
     setOpen({
-      subdoelen: nieuweSubdoelen.length === 0 || nieuweSubdoelen.some(d => !d.doelType),
+      subdoelen: nieuweSubdoelen.length === 0 || nieuweSubdoelen.some(d =>
+        !d.doelType || subdoelEinddatumFout(d, tekst(p.streefEinddatum).slice(0, 10))),
       instrumenten: nieuweInstrumenten.length === 0,
       evaluaties: nieuweEvaluaties.length === 0,
       betrokkenen: nieuweBetrokkenen.length === 0,
@@ -591,8 +609,10 @@ export function CreatePlan() {
     if (!hoofddoel) lijst.push('hoofddoel');
     const zonderDoel = subdoelen.filter(d => !d.doelType).length;
     if (zonderDoel) lijst.push(`doel bij ${aantal(zonderDoel, 'subdoel', 'subdoelen')}`);
+    const ongeldigeDatum = subdoelen.filter(d => subdoelEinddatumFout(d, streefEinddatum)).length;
+    if (ongeldigeDatum) lijst.push(`geldige beoogde einddatum bij ${aantal(ongeldigeDatum, 'subdoel', 'subdoelen')}`);
     return lijst;
-  }, [subjectId, subjectType, titel, hoofddoel, subdoelen]);
+  }, [subjectId, subjectType, titel, hoofddoel, subdoelen, streefEinddatum]);
 
   function focusEersteFout() {
     setTimeout(() => {
@@ -607,7 +627,7 @@ export function CreatePlan() {
     }
     setPoging(true);
     if (ontbreekt.length > 0) {
-      if (subdoelen.some(d => !d.doelType)) setOpen(o => ({ ...o, subdoelen: true }));
+      if (subdoelen.some(d => !d.doelType || subdoelEinddatumFout(d, streefEinddatum))) setOpen(o => ({ ...o, subdoelen: true }));
       focusEersteFout();
       return;
     }
@@ -635,6 +655,7 @@ export function CreatePlan() {
       streefEinddatum: streefEinddatum || null,
       doelen: subdoelen.map(d => ({
         ...d.extra, doelType: d.doelType, beschrijving: d.beschrijving, status: d.status,
+        streefEinddatum: d.streefEinddatum || null,
       })),
       instrumenten: instrumenten.filter(i => i.titel.trim()).map(i => ({
         ...i.extra, titel: i.titel.trim(), product: i.product, doel: i.doel, status: i.status,
@@ -692,7 +713,7 @@ export function CreatePlan() {
   function voegToe(sectie: Sectie) {
     setOpen(o => ({ ...o, [sectie]: true }));
     if (sectie === 'subdoelen') {
-      setSubdoelen(r => [...r, { key: sleutel(), extra: {}, doelType: '', beschrijving: '', status: 'gepland' }]);
+      setSubdoelen(r => [...r, { key: sleutel(), extra: {}, doelType: '', beschrijving: '', status: 'gepland', streefEinddatum: '' }]);
     } else if (sectie === 'instrumenten') {
       setInstrumenten(r => [...r, { key: sleutel(), extra: {}, titel: '', product: '', doel: '', status: 'gepland' }]);
     } else if (sectie === 'evaluaties') {
@@ -771,6 +792,7 @@ export function CreatePlan() {
     setOpen(o => ({ ...o, [sectie]: isOpen }));
 
   const subdoelenZonderDoel = subdoelen.filter(d => !d.doelType).length;
+  const subdoelDatumFouten = subdoelen.filter(d => subdoelEinddatumFout(d, streefEinddatum)).length;
   const procesbegeleider = betrokkenen.find(b => b.procesbegeleider);
 
   const samenvatting = [
@@ -961,7 +983,8 @@ export function CreatePlan() {
             title={sectieTitel(
               `Subdoelen (${subdoelen.length})`, 'subdoelen',
               subdoelen.map(d => d.doelType || 'Nog geen doel').join(', ') || 'Nog geen subdoelen',
-              poging && subdoelenZonderDoel ? 'Doel ontbreekt' : undefined,
+              poging && subdoelenZonderDoel ? 'Doel ontbreekt'
+                : subdoelDatumFouten ? 'Beoogde einddatum ongeldig' : undefined,
             )}
           >
             {subdoelen.length === 0 && <p className="cp-leeg">Nog geen subdoelen.</p>}
@@ -991,6 +1014,16 @@ export function CreatePlan() {
                     >
                       {DOEL_STATUSSEN.map(s => <SelectItem key={s.value} value={s.value} text={s.text} />)}
                     </Select>
+                  </div>
+                  <div className="cp-veld cp-veld--smal">
+                    <TextInput
+                      id={`cp-subdoel-${d.key}-einddatum`} size="sm" type="date" labelText="Beoogde einddatum"
+                      value={d.streefEinddatum} min={d.status === 'afgerond' ? undefined : vandaag()}
+                      max={streefEinddatum || undefined}
+                      invalid={!!subdoelEinddatumFout(d, streefEinddatum)}
+                      invalidText={subdoelEinddatumFout(d, streefEinddatum) || undefined}
+                      onChange={e => wijzig(setSubdoelen, d.key, { streefEinddatum: e.target.value })}
+                    />
                   </div>
                 </div>
                 {verwijderKnop('Subdoel verwijderen', () => verwijder(setSubdoelen, d.key))}

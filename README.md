@@ -44,7 +44,7 @@ segmentation, advised by the intake DMN) + hoofddoel reference per
 plan, uitvoeringsstatus/hours/effectiveness/notes/abort reason per instrument, evaluation type +
 planned date + doel progress + action points per contactmoment, evaluation sessions with the plan
 changes made during them (run in GZAC's side panel; completed, or cancelled without a
-contactmoment), actions, responsibilities (betrokkenen incl. the procesbegeleider)
+contactmoment), actions, betrokkenen (incl. the procesbegeleider)
 and the case config (evaluation types, plan statuses, **position types**). Doelen are shown
 as one flat list ordered by the overlay `sortering`;
 the plan owner is the procesbegeleider (the betrokkene marked as such, mirrored into Open Plan as
