@@ -537,7 +537,9 @@ fields.
 - **Actions and confirmations** — a subdoel has one state button (Starten /
   Afronden) and an overflow menu (Bewerken, Afbreken, Verwijderen); an
   instrument has its state button and a menu (Actie toevoegen, Voortgang &
-  notities, Afbreken). Afbreken asks for a reason; Verwijderen and removing a
+  notities, Afbreken). Bewerken keeps the subdoel's doeltype (and so its
+  title): the modal shows it read-only and edits only the toelichting and
+  the beoogde einddatum. Afbreken asks for a reason; Verwijderen and removing a
   betrokkene ask for confirmation in a danger modal that says what goes with
   it. The plan header shows the status tag and a "Planacties" menu (the
   configured display statuses, Plan afronden, Plan afbreken; Plan
@@ -1133,7 +1135,8 @@ meerdere doeltypen horen"*.
   switching the hoofddoel (or a prefill from an older mapping) never silently
   empties a row.
 
-Three places offer the choice. The goals tab (`DoelModal`) and the
+Three places offer the choice. The goals tab (`DoelModal`, when adding a
+subdoel) and the
 `create-plan` task form read the mapping **live** from the case
 configuration. The intake's `vervolggesprek` is a form.io form inside GZAC,
 which cannot reach the app's API, so its zip carries a **copy** of the

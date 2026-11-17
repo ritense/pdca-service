@@ -306,17 +306,12 @@ export function PlanGoals() {
           samenvoegen: true, vanWaarde: formatDate(oudeEinddatum) || null, naarWaarde: formatDate(data.streefEinddatum) || null,
         });
       }
-      await openplan.doelen.update(editDoel.uuid, {
-        titel: data.titel,
-        beschrijving: data.toelichting,
-        doeltypeUuid: data.doeltypeUuid,
-      });
-      const titelGewijzigd = editDoel.titel !== data.titel;
-      if (titelGewijzigd || (editDoel.beschrijving || '') !== data.toelichting) {
+      // The doeltype (and with it the title) is fixed once the subdoel exists.
+      if ((editDoel.beschrijving || '') !== data.toelichting) {
+        await openplan.doelen.update(editDoel.uuid, { beschrijving: data.toelichting });
         rec({
-          subjectType: 'SUBDOEL', subjectUuid: editDoel.uuid, subjectTitel: data.titel, soort: 'SUBDOEL_BEWERKT',
-          vanWaarde: titelGewijzigd ? editDoel.titel : null,
-          naarWaarde: titelGewijzigd ? data.titel : 'toelichting aangepast',
+          subjectType: 'SUBDOEL', subjectUuid: editDoel.uuid, subjectTitel: editDoel.titel, soort: 'SUBDOEL_BEWERKT',
+          vanWaarde: null, naarWaarde: 'toelichting aangepast',
         });
       }
     } else if (plan && details) {
@@ -1185,7 +1180,9 @@ function VerwijderModal({ target, onClose, onSubmit }: {
 /**
  * Register-driven doel entry: the doel is chosen from
  * the doeltype register and the title is the register name — no free text.
- * Free text is allowed only as explanation for the inwoner.
+ * Free text is allowed only as explanation for the inwoner. When editing, the
+ * doeltype is shown read-only: only the explanation and the beoogde
+ * einddatum can change.
  */
 /** What the subdoel modal saves; streefEinddatum is yyyy-mm-dd, empty for none. */
 type DoelInvoer = { titel: string; toelichting: string; doeltypeUuid: string; streefEinddatum: string };
@@ -1229,31 +1226,32 @@ function DoelModal({ open, doel, doeltypen, hoofddoelNaam, subdoelMapping, huidi
 
   const opties = subdoelTypenVoorHoofddoel(doeltypen, hoofddoelNaam, subdoelMapping);
   const gescoped = opties.length < subdoelTypen(doeltypen).length;
-  // Doel with a doeltype predating the named register: show as its own option
-  // so the explanation stays editable without reclassification.
-  const huidigOnbekend = doel?.doeltype && !opties.some(t => t.uuid === doel.doeltype!.uuid);
   const gekozen = opties.find(t => t.uuid === doeltypeUuid);
-  const titel = gekozen ? doelTypeNaam(gekozen) : doel?.titel || '';
+  const titel = doel ? doel.titel : gekozen ? doelTypeNaam(gekozen) : '';
+  const kanOpslaan = !!titel && (!!doel || !!doeltypeUuid) && !datumFout;
 
   return (
     <Modal open={open} modalHeading={doel ? 'Subdoel bewerken' : 'Subdoel toevoegen'}
       primaryButtonText={saving ? 'Opslaan…' : 'Opslaan'} secondaryButtonText="Annuleren"
-      primaryButtonDisabled={saving || !doeltypeUuid || !titel || !!datumFout}
+      primaryButtonDisabled={saving || !kanOpslaan}
       onRequestClose={onClose}
-      onRequestSubmit={() => doeltypeUuid && titel && !datumFout
-        && submit(() => onSave({ titel, toelichting, doeltypeUuid, streefEinddatum }))}>
+      onRequestSubmit={() => kanOpslaan && submit(() => onSave({ titel, toelichting, doeltypeUuid, streefEinddatum }))}>
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
-        <Select id="doel-type" labelText="Subdoel" value={doeltypeUuid} onChange={(e: any) => setDoeltypeUuid(e.target.value)}
-          helperText={gescoped
-            ? `Subdoelen die horen bij hoofddoel "${hoofddoelNaam}"`
-            : 'Vast gedefinieerde doelen uit het doeltype-register'}>
-          <SelectItem value="" text="-- Kies subdoel --" />
-          {huidigOnbekend && <SelectItem value={doel!.doeltype!.uuid} text={`${doel!.titel} (huidig)`} />}
-          {opties.map(t => (
-            <SelectItem key={t.uuid} value={t.uuid} text={t.doelType} />
-          ))}
-        </Select>
+        {doel ? (
+          <TextInput id="doel-type" labelText="Subdoel" value={doel.titel} readOnly
+            helperText="Het subdoel zelf kan niet worden gewijzigd" />
+        ) : (
+          <Select id="doel-type" labelText="Subdoel" value={doeltypeUuid} onChange={(e: any) => setDoeltypeUuid(e.target.value)}
+            helperText={gescoped
+              ? `Subdoelen die horen bij hoofddoel "${hoofddoelNaam}"`
+              : 'Vast gedefinieerde doelen uit het doeltype-register'}>
+            <SelectItem value="" text="-- Kies subdoel --" />
+            {opties.map(t => (
+              <SelectItem key={t.uuid} value={t.uuid} text={t.doelType} />
+            ))}
+          </Select>
+        )}
         <TextArea id="doel-toelichting" labelText="Toelichting" helperText="Uitleg voor de inwoner" value={toelichting}
           onChange={(e: any) => setToelichting(e.target.value)} />
         <TextInput id="doel-einddatum" type="date" labelText="Beoogde einddatum (optioneel)"
