@@ -143,8 +143,9 @@ demo case configs, `003-subdoel-mapping.xml` for the subdoelmapping,
 `006-evaluation-session.xml`, `007-evaluation-content.xml`,
 `008-status-procesbegeleider-gepland-contactmoment.xml`,
 `009-configureerbare-voortgangsstatussen.xml`,
-`010-plugin-configuration-granted-contracts.xml` and
-`011-doel-streef-einddatum.xml`; new changes continue the numbering). Core:
+`010-plugin-configuration-granted-contracts.xml`,
+`011-doel-streef-einddatum.xml` and `012-drop-action-assignee-type.xml`; new
+changes continue the numbering). Core:
 
 | Entity | Key | Holds |
 |---|---|---|
@@ -153,7 +154,7 @@ demo case configs, `003-subdoel-mapping.xml` for the subdoelmapping,
 | `InstrumentDetails` | `instrumentUuid` | `uitvoeringsStatus` (GEPLAND or GESTART, §5.2; null on an actief instrument means gestart), hours, effectiveness with its explanation (`effectiviteitToelichting`), internal and external note, abort reason |
 | `ContactmomentDetails` | `contactmomentUuid` (= klantcontact uuid in Open Klant) | evaluation type, planned date (`geplandeDatum`), deelnemers, doelvoortgang (per subdoel the voortgangsstatus as recorded then: code, name and explanation; `evaluate` task form) and action points (intake and `evaluate` task form), `evaluationSessionId` when the contactmoment is a completed evaluation |
 | `InvolvedParty` | own id | involved parties per plan; `isPrimary` marks the plan's **procesbegeleider** (at most one per plan, partial unique index; §5.2) |
-| `Action` | own id | actions per doel, optionally attached to an instrument (`instrumentUuid`; W&P: instrument → 0..n taken, shown in the instrument block): title/description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED), `Uitvoering` (LOKAAL or BOUWBLOK), and for building block actions `bouwblokKoppelingId` + `gzacProcessInstanceId` + result |
+| `Action` | own id | actions per doel, optionally attached to an instrument (`instrumentUuid`; W&P: instrument → 0..n taken, shown in the instrument block): title/description, assignee name, priority, due date, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED), `Uitvoering` (LOKAAL or BOUWBLOK), and for building block actions `bouwblokKoppelingId` + `gzacProcessInstanceId` + result |
 | `ActieBouwblokKoppeling` | own id | admin link case type→process (§9): `soort` (ACTIE or PRODUCT), `uitvoeringsvorm` (BOUWBLOK or DOSSIER), name, `caseDefinitionKey`, building block key/version + `processDefinitionKey` (BOUWBLOK) or `productCaseDefinitionKey` (DOSSIER), `pluginConfigId`, doeltype uuids (JSON) |
 | `PhaseConfig` | `caseDefinitionKey` | case configuration (§10) |
 | `StoredPluginConfiguration` | `configId` | plugin configurations pushed by GZAC: serviceToken, gzacBaseUrl, title, properties, event subscriptions, `grantedContracts` (the contracts GZAC bound, §6.3) |
@@ -384,7 +385,7 @@ evaluation runs, plus the contactmoment information: type (one of the case
 type's evaluation types; EVALUATION when offered), deelnemers and the
 gespreksverslag (how the inwoner is doing, what was discussed, why the plan
 changes). Changes are made where they are always made — in the Planoverzicht
-and Doelen & Acties tabs — and take effect immediately, like any other plan
+and Doelen tabs — and take effect immediately, like any other plan
 edit: an evaluation is not a transaction and cannot be rolled back. The side
 panel shows a summary of those changes, refreshed every few seconds, and holds the contactmoment
 fields.
@@ -408,7 +409,7 @@ fields.
   when the user's running session belongs to this dossier, the panel is
   offered again, so it reappears after it was closed or after a page reload.
   Elsewhere in GZAC the panel only stays while it is open in that browser tab.
-  While the session is on this plan, the Planoverzicht and Doelen & Acties
+  While the session is on this plan, the Planoverzicht and Doelen
   tabs show an "Evaluatie loopt" banner.
 - **Recording changes** — after every successful plan change the tab calls
   `recordEvaluationChange` (`POST /evaluation-sessions/current/changes`).
@@ -1038,7 +1039,7 @@ per process definition). The repair also clears the issue banner.
 3. **The register carries the link, not the overlay**: `aanmaak-instrument`
    stores the dossier URN in the instrument's **`zaak` field in Open Plan**
    ("URN naar het bijbehorende zaak in het zaaksysteem"). The plan page
-   (Doelen & Acties) parses that URN and shows a **Dossier** button on the
+   (Doelen) parses that URN and shows a **Dossier** button on the
    instrument that navigates the GZAC host to
    `/cases/{caseDefinitionKey}/document/{documentId}` (plugin-SDK
    `navigate` message via the bridge; a host without that handler ignores

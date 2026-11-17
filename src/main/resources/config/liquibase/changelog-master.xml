@@ -16,5 +16,6 @@
     <include file="config/liquibase/009-configureerbare-voortgangsstatussen.xml"/>
     <include file="config/liquibase/010-plugin-configuration-granted-contracts.xml"/>
     <include file="config/liquibase/011-doel-streef-einddatum.xml"/>
+    <include file="config/liquibase/012-drop-action-assignee-type.xml"/>
 
 </databaseChangeLog>

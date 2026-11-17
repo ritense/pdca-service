@@ -587,7 +587,6 @@ export interface Actie {
   title: string;
   description?: string;
   status: string;
-  assigneeType?: string;
   assigneeName?: string;
   priority: string;
   startDate?: string;

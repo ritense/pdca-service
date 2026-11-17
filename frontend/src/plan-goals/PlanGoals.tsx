@@ -1276,7 +1276,6 @@ function ActieModal({ open, ctx, onClose, onSave }: {
 }) {
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
-  const [assigneeType, setAssigneeType] = useState('PROFESSIONAL');
   const [assigneeName, setAssigneeName] = useState('');
   const [priority, setPriority] = useState('NORMAL');
   const [dueDate, setDueDate] = useState('');
@@ -1285,7 +1284,7 @@ function ActieModal({ open, ctx, onClose, onSave }: {
   const opslaan = () => {
     if (!ctx || !title.trim()) return;
     submit(() => onSave(ctx, {
-      title: title.trim(), description: desc, assigneeType, assigneeName, priority, dueDate: dueDate || undefined,
+      title: title.trim(), description: desc, assigneeName, priority, dueDate: dueDate || undefined,
     }));
   };
   return (
@@ -1297,11 +1296,6 @@ function ActieModal({ open, ctx, onClose, onSave }: {
         {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
         <TextInput id="actie-title" labelText="Titel (verplicht)" value={title} onChange={(e: any) => setTitle(e.target.value)} />
         <TextArea id="actie-desc" labelText="Beschrijving" value={desc} onChange={(e: any) => setDesc(e.target.value)} />
-        <Select id="actie-assignee-type" labelText="Uitvoerder type" value={assigneeType} onChange={(e: any) => setAssigneeType(e.target.value)}>
-          <SelectItem value="PROFESSIONAL" text="Behandelaar" />
-          <SelectItem value="SUBJECT" text="Inwoner / Eigenaar" />
-          <SelectItem value="PROVIDER" text="Aanbieder" />
-        </Select>
         <TextInput id="actie-assignee" labelText="Naam uitvoerder" value={assigneeName} onChange={(e: any) => setAssigneeName(e.target.value)} />
         <Select id="actie-priority" labelText="Prioriteit" value={priority} onChange={(e: any) => setPriority(e.target.value)}>
           <SelectItem value="NORMAL" text="Normaal" />

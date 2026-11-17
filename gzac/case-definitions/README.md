@@ -58,7 +58,7 @@ the `camunda:versionTag` in the BPMN).
 The PDCA couplings ship **in the zips**:
 
 - the plan case types carry the three PDCA case tabs of type *external
-  plugin* — Planoverzicht (`plan-overview`), Doelen & Acties (`plan-goals`)
+  plugin* — Planoverzicht (`plan-overview`), Doelen (`plan-goals`)
   and Evaluaties (`plan-evaluations`); on `inwonerplan` these are the only
   tabs;
 - the intake case types carry an `external_plugin_task_form` process link
@@ -103,7 +103,7 @@ so the case has no entry in the Start menu.
 The plan-dossier process has **no user tasks**: `start-event` →
 `einde` ("Plandossier aangemaakt"). There are no start form, task forms or
 process links. The plan is kept up to date in the PDCA tabs (Planoverzicht,
-Doelen & Acties, Evaluaties); actions and products run as building blocks
+Doelen, Evaluaties); actions and products run as building blocks
 on the dossier (see below), and their tasks appear in the dossier's task
 list.
 
@@ -325,7 +325,7 @@ The workflow:
    BUILDING_BLOCK reference. The mapping stays empty in the zip
    (configuration UUIDs are environment specific) and a re-import resets it;
    the app restores it automatically before every start.
-3. On the plan page (*Doelen & Acties*) every doel has the **Actie kiezen**
+3. On the plan page (*Doelen*) every doel has the **Actie kiezen**
    button on the right (greyed out when no building blocks match the
    doeltype); choosing one creates the action and starts the building block
    process on the plan dossier. GZAC creates a building block document and

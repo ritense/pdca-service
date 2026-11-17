@@ -15,10 +15,6 @@ const PRIORITY_LABELS: Record<string, string> = {
   HIGH: 'Hoog', NORMAL: 'Normaal', LOW: 'Laag',
 };
 
-const ASSIGNEE_TYPE_LABELS: Record<string, string> = {
-  PROFESSIONAL: 'Behandelaar', SUBJECT: 'Inwoner/Eigenaar', PROVIDER: 'Aanbieder',
-};
-
 const DOELGROEP_LABELS: Record<string, string> = {
   burgers: 'Burgers', interne_organisatie: 'Interne organisatie',
   samenwerkingspartners: 'Samenwerkingspartners',
@@ -32,7 +28,6 @@ const DIENSTVERLENING_LABELS: Record<string, string> = {
 
 export function evalTypeLabel(s: string): string { return EVAL_TYPE_LABELS[s] || s; }
 export function priorityLabel(s: string): string { return PRIORITY_LABELS[s] || s; }
-export function assigneeTypeLabel(s: string): string { return ASSIGNEE_TYPE_LABELS[s] || s; }
 export function doelgroepLabel(s: string): string { return DOELGROEP_LABELS[s] || s; }
 export function dienstverleningLabel(s: string): string { return DIENSTVERLENING_LABELS[s] || s; }
 
