@@ -417,7 +417,7 @@ fields.
   never blocks or undoes the change. Each change carries the onderdeel
   (`subjectType` + uuid + title), its `soort` (e.g. `SUBDOEL_TOEGEVOEGD`,
   `VOORTGANG`, `INTERNE_NOTITIE`, `INSTRUMENT_AFGEBROKEN`,
-  `HOOFDDOEL_GEWISSELD`, `POSITIE`; labels in `labels.ts`) and display values
+  `PROCESBEGELEIDER`, `HOOFDDOEL_TOELICHTING`; labels in `labels.ts`) and display values
   `vanWaarde`/`naarWaarde`. Value changes are sent with `samenvoegen`: a later
   change of the same kind on the same onderdeel updates the earlier one's
   `naarWaarde`, and a value changed back to where it started drops out. A
@@ -681,9 +681,10 @@ hoofddoel as a **real Doel** in Open Plan (a hoofddoel-type doel next to the
 overlay's `hoofddoel_type_uuid`) and every subdoel references it through the
 register field `doel.hoofdDoel` — the plan carries the W&P chain plan → one
 active hoofddoel → subdoelen. Subdoelen added later (goals tab, update-goals
-task form) attach to the active hoofddoel too. Switching the hoofddoel on
-the overview tab completes the current hoofddoel-doel (it stays visible as
-history in the goals tab), creates a new one and re-points the subdoelen.
+task form) attach to the active hoofddoel too. The hoofddoel, like the
+subdoelgroep and the positie, is fixed once the plan exists: the overview
+tab shows all three read-only and only lets the procesbegeleider and the
+toelichting bij het hoofddoel be edited.
 The goals tab renders the active hoofddoel as a fixed card (the strategy,
 expandable for its notes, with the plan's beoogde einddatum in its header,
 §6.2) above the flat subdoelen list. Both get a

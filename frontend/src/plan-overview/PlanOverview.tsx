@@ -53,7 +53,7 @@ import {
 } from '../shared/api';
 import {
   evalTypeLabel, formatDate, planStatus, isVerlopen, contactmomentDatum,
-  dienstverleningLabel, doelTypeNaam, hoofddoelTypen, isHoofddoelType,
+  dienstverleningLabel, doelTypeNaam, isHoofddoelType,
 } from '../shared/labels';
 import '../shared/styles.css';
 
@@ -107,7 +107,6 @@ export function PlanOverview() {
   const [betrokkenen, setBetrokkenen] = useState<Betrokkene[]>([]);
   const [subject, setSubject] = useState<SubjectData>(null);
   const [planStatusOpties, setPlanStatusOpties] = useState<string[]>([]);
-  const [positieTypen, setPositieTypen] = useState<string[]>([]);
   const [voortgangOpties, setVoortgangOpties] = useState<VoortgangStatusOptie[]>([]);
   const [doeltypen, setDoeltypen] = useState<DoelType[]>([]);
   const [relatietypen, setRelatietypen] = useState<RelatieType[]>([]);
@@ -180,12 +179,10 @@ export function PlanOverview() {
         ]);
 
       let statusOptiesRes: string[] = [];
-      let positieTypenRes: string[] = [];
       if (selectedDetails?.caseDefinitionKey) {
         try {
           const cfg = await pdca.phaseConfigs.get(selectedDetails.caseDefinitionKey);
           statusOptiesRes = JSON.parse(cfg.planStatussen || '[]');
-          positieTypenRes = JSON.parse(cfg.positieTypen || '[]');
         } catch { /* no config */ }
       }
 
@@ -201,7 +198,6 @@ export function PlanOverview() {
       setDoeltypen(doeltypenRes);
       setSubject(subjectRes);
       setPlanStatusOpties(statusOptiesRes.length ? statusOptiesRes : ['Concept', 'Vastgesteld']);
-      setPositieTypen(positieTypenRes);
       setVoortgangOpties(voortgangRes);
       setLoading(false);
     } catch (err: any) {
@@ -311,18 +307,17 @@ export function PlanOverview() {
     }
   }, [plan, details, showSuccess, rec]);
 
-  // notitie lives on the Open Plan plan; positions and hoofddoel in the PDCA
-  // overlay; the procesbegeleider is one of the plan's betrokkenen.
-  // Positions and hoofddoel are register-driven choices (positietype resp.
-  // doeltype register) — no free text; only the explanation for the inwoner
-  // remains free text.
-  const hoofddoelOpties = hoofddoelTypen(doeltypen);
+  // Only the procesbegeleider (one of the plan's betrokkenen) and the
+  // notitie (on the Open Plan plan) are edited here. Hoofddoel, subdoelgroep
+  // and positie are set when the plan is created from the intake and are
+  // shown read-only.
   const gekozenHoofddoel = doeltypen.find(t => t.uuid === details?.hoofddoelTypeUuid);
-  const editableFields: {
+  const planFields: {
     key: string; label: string; emptyText: string; value?: string;
     display?: string; options?: { value: string; text: string }[]; placeholder?: string;
     /** Shown instead of the edit button when the field cannot be edited yet. */
     hint?: string;
+    readOnly?: boolean;
   }[] = [
     {
       key: 'procesbegeleider', label: 'Procesbegeleider', emptyText: 'Nog geen procesbegeleider',
@@ -333,15 +328,11 @@ export function PlanOverview() {
     },
     {
       key: 'hoofddoelTypeUuid', label: 'Hoofddoel', emptyText: 'Nog geen hoofddoel gekozen',
-      value: details?.hoofddoelTypeUuid || '', display: doelTypeNaam(gekozenHoofddoel),
-      options: hoofddoelOpties.map(t => ({ value: t.uuid, text: t.doelType })),
+      value: details?.hoofddoelTypeUuid || '', display: doelTypeNaam(gekozenHoofddoel), readOnly: true,
     },
     { key: 'notitie', label: 'Toelichting bij hoofddoel', emptyText: 'Geen toelichting', value: plan?.notitie },
-    { key: 'subdoelgroep', label: 'Subdoelgroep', emptyText: 'Nog niet bepaald', value: details?.subdoelgroep },
-    {
-      key: 'beginPositie', label: 'Positie', emptyText: 'Nog niet gezet',
-      value: details?.beginPositie, options: positieTypen.map(p => ({ value: p, text: p })),
-    },
+    { key: 'subdoelgroep', label: 'Subdoelgroep', emptyText: 'Nog niet bepaald', value: details?.subdoelgroep, readOnly: true },
+    { key: 'beginPositie', label: 'Positie', emptyText: 'Nog niet gezet', value: details?.beginPositie, readOnly: true },
   ];
 
   const startEditing = useCallback((key: string, value?: string) => {
@@ -365,53 +356,13 @@ export function PlanOverview() {
           rec({ soort: 'PROCESBEGELEIDER', samenvoegen: true, vanWaarde: procesbegeleider?.name, naarWaarde: nieuw?.name });
           setBetrokkenen(bijgewerkt);
         }
-      } else if (editingField === 'hoofddoelTypeUuid') {
-        // W&P: "een plan heeft maar 1 hoofddoel actief". Switching completes
-        // the current hoofddoel-doel (history in the doelen tab), creates a
-        // new one of the chosen type and re-points the subdoelen to it.
-        const nieuwType = doeltypen.find(t => t.uuid === editValue);
-        if (!nieuwType || !details) throw new Error('Onbekend hoofddoeltype');
-        const isHoofddoelDoel = (d: Doel) => {
-          const t = doeltypen.find(x => x.uuid === d.doeltype?.uuid);
-          return t ? isHoofddoelType(t) : false;
-        };
-        const huidig = doelen.find(d => isHoofddoelDoel(d) && d.status === 'actief');
-        if (!huidig || huidig.doeltype?.uuid !== editValue) {
-          if (huidig) {
-            await openplan.doelen.update(huidig.uuid, { status: 'afgerond', einddatum: new Date().toISOString() });
-          }
-          const nieuw = await openplan.doelen.create({
-            plannenUuids: [plan.uuid],
-            persoonUuid: details.persoonUuid,
-            doeltypeUuid: nieuwType.uuid,
-            titel: doelTypeNaam(nieuwType),
-            beschrijving: plan.notitie || '',
-            startdatum: new Date().toISOString(),
-          });
-          const subdoelen = doelen.filter(d => !isHoofddoelDoel(d));
-          await Promise.all(subdoelen.map(d => openplan.doelen.update(d.uuid, { hoofdDoel: nieuw.uuid })));
-          rec({ soort: 'HOOFDDOEL_GEWISSELD', vanWaarde: huidig?.titel, naarWaarde: nieuw.titel });
-          setDoelen(await openplan.doelen.listByPlan(plan.uuid));
-        }
-        const updated = await pdca.plandetails.upsert(plan.uuid, { hoofddoelTypeUuid: editValue } as any);
-        setDetails(updated);
-      } else {
-        // Register-driven fields (beginPositie, subdoelgroep).
-        const updated = await pdca.plandetails.upsert(plan.uuid, { [editingField]: editValue.trim() } as any);
-        if (editingField === 'beginPositie' || editingField === 'subdoelgroep') {
-          rec({
-            soort: editingField === 'beginPositie' ? 'POSITIE' : 'SUBDOELGROEP', samenvoegen: true,
-            vanWaarde: details?.[editingField], naarWaarde: editValue.trim(),
-          });
-        }
-        setDetails(updated);
       }
     });
     if (ok) {
       setEditingField(null);
       showSuccess('Wijziging opgeslagen');
     }
-  }, [plan, editingField, editValue, doelen, doeltypen, details, procesbegeleider, fieldSubmit, showSuccess, rec]);
+  }, [plan, editingField, editValue, procesbegeleider, fieldSubmit, showSuccess, rec]);
 
   // A plan without procesbegeleider gets its first betrokkene as procesbegeleider by default.
   const openPartyModal = useCallback(() => {
@@ -656,11 +607,11 @@ export function PlanOverview() {
                   <h4>Plangegevens</h4>
                 </div>
                 <div className="pdca-card-body">
-                  {editableFields.map(({ key, label, emptyText, value, display, options, placeholder, hint }) => (
+                  {planFields.map(({ key, label, emptyText, value, display, options, placeholder, hint, readOnly }) => (
                     <div key={key} className="pdca-info-block">
                       <div className="pdca-info-label">
                         <span>{label}</span>
-                        {editingField !== key && !hint && (
+                        {editingField !== key && !hint && !readOnly && (
                           <Button size="sm" kind="ghost" onClick={() => startEditing(key, value)}>Bewerken</Button>
                         )}
                       </div>
