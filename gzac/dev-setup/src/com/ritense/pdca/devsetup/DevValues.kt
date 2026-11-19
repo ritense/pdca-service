@@ -16,6 +16,8 @@ data class DevValues(
     val pluginHost: PluginHostValues,
     val app: AppValues,
     val caseDefinitions: CaseDefinitionValues,
+    val epistola: EpistolaValues,
+    val systemProcesses: SystemProcessValues,
     val verzoek: VerzoekValues,
 ) {
     companion object {
@@ -71,6 +73,16 @@ data class GrantedEndpoint(val method: String, val pattern: String)
 data class ContractBinding(val contract: String, val pluginId: String)
 
 data class CaseDefinitionValues(val placeholderConfigurationId: String, val zips: List<String>)
+
+/** The Epistola Suite tenant the document templates go into, and the catalogs of `gzac/epistola/catalogs`. */
+data class EpistolaValues(val baseUrl: String, val tenantId: String, val apiKey: String, val catalogs: List<String>)
+
+/**
+ * The system process zips of `gzac/system-processes`; their Epistola process
+ * links carry [epistolaPlaceholderConfigurationId], their PDCA links the
+ * case definitions' placeholder.
+ */
+data class SystemProcessValues(val epistolaPlaceholderConfigurationId: String, val zips: List<String>)
 
 data class VerzoekValues(
     val notificatiesApiCallbackUrl: String,

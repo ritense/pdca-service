@@ -92,6 +92,49 @@ class GzacClient(
     }
 
     /**
+     * Starts the BPMN process [processDefinitionKey] on the existing dossier
+     * [documentId] (the dossier stays as it is: empty content), e.g. the
+     * document process on a plan dossier. Returns the id of the started
+     * process instance. GZAC refuses with a list of reasons (400), which is
+     * logged; any failure is a 502.
+     */
+    fun startProcessOnDossier(processDefinitionKey: String, documentId: String): String? {
+        val (baseUrl, token) = resolveAccess()
+        val body = mapOf(
+            "processDefinitionKey" to processDefinitionKey,
+            "request" to mapOf("documentId" to documentId, "content" to emptyMap<String, Any>())
+        )
+        val failure = ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC kon het documentproces '$processDefinitionKey' niet starten")
+
+        val result = try {
+            gzac.post()
+                .uri("$baseUrl/api/v1/process-document/operation/modify-document-and-start-process")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(body)
+                .retrieve()
+                .body(Map::class.java)
+        } catch (e: HttpClientErrorException) {
+            val errors = runCatching { e.getResponseBodyAs(Map::class.java)?.get("errors") }.getOrNull()
+            log.warn(
+                "GZAC refused to start process '{}' on dossier {} ({}): {}",
+                processDefinitionKey, documentId, e.statusCode.value(), errors ?: "(no reasons)"
+            )
+            throw failure
+        } catch (e: Exception) {
+            log.warn("Starting process '{}' on GZAC dossier {} failed", processDefinitionKey, documentId, e)
+            throw failure
+        }
+
+        val errors = (result?.get("errors") as? List<*>)?.filterNotNull() ?: emptyList<Any>()
+        if (errors.isNotEmpty()) {
+            log.warn("GZAC did not start process '{}' on dossier {}: {}", processDefinitionKey, documentId, errors)
+            throw failure
+        }
+        return result?.get("processInstanceId")?.toString()
+    }
+
+    /**
      * The case-definition keys in GZAC, for the case-type dropdowns in PDCA
      * Beheer. Deliberately the **management** list: the `/api/v1` variant is
      * PBAC-filtered per caller and hides case types without document

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 4,
+  "resource": {
+    "type": "theme",
+    "slug": "pdca",
+    "name": "PDCA",
+    "description": "Huisstijl voor PDCA-documenten op A4.",
+    "documentStyles": {
+      "fontFamily": {
+        "slug": "inter",
+        "catalogKey": "system"
+      },
+      "fontSize": "10pt",
+      "lineHeight": 1.45,
+      "color": "#222222"
+    },
+    "pageSettings": {
+      "format": "A4",
+      "orientation": "portrait",
+      "margins": {
+        "top": 20,
+        "right": 20,
+        "bottom": 20,
+        "left": 20
+      }
+    }
+  }
+}

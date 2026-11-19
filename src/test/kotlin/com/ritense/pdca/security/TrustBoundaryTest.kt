@@ -31,10 +31,13 @@ import com.ritense.pdca.registers.RegisterProxyController
 import com.ritense.pdca.registers.openplan.OpenPlanGateway
 import com.ritense.pdca.repository.ActionRepository
 import com.ritense.pdca.repository.ContactmomentDetailsRepository
+import com.ritense.pdca.repository.DocumentAanvraagRepository
 import com.ritense.pdca.repository.DoelDetailsRepository
+import com.ritense.pdca.repository.EvaluationSessionRepository
 import com.ritense.pdca.repository.InstrumentDetailsRepository
 import com.ritense.pdca.repository.InvolvedPartyRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
+import com.ritense.pdca.service.DocumentAanvraagService
 import com.ritense.pdca.service.GzacClient
 import com.ritense.pdca.service.InstrumentActionService
 import com.ritense.pdca.web.rest.ErrorResponseAdvice
@@ -143,12 +146,15 @@ class TrustBoundaryTest {
     @MockitoBean private lateinit var gzacAccess: GzacAccess
     @MockitoBean private lateinit var configurationStore: ConfigurationStore
     @MockitoBean private lateinit var instrumentActionService: InstrumentActionService
+    @MockitoBean private lateinit var documentAanvraagService: DocumentAanvraagService
     @MockitoBean private lateinit var planDetailsRepository: PlanDetailsRepository
     @MockitoBean private lateinit var doelDetailsRepository: DoelDetailsRepository
     @MockitoBean private lateinit var instrumentDetailsRepository: InstrumentDetailsRepository
     @MockitoBean private lateinit var contactmomentDetailsRepository: ContactmomentDetailsRepository
     @MockitoBean private lateinit var actionRepository: ActionRepository
     @MockitoBean private lateinit var involvedPartyRepository: InvolvedPartyRepository
+    @MockitoBean private lateinit var evaluationSessionRepository: EvaluationSessionRepository
+    @MockitoBean private lateinit var documentAanvraagRepository: DocumentAanvraagRepository
     @MockitoBean private lateinit var openPlanGateway: OpenPlanGateway
     @MockitoBean(name = "openPlanRestClient") private lateinit var openPlanRestClient: RestClient
     @MockitoBean(name = "openProductRestClient") private lateinit var openProductRestClient: RestClient
@@ -229,6 +235,21 @@ class TrustBoundaryTest {
         val unavailable = send("POST", path, active, signedHeaders("POST", path, active))
         assertEquals(503, unavailable.statusCode())
         assertEquals("TIJDELIJK_NIET_BESCHIKBAAR", json(unavailable)["errorCode"])
+    }
+
+    @Test
+    fun `the document process gets the data of its dossier as process variables`() {
+        val path = "/plugins/pdca/0.2.0/actions/document-aanvraag-ophalen"
+        val body = """{"configurationId":"$configId","processInstanceId":"proces-1","documentId":"plan-dossier","properties":{}}"""
+        `when`(documentAanvraagService.claim("plan-dossier", "proces-1")).thenReturn(
+            mapOf("variables" to mapOf("pdcaAanvraagId" to "a1", "pdcaBestandsnaam" to "evaluatieverslag.pdf", "pdcaGegevens" to emptyMap<String, Any>()))
+        )
+
+        val response = send("POST", path, body, signedHeaders("POST", path, body))
+
+        assertEquals(200, response.statusCode(), response.body())
+        assertEquals("completed", json(response)["status"])
+        assertEquals("a1", (json(response)["variables"] as Map<*, *>)["pdcaAanvraagId"])
     }
 
     // ------------------------------------------------------------ closed API

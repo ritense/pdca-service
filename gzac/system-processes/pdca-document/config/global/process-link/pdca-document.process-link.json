@@ -1,0 +1,74 @@
+[
+    {
+        "activityId": "gegevens-ophalen",
+        "activityType": "bpmn:ServiceTask:start",
+        "processLinkType": "external_plugin",
+        "externalPluginConfigurationId": "00000000-0000-4000-8000-00000000dca0",
+        "actionKey": "document-aanvraag-ophalen",
+        "pluginDefinitionKey": "pdca",
+        "pluginVersion": "0.2.0",
+        "actionProperties": {},
+        "actionResultMappings": []
+    },
+    {
+        "activityId": "document-genereren",
+        "activityType": "bpmn:ServiceTask:start",
+        "processLinkType": "plugin",
+        "pluginConfigurationId": "00000000-0000-4000-8000-0000dca00005",
+        "pluginActionDefinitionKey": "epistola-generate-document",
+        "pluginDefinitionKey": "epistola",
+        "actionProperties": {
+            "actionConfigVersion": 1,
+            "catalogId": "pdca-documenten",
+            "templateId": "evaluatieverslag",
+            "dataMapping": "$pv.pdcaGegevens",
+            "outputFormat": "\"PDF\"",
+            "filename": "$pv.pdcaBestandsnaam",
+            "resultProcessVariable": "epistolaResult"
+        }
+    },
+    {
+        "activityId": "document-downloaden",
+        "activityType": "bpmn:ServiceTask:start",
+        "processLinkType": "plugin",
+        "pluginConfigurationId": "00000000-0000-4000-8000-0000dca00005",
+        "pluginActionDefinitionKey": "epistola-download-document",
+        "pluginDefinitionKey": "epistola",
+        "actionProperties": {
+            "documentVariable": "epistolaResult",
+            "storageTarget": "PROCESS_VARIABLE",
+            "contentVariable": "pdcaDocumentInhoud"
+        }
+    },
+    {
+        "activityId": "document-gereed",
+        "activityType": "bpmn:ServiceTask:start",
+        "processLinkType": "external_plugin",
+        "externalPluginConfigurationId": "00000000-0000-4000-8000-00000000dca0",
+        "actionKey": "document-gereed",
+        "pluginDefinitionKey": "pdca",
+        "pluginVersion": "0.2.0",
+        "actionProperties": {
+            "aanvraagId": "pv:pdcaAanvraagId",
+            "uitkomst": "GEREED",
+            "inhoud": "pv:pdcaDocumentInhoud",
+            "bestandsnaam": "pv:pdcaBestandsnaam"
+        },
+        "actionResultMappings": []
+    },
+    {
+        "activityId": "document-mislukt",
+        "activityType": "bpmn:ServiceTask:start",
+        "processLinkType": "external_plugin",
+        "externalPluginConfigurationId": "00000000-0000-4000-8000-00000000dca0",
+        "actionKey": "document-gereed",
+        "pluginDefinitionKey": "pdca",
+        "pluginVersion": "0.2.0",
+        "actionProperties": {
+            "aanvraagId": "pv:pdcaAanvraagId",
+            "uitkomst": "MISLUKT",
+            "foutmelding": "pv:epistolaResult.errorMessage"
+        },
+        "actionResultMappings": []
+    }
+]

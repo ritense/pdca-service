@@ -3,11 +3,13 @@ import { Button, ContentSwitcher, InlineNotification, Switch, Tag } from '@carbo
 import { Klantcontact, openplan } from '../shared/api';
 import { useCaseConfig } from '../shared/caseConfig';
 import { datumDeel, formatDate } from '../shared/dates';
+import { verslagVan } from '../shared/documenten';
 import { offerEvaluationPanel, startEvaluationSession } from '../shared/evaluationSession';
 import { foutmelding } from '../shared/http';
 import { contactmomentDatum, evalTypeLabel, isHoofddoelType } from '../shared/labels';
 import { LaadFout, NietGeladen, PaginaLaden } from '../shared/Meldingen';
 import { PlanDossierPagina, PlanPaginaProps } from '../shared/PlanDossierPagina';
+import { useDocumenten } from '../shared/useDocumenten';
 import { useEvaluatieSessie } from '../shared/useEvaluatieSessie';
 import { usePlanData } from '../shared/usePlanData';
 import { eersteFout, useResource } from '../shared/useResource';
@@ -24,7 +26,8 @@ const isGepland = (cm: Klantcontact) => cm.indicatieContactGelukt == null;
  * moved) and run in GZAC's side panel ("Start evaluatie", or "Starten" on a
  * planned one). The user's own running evaluation of this plan is shown on
  * top (only to them); colleagues see an evaluation once it is completed,
- * with its gespreksverslag and the plan changes made during it.
+ * with its gespreksverslag, the plan changes made during it and its
+ * evaluatieverslag (PDF).
  */
 export function PlanEvaluations() {
   return <PlanDossierPagina>{props => <EvaluatiesPagina {...props} />}</PlanDossierPagina>;
@@ -35,7 +38,11 @@ function EvaluatiesPagina({ documentId, plan, details }: PlanPaginaProps) {
   // Actiepunten become acties under a subdoel; the doeltypen tell which doel is the hoofddoel.
   const doeltypen = useResource(() => openplan.doeltypen.list(), []);
   const caseConfig = useCaseConfig(details.caseDefinitionKey);
-  const evaluatie = useEvaluatieSessie(documentId, () => { planData.reload(); });
+  // The evaluatieverslagen: optional, so a failure only says so instead of failing the tab.
+  const { documenten, maakVerslag, actief: documentenActief } = useDocumenten(plan.uuid);
+  // An evaluation completed in the side panel shows up here with its verslag (recorded with the
+  // completion), without reloading the tab.
+  const evaluatie = useEvaluatieSessie(documentId, () => { planData.reload(); documenten.reload(); });
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
@@ -103,6 +110,7 @@ function EvaluatiesPagina({ documentId, plan, details }: PlanPaginaProps) {
       {fout && <LaadFout titel="De evaluaties konden niet worden bijgewerkt" error={fout.error} context="dossier" onRetry={fout.reload} />}
       {success && <InlineNotification className="pdca-notification" kind="success" title="Gelukt" subtitle={success} lowContrast onCloseButtonClick={() => setSuccess(null)} />}
       {evaluatie.fout != null && <NietGeladen wat="Je lopende evaluatie" error={evaluatie.fout} onRetry={evaluatie.opnieuw} />}
+      {documenten.error != null && <NietGeladen wat="De evaluatieverslagen" error={documenten.error} onRetry={documenten.reload} />}
       <div className="pdca-page-toolbar">
         <div>
           <h1>Evaluaties</h1>
@@ -146,9 +154,14 @@ function EvaluatiesPagina({ documentId, plan, details }: PlanPaginaProps) {
       {[...geplande, ...historie].map(cm => {
         const cmd = detailsVan(cm);
         const datum = datumVan(cm);
+        const uitgevoerdeEvaluatie = cmd?.evaluationSessionId
+          ? evaluaties.find(e => e.sessie.id === cmd.evaluationSessionId) : undefined;
         return (
-          <ContactmomentKaart key={cm.uuid} cm={cm} details={cmd} datum={datum}
-            evaluatie={cmd?.evaluationSessionId ? evaluaties.find(e => e.sessie.id === cmd.evaluationSessionId) : undefined}
+          <ContactmomentKaart key={cm.uuid} cm={cm} details={cmd} datum={datum} evaluatie={uitgevoerdeEvaluatie}
+            verslag={uitgevoerdeEvaluatie && documenten.data
+              ? verslagVan(documenten.data, uitgevoerdeEvaluatie.sessie.id) : undefined}
+            verslagMaken={documentenActief === true}
+            onMaakVerslag={maakVerslag}
             subdoelen={subdoelen} startenUit={!!session || starting} onStart={() => start(cm.uuid)}
             onVerzet={() => setVerzetten({ uuid: cm.uuid, datum: datum ? datumDeel(datum) : '' })} />
         );

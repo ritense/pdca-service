@@ -16,7 +16,8 @@
  * - The PDCA overlay (/api/v1/pdca) stores only what the registers don't
  *   model: fase/voortgang/notities per doel and instrument,
  *   evaluatietype/actiepunten per contactmoment, completed evaluations with
- *   their plan changes, acties, betrokkenen and phase-configs. Its PUT
+ *   their plan changes, acties, betrokkenen, phase-configs and the
+ *   documents generated for the plan (the evaluatieverslag). Its PUT
  *   endpoints are partial updates: an absent field keeps its value, null
  *   clears it.
  * - Lifecycle steps that span several objects or carry a business rule
@@ -28,7 +29,7 @@
 import { get, HttpError, listAll, send } from './http';
 import type {
   Actie, AfsluitCheck, Betrokkene, BrpPersoon, CompletedEvaluation, ContactmomentDetails, Doel, DoelDetails,
-  DoelType, HoofddoelWissel, Instrument, InstrumentDetails, InstrumentVerzoek, Klantcontact, LevenscyclusResultaat,
+  DocumentAanvraag, DocumentInhoud, DocumentInstellingen, DocumentSoort, DoelType, HoofddoelWissel, Instrument, InstrumentDetails, InstrumentVerzoek, Klantcontact, LevenscyclusResultaat,
   NewContactmoment, ObjectRecord, OpenVerzoek, PhaseConfig, Plan, PlanDetails, PlanType, ProductType, RelatieType,
   Resultaat, VoortgangStatusOptie,
 } from './types';
@@ -128,6 +129,20 @@ export const pdca = {
   /** Completed evaluations with their plan changes; running ones are never listed here. */
   evaluaties: {
     listByPlan: (planUuid: string) => get<CompletedEvaluation[]>(`${PDCA}/evaluaties`, { planUuid }),
+  },
+  /**
+   * Generated documents (the evaluatieverslag of a completed evaluation),
+   * made asynchronously by a GZAC process; listed as the latest aanvraag
+   * per soort and bron.
+   */
+  documenten: {
+    listByPlan: (planUuid: string) => get<DocumentAanvraag[]>(`${PDCA}/documenten`, { planUuid }),
+    /** The finished document (base64); 404 until it is GEREED. */
+    instellingen: () => get<DocumentInstellingen>(`${PDCA}/documenten/instellingen`),
+    inhoud: (id: string) => get<DocumentInhoud>(`${PDCA}/documenten/${id}/inhoud`),
+    /** Makes the document (again); 422 when document generation is off. */
+    maak: (data: { soort: DocumentSoort; bronUuid: string }) =>
+      send<DocumentAanvraag>('POST', `${PDCA}/documenten`, data),
   },
   acties: {
     listByPlan: (planUuid: string) => get<Actie[]>(`${PDCA}/acties`, { planUuid }),

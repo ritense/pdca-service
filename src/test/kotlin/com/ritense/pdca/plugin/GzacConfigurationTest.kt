@@ -21,12 +21,16 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.ritense.pdca.devsetup.DevValues
 import com.ritense.pdca.registers.Register
 import com.ritense.pdca.security.GzacInstances
+import com.ritense.pdca.service.DocumentAanvraagService
 import com.ritense.pdca.service.InstrumentActionService
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.`when`
 import org.springframework.http.HttpStatus
+import org.w3c.dom.Element
 import java.io.File
+import java.util.zip.ZipInputStream
+import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -34,9 +38,10 @@ import kotlin.test.fail
 /**
  * The GZAC configuration as code repeats what [PluginHostController]
  * declares and what the register plugins provide: the dev values of the
- * local GZAC setup (gzac/dev-setup) its grants, contracts and the register
- * plugins' capabilities and properties, the case definitions
- * (gzac/case-definitions) its actions, bundles, plugin version and
+ * local GZAC setup (gzac/dev-setup) its grants, configuration properties,
+ * contracts and the register plugins' capabilities and properties, the case
+ * definitions (gzac/case-definitions) and the system processes
+ * (gzac/system-processes) its actions, bundles, plugin version and
  * configuration. These checks keep them from drifting apart.
  */
 class GzacConfigurationTest {
@@ -68,12 +73,30 @@ class GzacConfigurationTest {
         caseVersions.flatMap { version -> version.resolve(kind).listFiles { f -> f.name.endsWith(".json") }.orEmpty().toList() }
             .map { it to objectMapper.readTree(it) }
 
+    /** The source tree of every system process: gzac/system-processes/<key>/config/global. */
+    private val systemProcesses = File(SYSTEM_PROCESSES).listFiles { f -> f.isDirectory }!!.map { it.resolve("config/global") }
+
+    /** Every process link of a case definition or a system process, with its file. */
+    private fun processLinks(): List<Pair<File, JsonNode>> =
+        (jsonFiles("process-link") + systemProcesses.flatMap { global ->
+            global.resolve("process-link").listFiles { f -> f.name.endsWith(".process-link.json") }.orEmpty().map { it to objectMapper.readTree(it) }
+        }).flatMap { (file, json) -> json.toList().map { file to it } }
+
     @Test
     fun `the PDCA configuration has exactly the grants the app declares`() {
         assertEquals(PluginHostController.PLUGIN_ID, pdca.pluginId)
         assertEquals(PluginHostController.PLUGIN_VERSION, pdca.pluginVersion)
         assertEquals(PluginHostController.CAPABILITIES, pdca.grantedCapabilities)
         assertEquals(PluginHostController.GRANTED_ENDPOINTS, pdca.grantedEndpoints.map { mapOf("method" to it.method, "pattern" to it.pattern) })
+    }
+
+    @Test
+    fun `the PDCA configuration only sets properties of the app's configuration schema`() {
+        @Suppress("UNCHECKED_CAST")
+        val schema = (manifest["configurationSchema"] as Map<String, Any?>)["properties"] as Map<String, Any?>
+        val given = pdca.properties.fieldNames().asSequence().toSet()
+        assertTrue(schema.keys.containsAll(given), "undeclared configuration properties ${given - schema.keys}")
+        assertEquals(SYSTEM_PROCESS_KEY, pdca.properties.path("documentProces").asText(), "the dev configuration makes documents with the system process")
     }
 
     @Test
@@ -115,9 +138,9 @@ class GzacConfigurationTest {
 
     @Test
     fun `every external plugin process link runs a declared action the app handles, with its declared properties`() {
-        val links = jsonFiles("process-link").flatMap { (file, json) -> json.toList().map { file to it } }
-            .filter { (_, link) -> link.path("processLinkType").asText() == "external_plugin" }
-        assertTrue(links.isNotEmpty(), "the instrument dossier runs plugin actions")
+        val links = processLinks().filter { (_, link) -> link.path("processLinkType").asText() == "external_plugin" }
+        assertTrue(links.any { (file, _) -> file.name == "instrument-verzoek.process-link.json" }, "the instrument dossier runs plugin actions")
+        assertTrue(links.any { (file, _) -> file.name == "$SYSTEM_PROCESS_KEY.process-link.json" }, "the document process runs plugin actions")
         links.forEach { (file, link) ->
             val where = "${file.name} ${link.path("activityId").asText()}"
             val action = actions[link.path("actionKey").asText()] ?: fail("$where: action '${link.path("actionKey").asText()}' is not in the manifest")
@@ -138,7 +161,7 @@ class GzacConfigurationTest {
         // Without an active configuration a handled action answers 503 before it runs; an unknown one 404.
         val gzacAccess = mock(GzacAccess::class.java)
         `when`(gzacAccess.resolve()).thenReturn(GzacAccess.Resolution.Unavailable("niet actief", nonePushed = true))
-        val controller = PluginActionController(mock(InstrumentActionService::class.java), gzacAccess)
+        val controller = PluginActionController(mock(InstrumentActionService::class.java), gzacAccess, mock(DocumentAanvraagService::class.java))
         fun answer(key: String) = controller.invokeAction(PluginHostController.PLUGIN_ID, PluginHostController.PLUGIN_VERSION, key, emptyMap()).statusCode
         actions.keys.forEach { key -> assertEquals(HttpStatus.SERVICE_UNAVAILABLE, answer(key), "PluginActionController handles the declared action '$key'") }
         assertEquals(HttpStatus.NOT_FOUND, answer("onbekend"))
@@ -149,8 +172,7 @@ class GzacConfigurationTest {
         val configurationId = devValues.caseDefinitions.placeholderConfigurationId
         val references = mutableListOf<String>()
 
-        jsonFiles("process-link").flatMap { (file, json) -> json.toList().map { file to it } }
-            .filter { (_, link) -> link.path("processLinkType").asText().startsWith("external_plugin") }
+        processLinks().filter { (_, link) -> link.path("processLinkType").asText().startsWith("external_plugin") }
             .forEach { (file, link) ->
                 val where = "${file.name} ${link.path("activityId").asText()}"
                 references += where
@@ -190,6 +212,70 @@ class GzacConfigurationTest {
         }
     }
 
+    @Test
+    fun `the dev setup imports every system process zip, built from its source tree`() {
+        val zips = File(SYSTEM_PROCESSES).listFiles { f -> f.name.endsWith(".zip") }!!.map { it.nameWithoutExtension }
+        assertEquals(zips.toSet(), devValues.systemProcesses.zips.toSet())
+        assertEquals(zips.toSet(), systemProcesses.map { it.parentFile.parentFile.name }.toSet(), "a zip per source tree")
+        systemProcesses.forEach { global ->
+            val root = global.parentFile.parentFile
+            val sources = global.walkTopDown().filter { it.isFile && it.name != ".DS_Store" }
+                .associate { it.relativeTo(root).invariantSeparatorsPath to it.readText() }
+            val entries = ZipInputStream(root.resolveSibling("${root.name}.zip").inputStream()).use { zip ->
+                generateSequence { zip.nextEntry }.filterNot { it.isDirectory }.associate { it.name to zip.readBytes().decodeToString() }
+            }
+            assertEquals(sources, entries, "${root.name}.zip is up to date (./gradlew buildGzacZips)")
+        }
+    }
+
+    @Test
+    fun `every system process is named after its key and links only its own activities`() {
+        systemProcesses.forEach { global ->
+            val key = global.parentFile.parentFile.name
+            val bpmnFiles = global.resolve("bpmn").listFiles { f -> f.name.endsWith(".bpmn") }.orEmpty().toList()
+            assertEquals(listOf("$key.bpmn"), bpmnFiles.map { it.name }, "$key: one BPMN named after the key")
+            val bpmn = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }.newDocumentBuilder().parse(bpmnFiles.single())
+            val processes = bpmn.getElementsByTagNameNS(BPMN_MODEL, "process")
+            assertEquals(1, processes.length, "$key: one process")
+            val process = processes.item(0) as Element
+            assertEquals(key, process.getAttribute("id"), "$key: process id")
+            assertTrue(!process.getAttributeNS(CAMUNDA, "versionTag").matches(Regex("^(CD|BB):.*")), "$key: no case or building block version tag")
+            val activities = (0 until process.childNodes.length).map { process.childNodes.item(it) }
+                .filterIsInstance<Element>().associateBy { it.getAttribute("id") }
+
+            val linkFiles = global.resolve("process-link").listFiles { f -> f.name.endsWith(".json") }.orEmpty().toList()
+            assertEquals(listOf("$key.process-link.json"), linkFiles.map { it.name }, "$key: one link file named after the key")
+            objectMapper.readTree(linkFiles.single()).toList().forEach { link ->
+                val activityId = link.path("activityId").asText()
+                val activity = activities[activityId] ?: fail("$key: link to unknown activity $activityId")
+                assertEquals("bpmn:ServiceTask:start", link.path("activityType").asText(), "$key $activityId: activity type")
+                assertEquals("serviceTask", activity.localName, "$key $activityId: a service task")
+                when (link.path("processLinkType").asText()) {
+                    "external_plugin" -> {
+                        // GZAC runs a PDCA action as an asynchronous job, retried before it becomes an incident.
+                        assertEquals("true", activity.getAttributeNS(CAMUNDA, "asyncBefore"), "$key $activityId: asyncBefore")
+                        assertEquals("\${true}", activity.getAttributeNS(CAMUNDA, "expression"), "$key $activityId: expression")
+                    }
+                    "plugin" -> {
+                        assertEquals(EPISTOLA, link.path("pluginDefinitionKey").asText(), "$key $activityId: plugin")
+                        assertEquals(
+                            devValues.systemProcesses.epistolaPlaceholderConfigurationId,
+                            link.path("pluginConfigurationId").asText(),
+                            "$key $activityId: Epistola placeholder configuration",
+                        )
+                        // The Epistola plugin needs these without the asyncAfter GZAC adds to a service task without expression.
+                        assertEquals("\${null}", activity.getAttributeNS(CAMUNDA, "expression"), "$key $activityId: expression")
+                        assertEquals("", activity.getAttributeNS(CAMUNDA, "asyncAfter"), "$key $activityId: no asyncAfter")
+                    }
+                    else -> fail("$key $activityId: unexpected process link type ${link.path("processLinkType").asText()}")
+                }
+            }
+            activities.values.filter { it.localName == "intermediateCatchEvent" }.forEach { event ->
+                assertEquals("", event.getAttributeNS(CAMUNDA, "asyncBefore"), "$key ${event.getAttribute("id")}: no asyncBefore")
+            }
+        }
+    }
+
     private fun assertPlugin(where: String, reference: JsonNode) {
         assertEquals(PluginHostController.PLUGIN_ID, reference.path("pluginDefinitionKey").asText(), "$where: plugin")
         assertEquals(PluginHostController.PLUGIN_VERSION, reference.path("pluginVersion").asText(), "$where: plugin version")
@@ -199,5 +285,10 @@ class GzacConfigurationTest {
 
     private companion object {
         const val CASE_DEFINITIONS = "gzac/case-definitions"
+        const val SYSTEM_PROCESSES = "gzac/system-processes"
+        const val SYSTEM_PROCESS_KEY = "pdca-document"
+        const val EPISTOLA = "epistola"
+        const val BPMN_MODEL = "http://www.omg.org/spec/BPMN/20100524/MODEL"
+        const val CAMUNDA = "http://camunda.org/schema/1.0/bpmn"
     }
 }

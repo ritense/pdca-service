@@ -25,6 +25,7 @@ import com.ritense.pdca.domain.VoortgangStatusOptie
 import com.ritense.pdca.registers.openplan.OpenPlanGateway
 import com.ritense.pdca.repository.ActionRepository
 import com.ritense.pdca.repository.ContactmomentDetailsRepository
+import com.ritense.pdca.repository.DocumentAanvraagRepository
 import com.ritense.pdca.repository.DoelDetailsRepository
 import com.ritense.pdca.repository.EvaluationChangeRepository
 import com.ritense.pdca.repository.EvaluationSessionRepository
@@ -67,6 +68,7 @@ class PlanOverlayService(
     private val involvedPartyRepository: InvolvedPartyRepository,
     private val evaluationSessionRepository: EvaluationSessionRepository,
     private val evaluationChangeRepository: EvaluationChangeRepository,
+    private val documentAanvraagRepository: DocumentAanvraagRepository,
     private val phaseConfigService: PhaseConfigService,
     private val openPlanGateway: OpenPlanGateway,
     private val transactionTemplate: TransactionTemplate
@@ -96,8 +98,8 @@ class PlanOverlayService(
     /**
      * Removes all local overlay data of a plan (called after the plan is
      * deleted in Open Plan): the rows per doel, instrument and contactmoment,
-     * acties, betrokkenen, and the evaluations run on the plan with their
-     * recorded changes.
+     * acties, betrokkenen, the evaluations run on the plan with their
+     * recorded changes, and its documents.
      */
     @Transactional
     fun deletePlanDetails(planUuid: UUID) {
@@ -112,6 +114,7 @@ class PlanOverlayService(
             evaluationChangeRepository.deleteBySessionIdIn(sessies.map { it.id })
             evaluationSessionRepository.deleteAll(sessies)
         }
+        documentAanvraagRepository.deleteAllOfPlan(planUuid)
         planDetailsRepository.deleteById(planUuid)
     }
 

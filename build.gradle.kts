@@ -65,6 +65,10 @@ tasks.withType<Test> {
     // plugins' manifests and allowlists. A change there reruns the tests.
     inputs.dir("gzac/case-definitions").withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("gzacCaseDefinitions")
+    inputs.dir("gzac/system-processes").withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("gzacSystemProcesses")
+    inputs.dir("gzac/epistola").withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("gzacEpistola")
     inputs.file("gzac/dev-setup/dev-values.json").withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("gzacDevValues")
     listOf("openplan", "openproduct", "openklant", "objecten").forEach { plugin ->
@@ -201,10 +205,28 @@ val caseZipTasks = caseKeys.map { caseKey ->
     }
 }
 
+// Importable GZAC system process zips (config/global/, see
+// gzac/system-processes/README.md): global processes outside any case
+// definition, imported through Process management. Same reproducible output.
+val systemProcessKeys = listOf("pdca-document")
+val systemProcessZipTasks = systemProcessKeys.map { processKey ->
+    tasks.register<Zip>("systemProcessZip-$processKey") {
+        group = "gzac"
+        description = "Build the importable GZAC system process zip for '$processKey'"
+        from(layout.projectDirectory.dir("gzac/system-processes/$processKey"))
+        include("config/**")
+        exclude("**/.DS_Store")
+        archiveFileName = "$processKey.zip"
+        destinationDirectory = layout.projectDirectory.dir("gzac/system-processes")
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
+    }
+}
+
 tasks.register("buildGzacZips") {
     group = "gzac"
-    description = "Build all importable GZAC case-definition zips"
-    dependsOn(caseZipTasks)
+    description = "Build all importable GZAC case-definition and system process zips"
+    dependsOn(caseZipTasks, systemProcessZipTasks)
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 package com.ritense.pdca.plugin
 
+import com.ritense.pdca.service.DocumentAanvraagService
 import com.ritense.pdca.service.InstrumentActionService
 import com.ritense.pdca.service.PluginActionException
 import org.slf4j.LoggerFactory
@@ -18,7 +19,9 @@ import org.springframework.web.server.ResponseStatusException
  * properties}; the properties are already resolved by GZAC (doc: and pv:
  * references are real values by then).
  *
- * Response: 200 {"status": "completed"} on success; on failure
+ * Response: 200 {"status": "completed"} on success, plus `result` (the
+ * declared outputs) or `variables` (process variables GZAC sets) for an
+ * action that returns data; on failure
  * {"status": "error", errorCode, errorMessage} with 422 for a business
  * refusal (retrying does not help) and 503 for a temporary outage of a
  * register or GZAC (retrying later does). GZAC turns every non-2xx answer
@@ -34,7 +37,8 @@ import org.springframework.web.server.ResponseStatusException
 @RestController
 class PluginActionController(
     private val instrumentActionService: InstrumentActionService,
-    private val gzacAccess: GzacAccess
+    private val gzacAccess: GzacAccess,
+    private val documentAanvraagService: DocumentAanvraagService
 ) {
 
     private val logger = LoggerFactory.getLogger(PluginActionController::class.java)
@@ -68,6 +72,20 @@ class PluginActionController(
             "update-instrument" -> {
                 {
                     instrumentActionService.handleUpdateInstrument(properties)
+                    emptyMap()
+                }
+            }
+
+            // The document process (configuration property documentProces)
+            // fetches the data of its document request as process variables,
+            // and hands the document back.
+            "document-aanvraag-ophalen" -> {
+                { documentAanvraagService.claim(documentId, body["processInstanceId"]?.toString()) }
+            }
+
+            "document-gereed" -> {
+                {
+                    documentAanvraagService.recordOutcome(documentId, body["processInstanceId"]?.toString(), properties)
                     emptyMap()
                 }
             }

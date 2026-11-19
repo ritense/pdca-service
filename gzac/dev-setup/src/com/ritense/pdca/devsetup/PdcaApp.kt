@@ -121,9 +121,10 @@ class PdcaApp(private val api: GzacApi, private val values: DevValues) {
     }
 
     /**
-     * What the app's registration and configuration lack, without changing
-     * anything; [registerConfigurations] is the configuration id per register
-     * plugin id as GZAC has it now.
+     * What the app's registration and configuration (its contract bindings
+     * and the properties of the dev values) lack, without changing anything;
+     * [registerConfigurations] is the configuration id per register plugin
+     * id as GZAC has it now.
      */
     fun missing(registerConfigurations: Map<String, String?>): List<String> {
         val configuration = app.configuration
@@ -132,7 +133,9 @@ class PdcaApp(private val api: GzacApi, private val values: DevValues) {
             ?: return listOf("PDCA configuration (${configuration.pluginId} ${configuration.pluginVersion} not discovered yet)")
         val existing = findConfiguration(definition) ?: return listOf("PDCA configuration")
         val desired = configuration.contractBindings.associate { it.contract to registerConfigurations[it.pluginId] }
-        return missingBindings(desired, plugins.configuration(existing.text("id")!!).path("contractBindings"))
+        val current = plugins.configuration(existing.text("id")!!)
+        return missingBindings(desired, current.path("contractBindings")) +
+            differingProperties(configuration.properties, current.path("properties"))
     }
 
     private fun findConfiguration(definition: JsonNode): JsonNode? {
@@ -156,5 +159,11 @@ class PdcaApp(private val api: GzacApi, private val values: DevValues) {
             val bound = current.items().associate { it.text("contract") to it.text("targetConfigurationId") }
             return desired.filter { (contract, target) -> target == null || bound[contract] != target }.keys.map { "contract binding $it" }
         }
+
+        /** The properties of [desired] (the dev values) that [current], the configuration's properties in GZAC, holds otherwise. */
+        fun differingProperties(desired: JsonNode, current: JsonNode): List<String> =
+            desired.fieldNames().asSequence().filter { current.get(it) != desired.get(it) }.map { name ->
+                "PDCA configuration property $name (is ${current.get(name)?.toString() ?: "not set"})"
+            }.toList()
     }
 }

@@ -1,8 +1,8 @@
 # Local GZAC dev setup
 
 Configures a local GZAC — the dev app of a Valtimo checkout with
-its `gzac-docker-compose` stack — for the PDCA app and the verzoek route
-(ARCHITECTURE §6.2). It works like an administrator clicking through GZAC's
+its `gzac-docker-compose` stack — for the PDCA app, the verzoek route
+(ARCHITECTURE §6.2) and the document process with its Epistola templates. It works like an administrator clicking through GZAC's
 admin: it logs in as the dev administrator and uses GZAC's admin REST API.
 Nothing is added to GZAC's classpath, GZAC is never restarted and the Valtimo
 checkout is never changed. Every step looks up what is there and creates or
@@ -41,8 +41,12 @@ Configure GZAC for PDCA? [y/n]
 - **PDCA set up in GZAC** — while GZAC runs, the setup program's `--check`
   looks, without changing anything, for the register plugin configurations,
   the Verzoek plugin configuration and Notificaties API callback URL, the
-  PDCA app's registration and configuration with its four contract
-  bindings, and the case definitions, imported and active.
+  Epistola catalog `pdca-documenten` with the release of its `catalog.json`
+  in the Epistola Suite (or that the Suite does not answer), the PDCA app's
+  registration and configuration with its four contract bindings and its
+  properties (`documentProces`), the case definitions, imported and active,
+  and the system process `pdca-document`, imported with its process links
+  on the PDCA configuration and an existing Epistola configuration.
 
 The question comes only when something is left to set up: when the check
 finds a gap, cannot tell, or GZAC is not running yet; otherwise the
@@ -55,7 +59,8 @@ After a yes, `bootRunWithDocker` builds the register plugin packages
 (`buildPlugins`), starts the app and runs the whole setup in the background:
 it waits for GZAC (its ping and the dev login, up to 15 minutes), does the
 steps below that need only GZAC, waits for the app's `/health` (up to 15
-minutes) and adds the PDCA configuration and the case definitions. So GZAC
+minutes) and adds the PDCA configuration, the case definitions and the
+document process. So GZAC
 may start before or after the app. The background run never holds up or
 stops the app, ends with the build, and closes with one line:
 *GZAC set up for PDCA: open http://localhost:4200*, or what is not finished
@@ -76,13 +81,17 @@ step.
 | Verzoek objecttype | `registers/setup-registers.sh`: the objecttype `InstrumentVerzoek` (fixed uuid `00000000-0000-4000-8000-0000dca00001`, published version 1 with `../objecttypen/instrument-verzoek.schema.json`) in the stack's Objecttypen API, registered in its Objecten API with read/write for the stack's API token; Django shells in the containers through `docker exec` | — |
 | Register plugins | uploads `plugins/<name>/dist/<name>-<version>.zip` of `openplan`, `openproduct`, `openklant` and `objecten` to the stack's plugin host (a package with other content replaces the one of the same version), waits for their discovery and creates or updates their configurations | `POST …/external-plugin/host/{id}/upload`, `GET …/definition`, `POST`/`PUT …/configuration` |
 | Verzoek route | an Objecttypen API configuration at `host.docker.internal:8011` (below), the object management `InstrumentVerzoek`, the Verzoek plugin configuration (type `instrument` → case and process `instrument-verzoek`, copy strategy full) and the callback URL of the dev app's Notificaties API configuration | `/api/v1/plugin/configuration`, `/api/v1/object/management/configuration` |
+| Epistola templates | imports each catalog of `../epistola/catalogs/` (`pdca-documenten`, zipped from its `catalog.json` and `resources/`) into the Epistola Suite tenant as authored catalog (mode merge) and releases it with the version of its `catalog.json`; a catalog whose release the Suite has is left alone | Epistola Suite: `GET /tenants/{tenant}/catalogs`, `POST …/catalogs/import`, `POST …/catalogs/{slug}/release` |
 | PDCA app | registers the app as external app (URL app) with its secret, callback URL and frontend origin, or re-applies them | `POST …/host`, `PATCH …/host/{id}/connection` |
 | PDCA configuration *(needs the app)* | waits until GZAC has discovered the app's manifest (accepting a changed manifest of the same version), then creates or updates the configuration with exactly the manifest's grants and the four contract bindings | `GET …/definition`, `POST`/`PUT …/configuration` |
 | Case definitions *(needs the app)* | imports the five zips of `../case-definitions/` that GZAC does not hold yet, mapping their placeholder configuration id to the PDCA configuration, activates them, and gives `instrument-verzoek` its zaak type link | `POST /api/management/v1/case/import`, `POST …/case-definition/{key}/version/{tag}/active` |
+| Document process *(needs the app)* | imports `../system-processes/pdca-document.zip`, mapping its PDCA placeholder to the PDCA configuration and its Epistola placeholder to the dev app's Epistola plugin configuration (looked up, not assumed by id; without one the step fails: the Valtimo dev app only has it on the Epistola branch) | `POST …/process-definition/import`, `GET …/process-definition/key/{key}` |
 
-`…` is `/api/management/v1`. The dev app's own ZGW plugin configurations
-(Notificaties, Objecten, Objecttypen, Zaken and Catalogi API) are looked up
-through the API, not assumed by id.
+`…` is `/api/management/v1` (in the Epistola row: `/tenants/{tenant}`).
+The dev app's own ZGW plugin configurations (Notificaties, Objecten,
+Objecttypen, Zaken and Catalogi API) and its Epistola configuration are
+looked up through the API, not assumed by id. The Epistola Suite is called
+directly with the tenant's API key (`Authorization: ApiKey …`).
 
 The setup is a small Kotlin program (`src/`, Gradle source set `devSetup`);
 `DevSetupTest` and `GzacConfigurationTest` cover its inputs and checks.
@@ -107,6 +116,8 @@ GZAC. Values written as `${NAME:default}` take the environment variable
 | `PDCA_GZAC_NOTIFICATIES_CALLBACK_URL` | `http://host.docker.internal:8080/api/v1/notificatiesapi/callback` | the Notificaties API callback URL (below) |
 | `PDCA_VERZOEK_OBJECTTYPEN_API_URL` | `http://host.docker.internal:8011/api/v2/` | the verzoek's Objecttypen API configuration (below) |
 | `PDCA_VERZOEK_RSIN`, `PDCA_VERZOEK_INITIATOR_ROLTYPE_UUID`, `PDCA_VERZOEK_ZAAKTYPE_UUID` | `051845623`, `1c359a1b-…`, `744ca059-…` | the dev organisation's RSIN and the initiator roltype and zaaktype of the stack's catalogue |
+| `PDCA_EPISTOLA_URL` | `http://localhost:4000/api` | the Epistola Suite's API, for the catalog import |
+| `PDCA_EPISTOLA_TENANT`, `PDCA_EPISTOLA_API_KEY` | `demo`, the demo tenant's API key | the Suite tenant the catalogs go into: the tenant of the dev app's Epistola configuration |
 
 GZAC itself and the login come from these variables:
 
@@ -158,9 +169,11 @@ on the plugin host creates verzoeken at `host.docker.internal:8010`). Hence:
   configuration of their plugin version) and updated; the PDCA app's
   registration is found by base URL or name. Updating sends every property
   again, secrets included, which also stores them encrypted.
-- **Configuration ids** are chosen by GZAC; the case zips refer to the PDCA
-  configuration by the placeholder `00000000-0000-4000-8000-00000000dca0`,
-  which the import maps to the real id.
+- **Configuration ids** are chosen by GZAC; the case zips and the system
+  process refer to the PDCA configuration by the placeholder
+  `00000000-0000-4000-8000-00000000dca0`, the system process to the
+  Epistola configuration by `00000000-0000-4000-8000-0000dca00005`; the
+  import maps them to the real ids.
 - **Capabilities** of a configuration cannot change after it was created;
   when they differ from the dev values the setup says so, and the
   configuration has to be deleted in Admin → Plugins before running again.
@@ -171,6 +184,14 @@ on the plugin host creates verzoeken at `host.docker.internal:8010`). Hence:
   until you delete them in the admin.
 - **Case definitions** are final releases: a version GZAC already holds is
   left alone (`../case-definitions/README.md`, "Versions").
+- **The system process** is imported on every run: GZAC deploys no new
+  version for a BPMN equal to its latest one and replaces that version's
+  process links with the imported ones, so a run only re-links them; a
+  changed BPMN becomes a new version.
+- **Epistola catalogs** are imported only when the Suite lacks the release
+  of their `catalog.json` (every import makes new template versions). A
+  changed catalog needs a higher `release.version`; when the Suite already
+  has a newer release than `catalog.json`, the step fails and says so.
 
 ## The zaak type link
 
@@ -187,6 +208,7 @@ without that link cannot get it afterwards; the setup reports it.
 ## Importing elsewhere
 
 The setup is for the local stack. In another environment the same
-configuration is made in the admin (README.md, "Any other GZAC", and
-`../case-definitions/README.md`); `dev-values.json` lists exactly which
-grants and bindings the PDCA configuration needs.
+configuration is made in the admin (README.md, "Any other GZAC",
+`../case-definitions/README.md` and `../system-processes/README.md`);
+`dev-values.json` lists exactly which grants, properties and bindings the
+PDCA configuration needs.

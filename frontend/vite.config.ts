@@ -38,6 +38,9 @@ export default defineConfig({
   build: {
     outDir,
     emptyOutDir: true,
+    // pdf.js (its worker code above all) is far larger than Vite's default
+    // limit; it is a lazy chunk, loaded only when a PDF is shown.
+    chunkSizeWarningLimit: 1400,
     rollupOptions: {
       input: Object.fromEntries(
         bundles.map(name => [name, resolve(root, `src/${name}/index.html`)])
