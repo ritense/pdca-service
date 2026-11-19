@@ -1,12 +1,14 @@
 /**
- * Endpoints of the create-plan task form: the prefill from the dossier
- * content, the one-call plan creation and linking an existing plan. Errors
- * carry the backend's own `message` (unknown hoofddoel, positie outside the
- * register, the one-active-plan rule), so refusals read as plain sentences.
+ * Endpoints of the create-plan task form (on the shared HTTP client): the
+ * prefill from the intake dossier's content and the one-call plan creation.
+ * A refusal is an `HttpError` carrying the backend's own `detail` (unknown
+ * hoofddoel, positie outside the register, the one-active-plan rule), so the
+ * form can tell a refusal (4xx) from an interrupted creation (409 "wordt al
+ * aangemaakt", 5xx, no answer) that a retry completes.
  */
 
-const API_BASE = window.location.origin.startsWith('http') ? window.location.origin : 'http://localhost:7500';
-const PDCA = `${API_BASE}/api/v1/pdca`;
+import { PDCA } from '../shared/api';
+import { get, send } from '../shared/http';
 
 export type SubjectType = 'PERSON' | 'OBJECT';
 
@@ -34,7 +36,7 @@ export interface PlanPrefill {
 export interface PlanPrefillResponse {
   documentId: string;
   caseDefinitionKey?: string | null;
-  /** Case type of the plan resulting from this dossier; differs from caseDefinitionKey for an intake case type. */
+  /** Case type of the plan resulting from this intake dossier; null when the dossier's case type is no intake. */
   planCaseDefinitionKey?: string | null;
   mapping?: Record<string, string>;
   prefill?: PlanPrefill | null;
@@ -44,8 +46,8 @@ export type DoelStatus = 'gepland' | 'gestart' | 'afgerond';
 export type EvaluatieStatus = 'gepland' | 'afgerond';
 
 export interface PlanIntakeRequest {
-  documentId: string | null;
-  caseDefinitionKey: string;
+  /** The intake dossier the task form runs in. */
+  documentId: string;
   subjectType: SubjectType;
   subjectId: string;
   subjectNaam: string | null;
@@ -59,7 +61,8 @@ export interface PlanIntakeRequest {
   startdatum: string | null;
   streefEinddatum: string | null;
   doelen: (Record<string, unknown> & { doelType: string; beschrijving: string; status: DoelStatus })[];
-  instrumenten: (Record<string, unknown> & { titel: string; product: string; doel: string; status: DoelStatus })[];
+  /** Instrumenten to request once the plan exists: producttype code + subdoel (doeltype name; empty = the first). */
+  instrumenten: { product: string; doel: string }[];
   contactmomenten: (Record<string, unknown> & { datum: string; evaluatieType: string; status: EvaluatieStatus; notitie: string })[];
   betrokkenen: (Record<string, unknown> & {
     naam: string; rol: string; organisatie: string; email: string; procesbegeleider: boolean;
@@ -68,46 +71,29 @@ export interface PlanIntakeRequest {
 
 export interface PlanIntakeResponse {
   planUuid: string;
-  documentId?: string | null;
-  planDossierId?: string | null;
+  documentId: string;
+  /** Always set: a plan is only reported once its plan dossier exists. */
+  planDossierId: string;
   doelen: number;
-  instrumenten: number;
+  /** Verzoeken filed for the instrumenten; each appears in the plan once its instrument dossier created it. */
+  instrumentenAangevraagd: number;
   contactmomenten: number;
   betrokkenen?: number;
   warnings?: string[];
-  /** This intake already produced a plan; nothing was created. */
+  /** This intake's plan was complete already; nothing was created. */
   bestaand?: boolean;
-}
-
-function foutTekst(status: number, body: string): string {
-  try {
-    const melding = JSON.parse(body).message;
-    if (melding) return melding;
-  } catch { /* not a JSON error body */ }
-  return `HTTP ${status}${body ? ': ' + body : ''}`;
-}
-
-async function call<T>(url: string, method = 'GET', body?: unknown): Promise<T> {
-  const resp = await fetch(url, {
-    method,
-    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const text = await resp.text().catch(() => '');
-  if (!resp.ok) throw new Error(foutTekst(resp.status, text));
-  return (text ? JSON.parse(text) : undefined) as T;
+  /** This call completed a plan an earlier, interrupted attempt had started. */
+  hervat?: boolean;
 }
 
 export const createPlanApi = {
   prefill: (documentId: string) =>
-    call<PlanPrefillResponse>(`${PDCA}/dossiers/${documentId}/plan-prefill`),
-  /** Plan, doelen, instrumenten, contactmomenten, betrokkenen and the plan dossier in one go. */
+    get<PlanPrefillResponse>(`${PDCA}/dossiers/${documentId}/plan-prefill`),
+  /**
+   * Plan, doelen, contactmomenten, betrokkenen and the plan dossier in one
+   * go, then a verzoek per instrument. Safe to repeat: a retry resumes an
+   * interrupted attempt; 409 while another attempt is still running.
+   */
   createPlan: (request: PlanIntakeRequest) =>
-    call<PlanIntakeResponse>(`${PDCA}/plan-intake`, 'POST', request),
-  /** Links an existing plan to this dossier (plan = dossier 1:1). */
-  linkPlan: (documentId: string, planUuid: string) =>
-    call<unknown>(`${PDCA}/dossiers/${documentId}/plan`, 'PUT', { planUuid }),
-  /** Creates the plan dossier for an existing plan. */
-  createDossier: (planUuid: string) =>
-    call<{ documentId: string; created: boolean }>(`${PDCA}/plans/${planUuid}/dossier`, 'POST'),
+    send<PlanIntakeResponse>('POST', `${PDCA}/plan-intake`, request),
 };

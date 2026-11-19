@@ -1,17 +1,14 @@
 {
   "pluginId": "openproduct",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "provider": "Ritense",
   "translations": {
     "en": {
       "name": "Open Product",
-      "description": "Gives other plugins access to an Open Product instance (Producttypen API v1) through the contract nl.ritense.openproduct@1.",
-      "contracts.nl.ritense.openproduct@1.title": "Open Product Producttypen API v1",
-      "contracts.nl.ritense.openproduct@1.operations.list.title": "List resources",
-      "contracts.nl.ritense.openproduct@1.operations.get.title": "Get a resource",
-      "contracts.nl.ritense.openproduct@1.operations.create.title": "Create a resource",
-      "contracts.nl.ritense.openproduct@1.operations.update.title": "Update a resource",
-      "contracts.nl.ritense.openproduct@1.operations.delete.title": "Delete a resource",
+      "description": "Gives other plugins access to an Open Product instance (Producttypen API v1) through the contract nl.ritense.openproduct@2.",
+      "contracts.nl.ritense.openproduct@2.title": "Open Product Producttypen API v1",
+      "contracts.nl.ritense.openproduct@2.operations.list.title": "List resources",
+      "contracts.nl.ritense.openproduct@2.operations.get.title": "Get a resource",
       "config.title.label": "Configuration name",
       "config.title.placeholder": "e.g. Open Product production",
       "config.title.required": "Enter a name for this configuration",
@@ -32,13 +29,10 @@
     },
     "nl": {
       "name": "Open Product",
-      "description": "Geeft andere plugins toegang tot een Open Product-omgeving (Producttypen API v1) via het contract nl.ritense.openproduct@1.",
-      "contracts.nl.ritense.openproduct@1.title": "Open Product Producttypen API v1",
-      "contracts.nl.ritense.openproduct@1.operations.list.title": "Registerobjecten opvragen",
-      "contracts.nl.ritense.openproduct@1.operations.get.title": "Registerobject opvragen",
-      "contracts.nl.ritense.openproduct@1.operations.create.title": "Registerobject aanmaken",
-      "contracts.nl.ritense.openproduct@1.operations.update.title": "Registerobject bijwerken",
-      "contracts.nl.ritense.openproduct@1.operations.delete.title": "Registerobject verwijderen",
+      "description": "Geeft andere plugins toegang tot een Open Product-omgeving (Producttypen API v1) via het contract nl.ritense.openproduct@2.",
+      "contracts.nl.ritense.openproduct@2.title": "Open Product Producttypen API v1",
+      "contracts.nl.ritense.openproduct@2.operations.list.title": "Registerobjecten opvragen",
+      "contracts.nl.ritense.openproduct@2.operations.get.title": "Registerobject opvragen",
       "config.title.label": "Configuratienaam",
       "config.title.placeholder": "bijv. Open Product productie",
       "config.title.required": "Geef deze configuratie een naam",
@@ -92,7 +86,7 @@
   "actions": [],
   "provides": [
     {
-      "contract": "nl.ritense.openproduct@1",
+      "contract": "nl.ritense.openproduct@2",
       "title": "Open Product Producttypen API v1",
       "operations": [
         {
@@ -106,30 +100,6 @@
         {
           "key": "get",
           "title": "Get a resource",
-          "outputs": [
-            "status",
-            "body"
-          ]
-        },
-        {
-          "key": "create",
-          "title": "Create a resource",
-          "outputs": [
-            "status",
-            "body"
-          ]
-        },
-        {
-          "key": "update",
-          "title": "Update a resource",
-          "outputs": [
-            "status",
-            "body"
-          ]
-        },
-        {
-          "key": "delete",
-          "title": "Delete a resource",
           "outputs": [
             "status",
             "body"

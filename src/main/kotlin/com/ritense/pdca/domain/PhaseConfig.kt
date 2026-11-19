@@ -77,20 +77,20 @@ data class PhaseConfig(
     var subdoelMapping: String? = null,
 
     /**
-     * JSON object: prefill field to JSON pointer in the dossier content,
-     * e.g. {"titel": "/planTitel", "doelen": "/doelen"}. Determines how the
-     * create-plan task form is prefilled from the (intake) document; empty =
-     * the default paths (see IntakeService.DEFAULT_PREFILL_MAPPING).
+     * Intake case types only: JSON object, prefill field to JSON pointer in
+     * the dossier content, e.g. {"titel": "/planTitel", "doelen": "/doelen"}.
+     * Determines how the create-plan task form is prefilled from the intake
+     * document; empty = the default paths (see IntakeService.DEFAULT_PREFILL_MAPPING).
      */
     @Column(name = "prefill_mapping", columnDefinition = "TEXT")
     var prefillMapping: String? = null,
 
     /**
-     * Intake case types only: the case type of the PLAN that results from
+     * Intake case types only: the case type of the plan that results from
      * the intake (e.g. "inwonerplan" for "intake-werk-participatie"). The
-     * create-plan task form then creates a plan dossier of this type next to
-     * the plan (standalone route) instead of linking the plan to the intake
-     * dossier. Empty = this case type is itself the plan case type.
+     * create-plan task form creates a plan dossier of this type together
+     * with the plan. Set = this case type is an intake; empty = a plan case
+     * type.
      */
     @Column(name = "plan_case_definition_key")
     var planCaseDefinitionKey: String? = null,

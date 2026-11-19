@@ -1,0 +1,143 @@
+/* Evaluaties tab and the evaluation side panel. */
+
+.pdca-eval-card {
+  background: var(--cds-layer-01, #fff);
+  border-left: 4px solid var(--cds-border-subtle, #e0e0e0);
+}
+
+.pdca-eval-card.type-INTAKE { border-left-color: #8a3ffc; }
+
+.pdca-eval-card.type-PROGRESS { border-left-color: var(--cds-interactive, #0f62fe); }
+
+.pdca-eval-card.type-EVALUATION { border-left-color: var(--cds-support-success, #24a148); }
+
+.pdca-eval-card.type-INSPECTION { border-left-color: #ff832b; }
+
+.pdca-eval-card.type-CRISIS { border-left-color: var(--cds-support-error, #da1e28); }
+
+.pdca-eval-card {
+  margin-bottom: var(--pdca-spacing-03);
+}
+
+.pdca-eval-header {
+  padding: 14px 20px;
+  cursor: pointer;
+}
+
+.pdca-eval-body {
+  padding: 0 20px 20px 46px;
+  border-top: 1px solid var(--cds-border-subtle, #e0e0e0);
+}
+
+/* Evaluation type filter: as wide as its options, never wider than the tab. */
+.pdca-filter-switcher {
+  width: auto;
+  max-width: 100%;
+}
+
+/* Side panel (evaluation): fills the whole panel height on the host theme's
+   layer, the same surface as GZAC's panel and menu; the content is a Carbon
+   Layer on top of it, so its fields use the next field colour. */
+.pdca-panel-theme {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--cds-layer);
+  color: var(--cds-text-primary);
+}
+
+.pdca-panel {
+  box-sizing: border-box;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--pdca-spacing-05);
+  padding: var(--pdca-spacing-05);
+}
+
+.pdca-panel .pdca-info-block {
+  margin-bottom: 0;
+}
+
+.pdca-panel-hint {
+  font-size: 0.875rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.pdca-panel-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-04);
+}
+
+.pdca-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pdca-spacing-03);
+}
+
+.pdca-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pdca-spacing-03);
+}
+
+.pdca-panel-save {
+  font-size: 0.75rem;
+  color: var(--cds-text-helper, #6f6f6f);
+}
+
+/* Plan changes of an evaluation, grouped per onderdeel (panel and Evaluaties tab). */
+.pdca-wijzigingen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-04);
+}
+
+.pdca-wijziging-onderdeel {
+  display: flex;
+  align-items: center;
+  gap: var(--pdca-spacing-03);
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: var(--pdca-spacing-02);
+}
+
+.pdca-wijziging {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-02);
+  padding: var(--pdca-spacing-03) 0 var(--pdca-spacing-03) var(--pdca-spacing-04);
+  border-left: 2px solid var(--cds-border-subtle);
+  font-size: 0.875rem;
+}
+
+.pdca-wijziging-toelichting {
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.pdca-eval-kop-tekst {
+  font-size: 0.8125rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.pdca-eval-meta {
+  margin-top: var(--pdca-spacing-04);
+  font-size: 0.75rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.pdca-info-block--ruim {
+  margin-top: var(--pdca-spacing-04);
+}
+
+.pdca-actiepunt-tekst {
+  flex: 1 1 12rem;
+}
+
+.pdca-actiepunt-doel {
+  min-width: min(180px, 100%);
+}

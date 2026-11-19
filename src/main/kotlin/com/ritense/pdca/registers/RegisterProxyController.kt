@@ -16,6 +16,8 @@
 
 package com.ritense.pdca.registers
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.ritense.pdca.security.DataDispatch
 import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpMethod
@@ -29,20 +31,26 @@ import org.springframework.web.client.RestClient
 import java.net.URI
 
 /**
- * Transparent pass-through to the Maykin registers. The frontend consumes the
- * register APIs directly (identical paths, bodies and status codes); this
- * proxy provides a same-origin URL and forwards through the register's
- * RestClient, which goes through the register's GZAC contract:
+ * Pass-through to the Maykin registers for the bundles, which read the
+ * register APIs in their native shape (identical paths, bodies and status
+ * codes). It forwards through the register's RestClient, which goes through
+ * the register's GZAC contract:
  *
  *   /openplan/plannen/api/v0/...          -> Open Plan
  *   /openproduct/producttypen/api/v1/...  -> Open Product
  *   /openklant/klantinteracties/api/v1/...-> Open Klant
+ *
+ * It is reachable only through `/data`, and only for the register routes of
+ * the access policy (`DataAccessPolicy`: the reads the bundles make and a
+ * few single-object writes, each checked against the user's plan dossier);
+ * any other request is refused with 403 before it is forwarded.
  */
 @RestController
 class RegisterProxyController(
     private val openPlanRestClient: RestClient,
     private val openProductRestClient: RestClient,
-    private val openKlantRestClient: RestClient
+    private val openKlantRestClient: RestClient,
+    private val objectMapper: ObjectMapper
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -65,7 +73,12 @@ class RegisterProxyController(
         request: HttpServletRequest,
         body: ByteArray?
     ): ResponseEntity<ByteArray> {
-        val path = request.requestURI.removePrefix(prefix)
+        if (DataDispatch.of(request)?.allowed?.route?.register != true) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(objectMapper.writeValueAsBytes(mapOf("detail" to "Geen toegang")))
+        }
+        val path = request.requestURI.removePrefix(request.contextPath).removePrefix(prefix)
         val query = request.queryString?.let { "?$it" } ?: ""
         val uri = URI.create("$baseUrl$path$query")
 
@@ -84,10 +97,10 @@ class RegisterProxyController(
                         .body(response.body.readAllBytes())
                 }, false)!!
         } catch (e: Exception) {
-            log.warn("Register proxy $uri failed: ${e.message}")
+            log.warn("Register proxy {} {} failed", request.method, path, e)
             ResponseEntity.status(HttpStatus.BAD_GATEWAY)
                 .contentType(MediaType.APPLICATION_JSON)
-                .body("""{"detail": "Register unreachable via $prefix: ${e.message}"}""".toByteArray())
+                .body(objectMapper.writeValueAsBytes(mapOf("detail" to "Het register is niet bereikbaar")))
         }
     }
 }

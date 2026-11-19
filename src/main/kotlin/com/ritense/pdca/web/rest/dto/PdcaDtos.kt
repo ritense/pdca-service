@@ -17,31 +17,38 @@
 package com.ritense.pdca.web.rest.dto
 
 import com.ritense.pdca.domain.UitvoeringsStatus
-import jakarta.validation.constraints.Max
-import jakarta.validation.constraints.Min
 import java.time.LocalDate
+import java.util.Optional
 import java.util.UUID
 
-/** Upsert requests for the PDCA overlay; null fields leave existing values unchanged. */
+/*
+ * Partial updates of the PDCA overlay rows (PUT /plandetails, /doeldetails,
+ * /instrumentdetails). Every editable field is an
+ * `Optional?`: absent from the JSON (null) keeps the stored value, an
+ * explicit JSON null (Optional.empty) clears it, a value sets it ([patch]).
+ * `planUuid` only counts for a new row and is checked against the register
+ * object the row belongs to.
+ */
 
+/** The new value of a field after a partial update: [current] when the field was absent. */
+fun <T> Optional<T>?.patch(current: T?): T? = if (this == null) current else orElse(null)
+
+/** Edits of an existing plan's overlay row; the row itself is created by the intake (ARCHITECTURE §6.1). */
 data class PlanDetailsRequest(
-    val persoonUuid: UUID? = null,
-    val caseDefinitionKey: String? = null,
-    val weergaveStatus: String? = null,
-    val beginPositie: String? = null,
-    val subdoelgroep: String? = null,
-    val hoofddoelTypeUuid: UUID? = null,
-    val streefEinddatum: LocalDate? = null
+    val weergaveStatus: Optional<String>? = null,
+    val beginPositie: Optional<String>? = null,
+    val subdoelgroep: Optional<String>? = null,
+    val streefEinddatum: Optional<LocalDate>? = null
 )
 
 data class DoelDetailsRequest(
     val planUuid: UUID? = null,
     val uitvoeringsStatus: UitvoeringsStatus? = null,
-    val voortgangToelichting: String? = null,
+    val voortgangToelichting: Optional<String>? = null,
     /** Code of one of the plan's voortgangsstatussen; only for a doel that is actief in Open Plan. */
-    val voortgangStatus: String? = null,
-    val interneNotitie: String? = null,
-    val externeNotitie: String? = null,
+    val voortgangStatus: Optional<String>? = null,
+    val interneNotitie: Optional<String>? = null,
+    val externeNotitie: Optional<String>? = null,
     val sortering: Int? = null
 )
 
@@ -56,7 +63,6 @@ data class ContactmomentRequest(
     val afgerond: Boolean = true,
     val verslag: String? = null,
     val deelnemers: String? = null,
-    val doelVoortgang: String? = null,
     val actiepunten: String? = null
 )
 
@@ -65,24 +71,12 @@ data class ContactmomentDatumRequest(
     val datum: LocalDate
 )
 
-data class ContactmomentDetailsRequest(
-    val planUuid: UUID? = null,
-    val evaluatieType: String? = null,
-    val geplandeDatum: LocalDate? = null,
-    val deelnemers: String? = null,
-    val doelVoortgang: String? = null,
-    val actiepunten: String? = null
-)
-
 data class InstrumentDetailsRequest(
     val planUuid: UUID? = null,
-    val uitvoeringsStatus: UitvoeringsStatus? = null,
-    val urenBesteed: Int? = null,
-    @field:Min(1)
-    @field:Max(5)
-    val effectiviteitScore: Int? = null,
-    val effectiviteitToelichting: String? = null,
-    val afbreekReden: String? = null,
-    val interneNotitie: String? = null,
-    val externeNotitie: String? = null
+    val urenBesteed: Optional<Int>? = null,
+    /** 1 (no effect) through 5 (very effective). */
+    val effectiviteitScore: Optional<Int>? = null,
+    val effectiviteitToelichting: Optional<String>? = null,
+    val interneNotitie: Optional<String>? = null,
+    val externeNotitie: Optional<String>? = null
 )

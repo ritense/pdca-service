@@ -23,7 +23,6 @@ import java.util.UUID
 
 @Repository
 interface PlanDetailsRepository : JpaRepository<PlanDetails, UUID> {
-    fun findByCaseDefinitionKey(caseDefinitionKey: String): List<PlanDetails>
     fun findByDossierId(dossierId: String): PlanDetails?
     fun findByIntakeDossierId(intakeDossierId: String): List<PlanDetails>
     fun findByPersoonUuidAndCaseDefinitionKey(persoonUuid: UUID, caseDefinitionKey: String): List<PlanDetails>

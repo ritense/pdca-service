@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The plan's hoofddoel is the actief hoofddoel-type doel in Open Plan; its
+  type is read from there. The overlay copy of that type is dropped.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="015-01-drop-plan-details-hoofddoel-type-uuid" author="pdca">
+        <dropColumn tableName="plan_details" columnName="hoofddoel_type_uuid"/>
+    </changeSet>
+
+</databaseChangeLog>

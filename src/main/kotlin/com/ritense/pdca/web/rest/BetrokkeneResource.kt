@@ -82,9 +82,9 @@ class BetrokkeneResource(
 
 data class CreateBetrokkeneRequest(
     val planUuid: UUID,
-    @field:NotBlank
+    @field:NotBlank(message = "Vul de naam van de betrokkene in")
     val name: String,
-    @field:NotBlank
+    @field:NotBlank(message = "Kies de rol van de betrokkene")
     val role: String,
     val email: String? = null,
     val phone: String? = null,

@@ -51,12 +51,19 @@ spec:
                   name: {{ .Values.database.existingSecret }}
                   key: {{ .Values.database.existingSecretKey }}
             {{- end }}
-            {{- if and .Values.externalServices.gzac.enabled .Values.externalServices.gzac.existingSecret }}
-            - name: GZAC_CLIENT_SECRET
+            {{- if .Values.host.existingSecret }}
+            - name: PDCA_HOST_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.externalServices.gzac.existingSecret }}
-                  key: {{ .Values.externalServices.gzac.existingSecretKey }}
+                  name: {{ .Values.host.existingSecret }}
+                  key: {{ .Values.host.existingSecretKey }}
+            {{- end }}
+            {{- if .Values.encryption.existingSecret }}
+            - name: PDCA_ENCRYPTION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.encryption.existingSecret }}
+                  key: {{ .Values.encryption.existingSecretKey }}
             {{- end }}
             {{- with .Values.extraEnv }}
             {{- toYaml . | nindent 12 }}

@@ -18,7 +18,7 @@ package com.ritense.pdca.registers
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.ritense.pdca.plugin.PushedGzacAccess
+import com.ritense.pdca.plugin.GzacAccess
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
@@ -51,16 +51,26 @@ import java.nio.charset.StandardCharsets.UTF_8
  * Only the path and query of the request URI count — any base URL works,
  * including the register's own absolute `next` links:
  * `<apiPath>/<resource>[/<uuid>]` + method → operation (GET → list or get,
- * POST → create, PATCH → update, PUT → update with replace, DELETE →
- * delete). Contract and transport failures become a JSON `{"detail": ...}`
- * response (502, or 503 when the register is not bound or its provider is
- * unavailable), the shape the frontend shows.
+ * POST → create, PATCH → update, DELETE → delete); a request the contract
+ * has no operation for (PUT, or a method on the wrong path shape) is
+ * answered 400 without calling GZAC. Which resources and operations a
+ * contract serves is up to its register plugin (`plugins/<name>`), which
+ * refuses anything outside its allowlist. The calls go through the shared [ContractCallLimiter]: at most
+ * a configured number at a time, and a call GZAC refuses with
+ * `TOO_MANY_CONCURRENT_CALLS` is retried a few times after a jittered pause.
+ * Contract and transport failures become a JSON `{"detail": ...}`
+ * response with a fixed Dutch message (502, or 503 when the register is not
+ * bound, its provider is unavailable or GZAC is busy), the shape the
+ * frontend shows, marked with [RegisterErrors.CONTRACT_ERROR_HEADER] so the
+ * gateways can tell it from the register's own answer. Downstream bodies and
+ * transport messages are logged, never passed on.
  */
 class RegisterContractRequestFactory(
     private val register: Register,
-    private val pushedGzacAccess: PushedGzacAccess,
+    private val gzacAccess: GzacAccess,
     private val objectMapper: ObjectMapper,
-    restClientBuilder: RestClient.Builder
+    restClientBuilder: RestClient.Builder,
+    private val limiter: ContractCallLimiter
 ) : ClientHttpRequestFactory {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -85,44 +95,86 @@ class RegisterContractRequestFactory(
         val requestBody = try {
             body.takeIf { it.isNotEmpty() }?.let { objectMapper.readTree(it) }
         } catch (e: Exception) {
-            return detail(HttpStatus.BAD_REQUEST, "Ongeldige JSON in het verzoek aan $name: ${e.message}")
+            return detail(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", "Ongeldige JSON in het verzoek aan $name")
         }
         val call = toContractCall(uri, method, requestBody)
             ?: return detail(
-                HttpStatus.BAD_REQUEST,
+                HttpStatus.BAD_REQUEST, "UNSUPPORTED_REQUEST",
                 "$method ${uri.rawPath} wordt niet ondersteund via het $name-contract (${register.contract})"
             )
-        val access = pushedGzacAccess.latest { register.contract in it.grantedContracts }
-            ?: return notBound()
-
-        val (status, responseBody) = try {
-            gzac.post()
-                .uri("${access.baseUrl}/api/v1/plugin-contract/call")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer ${access.serviceToken}")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(
-                    objectMapper.writeValueAsBytes(
-                        mapOf("contract" to register.contract, "operation" to call.operation, "payload" to call.payload)
-                    )
-                )
-                .exchange { _, response -> response.statusCode.value() to response.body.readAllBytes() }!!
-        } catch (e: Exception) {
-            log.warn("{} contract call to GZAC at {} failed: {}", name, access.baseUrl, e.message)
-            return detail(HttpStatus.SERVICE_UNAVAILABLE, "GZAC is niet bereikbaar voor $name: ${e.message}")
+        val access = when (val resolution = gzacAccess.resolve()) {
+            is GzacAccess.Resolution.Available -> resolution.access
+            is GzacAccess.Resolution.Unavailable -> return detail(
+                HttpStatus.SERVICE_UNAVAILABLE, "NOT_BOUND",
+                if (resolution.nonePushed) "$name is niet gekoppeld: activeer PDCA in GZAC en koppel de $name plugin"
+                else resolution.reason
+            )
         }
+        if (register.contract !in access.configuration.grantedContracts) {
+            return detail(
+                HttpStatus.SERVICE_UNAVAILABLE, "NOT_BOUND",
+                "$name is niet gekoppeld: koppel in GZAC de PDCA-configuratie aan de $name plugin"
+            )
+        }
+
+        val request = objectMapper.writeValueAsBytes(
+            mapOf("contract" to register.contract, "operation" to call.operation, "payload" to call.payload)
+        )
+        var attempt = 0
+        while (true) {
+            val (status, responseBody) = try {
+                limiter.withPermit {
+                    gzac.post()
+                        .uri("${access.baseUrl}/api/v1/plugin-contract/call")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer ${access.serviceToken}")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(request)
+                        .exchange { _, response -> response.statusCode.value() to response.body.readAllBytes() }!!
+                }
+            } catch (e: ContractCallLimiter.Busy) {
+                return detail(
+                    HttpStatus.SERVICE_UNAVAILABLE, "PDCA_BUSY",
+                    "PDCA verwerkt al het maximale aantal gelijktijdige registeraanroepen; probeer het zo opnieuw"
+                )
+            } catch (e: Exception) {
+                log.warn("{} contract call to GZAC at {} failed", name, access.baseUrl, e)
+                return detail(HttpStatus.SERVICE_UNAVAILABLE, "GZAC_UNREACHABLE", "GZAC is niet bereikbaar voor $name")
+            }
+            // GZAC refuses a call over its concurrency limit before delivering
+            // it, so retrying is safe for every operation.
+            if (status in 200..299 && isTooManyConcurrentCalls(responseBody) && attempt < limiter.maxRetries) {
+                attempt++
+                limiter.pauseBeforeRetry(attempt)
+                continue
+            }
+            return answer(status, responseBody)
+        }
+    }
+
+    private fun isTooManyConcurrentCalls(body: ByteArray): Boolean = try {
+        val response = objectMapper.readTree(body)
+        response.path("status").asText() == "error" && response.path("errorCode").asText() == TOO_MANY_CONCURRENT_CALLS
+    } catch (e: Exception) {
+        false
+    }
+
+    private fun answer(status: Int, responseBody: ByteArray): ClientHttpResponse {
         return when (status) {
             in 200..299 -> fromContractResponse(responseBody)
             401, 403 -> detail(
-                HttpStatus.SERVICE_UNAVAILABLE,
+                HttpStatus.SERVICE_UNAVAILABLE, "GZAC_REFUSED",
                 "GZAC weigert de $name-aanroep (HTTP $status): het servicetoken van de PDCA-configuratie " +
                     "is verlopen of ongeldig. Controleer of PDCA in GZAC actief en geaccepteerd is."
             )
             404 -> detail(
-                HttpStatus.SERVICE_UNAVAILABLE,
+                HttpStatus.SERVICE_UNAVAILABLE, "CONTRACTS_UNSUPPORTED",
                 "Deze GZAC-versie ondersteunt geen plugincontracten (HTTP 404 op /api/v1/plugin-contract/call), " +
                     "die PDCA nodig heeft voor $name"
             )
-            else -> detail(HttpStatus.BAD_GATEWAY, "GZAC gaf HTTP $status op de $name-aanroep: ${String(responseBody, UTF_8)}")
+            else -> {
+                log.warn("GZAC answered HTTP {} on the {} contract call: {}", status, name, String(responseBody, UTF_8).take(1000))
+                detail(HttpStatus.BAD_GATEWAY, "GZAC_ERROR", "GZAC gaf HTTP $status op de $name-aanroep")
+            }
         }
     }
 
@@ -134,7 +186,7 @@ class RegisterContractRequestFactory(
         val operation = when (method) {
             HttpMethod.GET -> if (uuid == null) "list" else "get"
             HttpMethod.POST -> "create".takeIf { uuid == null }
-            HttpMethod.PATCH, HttpMethod.PUT -> "update".takeIf { uuid != null }
+            HttpMethod.PATCH -> "update".takeIf { uuid != null }
             HttpMethod.DELETE -> "delete".takeIf { uuid != null }
             else -> null
         } ?: return null
@@ -143,7 +195,6 @@ class RegisterContractRequestFactory(
         uuid?.let { payload["uuid"] = it }
         query(uri).takeIf { it.isNotEmpty() }?.let { payload["query"] = it }
         if (operation == "create" || operation == "update") body?.let { payload["body"] = it }
-        if (method == HttpMethod.PUT) payload["replace"] = true
         return ContractCall(operation, payload)
     }
 
@@ -159,60 +210,68 @@ class RegisterContractRequestFactory(
         val response = try {
             objectMapper.readTree(bytes)
         } catch (e: Exception) {
-            return detail(HttpStatus.BAD_GATEWAY, "GZAC gaf een onleesbaar antwoord op de $name-aanroep")
+            return detail(HttpStatus.BAD_GATEWAY, "GZAC_UNREADABLE", "GZAC gaf een onleesbaar antwoord op de $name-aanroep")
         }
         return when (response.path("status").asText()) {
             "completed" -> {
                 val result = response.path("result")
                 val status = result.path("status").takeIf { it.isInt }?.asInt()?.takeIf { it in 100..599 }
-                    ?: return detail(HttpStatus.BAD_GATEWAY, "De $name plugin gaf geen geldige HTTP-status terug")
+                    ?: return detail(
+                        HttpStatus.BAD_GATEWAY, "PROVIDER_INVALID_RESULT",
+                        "De $name plugin gaf geen geldige HTTP-status terug"
+                    )
                 val body = result.path("body").takeUnless { it.isMissingNode || it.isNull }
                 JsonResponse(HttpStatusCode.valueOf(status), body?.let { objectMapper.writeValueAsBytes(it) } ?: ByteArray(0))
             }
             "error" -> contractError(response.path("errorCode").asText("ONBEKEND"), response.path("errorMessage").asText(""))
-            else -> detail(HttpStatus.BAD_GATEWAY, "GZAC gaf een onbekend antwoord op de $name-aanroep")
+            else -> detail(HttpStatus.BAD_GATEWAY, "GZAC_UNREADABLE", "GZAC gaf een onbekend antwoord op de $name-aanroep")
         }
     }
 
+    /** A contract error: the code is shown (it names what to fix), the provider's message is only logged. */
     private fun contractError(errorCode: String, errorMessage: String): ClientHttpResponse {
         log.warn("{} contract call failed: [{}] {}", name, errorCode, errorMessage)
-        val reason = errorMessage.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
         return when (errorCode) {
             "NO_PROVIDER_BOUND" -> detail(
-                HttpStatus.SERVICE_UNAVAILABLE,
+                HttpStatus.SERVICE_UNAVAILABLE, errorCode,
                 "$name is niet gekoppeld: koppel in GZAC de PDCA-configuratie aan de $name plugin ($errorCode)"
             )
             "PROVIDER_UNAVAILABLE" -> detail(
-                HttpStatus.SERVICE_UNAVAILABLE,
-                "De $name plugin is in GZAC niet beschikbaar ($errorCode)$reason"
+                HttpStatus.SERVICE_UNAVAILABLE, errorCode, "De $name plugin is in GZAC niet beschikbaar ($errorCode)"
             )
             "PROVIDER_UNREACHABLE" -> detail(
-                HttpStatus.SERVICE_UNAVAILABLE,
-                "De plugin host van de $name plugin is niet bereikbaar ($errorCode)$reason"
+                HttpStatus.SERVICE_UNAVAILABLE, errorCode, "De plugin host van de $name plugin is niet bereikbaar ($errorCode)"
             )
-            "PROVIDER_ERROR" -> detail(HttpStatus.BAD_GATEWAY, "De $name plugin meldt een fout ($errorCode)$reason")
-            else -> detail(HttpStatus.BAD_GATEWAY, "$name-aanroep via GZAC mislukt ($errorCode)$reason")
+            TOO_MANY_CONCURRENT_CALLS -> detail(
+                HttpStatus.SERVICE_UNAVAILABLE, errorCode,
+                "GZAC verwerkt al het maximale aantal gelijktijdige aanroepen van PDCA; probeer het zo opnieuw ($errorCode)"
+            )
+            "CONTRACT_DEADLINE_EXCEEDED" -> detail(
+                HttpStatus.SERVICE_UNAVAILABLE, errorCode, "$name antwoordde niet op tijd; probeer het later opnieuw ($errorCode)"
+            )
+            "PROVIDER_ERROR" -> detail(HttpStatus.BAD_GATEWAY, errorCode, "De $name plugin meldt een fout ($errorCode)")
+            else -> detail(HttpStatus.BAD_GATEWAY, errorCode, "$name-aanroep via GZAC mislukt ($errorCode)")
         }
     }
 
-    private fun notBound(): ClientHttpResponse {
-        val reason = if (pushedGzacAccess.latest() == null) {
-            "activeer PDCA in GZAC en koppel de $name plugin"
-        } else {
-            "koppel in GZAC de PDCA-configuratie aan de $name plugin"
-        }
-        return detail(HttpStatus.SERVICE_UNAVAILABLE, "$name is niet gekoppeld: $reason")
+    private companion object {
+        const val TOO_MANY_CONCURRENT_CALLS = "TOO_MANY_CONCURRENT_CALLS"
     }
 
-    private fun detail(status: HttpStatus, message: String): ClientHttpResponse =
-        JsonResponse(status, objectMapper.writeValueAsBytes(mapOf("detail" to message)))
+    private fun detail(status: HttpStatus, errorCode: String, message: String): ClientHttpResponse =
+        JsonResponse(status, objectMapper.writeValueAsBytes(mapOf("detail" to message)), errorCode)
 
-    private class JsonResponse(private val status: HttpStatusCode, private val bytes: ByteArray) : ClientHttpResponse {
+    private class JsonResponse(
+        private val status: HttpStatusCode,
+        private val bytes: ByteArray,
+        private val contractError: String? = null
+    ) : ClientHttpResponse {
         override fun getStatusCode(): HttpStatusCode = status
         override fun getStatusText(): String = HttpStatus.resolve(status.value())?.reasonPhrase ?: ""
         override fun getHeaders(): HttpHeaders = HttpHeaders().apply {
             contentType = MediaType.APPLICATION_JSON
             contentLength = bytes.size.toLong()
+            contractError?.let { set(RegisterErrors.CONTRACT_ERROR_HEADER, it) }
         }
         override fun getBody(): InputStream = ByteArrayInputStream(bytes)
         override fun close() {}

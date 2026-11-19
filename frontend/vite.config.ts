@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { resolve } from 'path';
-import { readFileSync, writeFileSync, existsSync, renameSync } from 'fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 
 const bundles = [
   'plan-overview',
@@ -12,7 +13,8 @@ const bundles = [
   'create-plan',
 ];
 
-const outDir = resolve(__dirname, '../src/main/resources/static/bundles/react');
+const root = fileURLToPath(new URL('.', import.meta.url));
+const outDir = resolve(root, '../src/main/resources/static/bundles/react');
 
 export default defineConfig({
   plugins: [
@@ -38,7 +40,7 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: Object.fromEntries(
-        bundles.map(name => [name, resolve(__dirname, `src/${name}/index.html`)])
+        bundles.map(name => [name, resolve(root, `src/${name}/index.html`)])
       ),
       output: {
         entryFileNames: '[name].js',
@@ -50,6 +52,7 @@ export default defineConfig({
   css: {
     preprocessorOptions: {
       scss: {
+        api: 'modern',
         quietDeps: true,
       },
     },

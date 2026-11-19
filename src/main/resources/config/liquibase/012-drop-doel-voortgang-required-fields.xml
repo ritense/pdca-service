@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The per-subdoel progress snapshot on a contactmoment had one writer, a task
+  form no case definition uses; it is dropped. An instrument's uitvoeringsstatus
+  is always set: rows without one are gestart. A pushed plugin configuration
+  always carries its title; GZAC's next push replaces the empty backfill.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="012-01-drop-contactmoment-doel-voortgang" author="pdca">
+        <dropColumn tableName="contactmoment_details" columnName="doel_voortgang"/>
+    </changeSet>
+
+    <changeSet id="012-02-instrument-details-uitvoerings-status-required" author="pdca">
+        <update tableName="instrument_details">
+            <column name="uitvoerings_status" value="GESTART"/>
+            <where>uitvoerings_status IS NULL</where>
+        </update>
+        <addDefaultValue tableName="instrument_details" columnName="uitvoerings_status" defaultValue="GESTART"/>
+        <addNotNullConstraint tableName="instrument_details" columnName="uitvoerings_status" columnDataType="VARCHAR(32)"/>
+    </changeSet>
+
+    <changeSet id="012-03-plugin-configuration-title-required" author="pdca">
+        <addNotNullConstraint tableName="plugin_configuration" columnName="title" columnDataType="VARCHAR(255)"
+                              defaultNullValue=""/>
+    </changeSet>
+
+</databaseChangeLog>

@@ -18,73 +18,29 @@ package com.ritense.pdca.service
 
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.ritense.pdca.domain.ContactmomentDetails
-import com.ritense.pdca.domain.DoelDetails
-import com.ritense.pdca.domain.InstrumentDetails
-import com.ritense.pdca.domain.InvolvedParty
-import com.ritense.pdca.domain.PlanDetails
-import com.ritense.pdca.domain.UitvoeringsStatus
-import com.ritense.pdca.repository.ContactmomentDetailsRepository
-import com.ritense.pdca.repository.DoelDetailsRepository
-import com.ritense.pdca.repository.InstrumentDetailsRepository
-import com.ritense.pdca.repository.InvolvedPartyRepository
-import com.ritense.pdca.repository.PlanDetailsRepository
-import com.ritense.pdca.web.rest.dto.PlanIntakeRequest
-import com.ritense.pdca.web.rest.dto.PlanIntakeResponse
 import com.ritense.pdca.web.rest.dto.PlanPrefillResponse
 import org.slf4j.LoggerFactory
-import org.springframework.http.HttpStatus
-import org.springframework.http.MediaType
 import org.springframework.stereotype.Service
-import org.springframework.web.client.RestClient
-import org.springframework.web.server.ResponseStatusException
-import java.util.UUID
 
 /**
- * Plan creation through a user task, fed by the intake in the dossier
- * content:
- *
- *  - [prefill] reads the dossier via GZAC and translates the content into a
- *    proposal for the create-plan task form, using the document paths from
- *    the case type's prefill mapping (PhaseConfig.prefillMapping,
- *    configurable in PDCA Beheer; [DEFAULT_PREFILL_MAPPING] when nothing is
- *    configured). Minimal content (just a bsn) yields a minimal prefill; a
- *    full intake prefills the whole plan.
- *  - [createPlanFromIntake] creates the (edited) plan structure: plan +
- *    doelen + instrumenten in Open Plan, the contactmomenten as
- *    klantcontacten in Open Klant, the matching overlay rows and
- *    betrokkenen, and links the plan to the dossier.
- *
- * Doelen and instrumenten come in as gepland, gestart or afgerond: gepland
- * and gestart are register status `actief` refined by the overlay's
- * uitvoeringsstatus, afgerond is register status `afgerond` (resultaat
- * behaald unless given). The first betrokkene flagged as procesbegeleider
- * becomes the plan's procesbegeleider and Open Plan's `plan.medewerker`.
+ * The prefill of the create-plan task form, fed by the intake in the
+ * dossier content: [prefill] reads the dossier via GZAC and translates the
+ * content into a proposal for the form, using the document paths from the
+ * case type's prefill mapping (PhaseConfig.prefillMapping, configurable in
+ * PDCA Beheer; [DEFAULT_PREFILL_MAPPING] when nothing is configured).
+ * Minimal content (just a bsn) yields a minimal prefill; a full intake
+ * prefills the whole plan. Creating the plan is [PlanIntakeService].
  */
 @Service
 class IntakeService(
     private val gzacClient: GzacClient,
-    private val dossierLinkService: DossierLinkService,
     private val phaseConfigService: PhaseConfigService,
-    private val planDetailsRepository: PlanDetailsRepository,
-    private val doelDetailsRepository: DoelDetailsRepository,
-    private val instrumentDetailsRepository: InstrumentDetailsRepository,
-    private val contactmomentDetailsRepository: ContactmomentDetailsRepository,
-    private val involvedPartyRepository: InvolvedPartyRepository,
-    private val klantcontactService: KlantcontactService,
-    private val openPlanRestClient: RestClient,
     private val objectMapper: ObjectMapper
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
     companion object {
-        /** Object plans get this administrative contact person (doelen require a persoon). */
-        const val OBJECT_CONTACT_BSN = "234567892"
-
-        /** Sortering of the hoofddoel's overlay row: before every subdoel (0 and up). */
-        const val HOOFDDOEL_SORTERING = -1
-
         /**
          * Sane default document paths (JSON pointers in the dossier
          * content). Same convention as the bundled intake case types; a case
@@ -142,8 +98,7 @@ class IntakeService(
         return PlanPrefillResponse(
             documentId = documentId,
             caseDefinitionKey = caseDefinitionKey,
-            planCaseDefinitionKey = config?.planCaseDefinitionKey?.takeIf { it.isNotBlank() }
-                ?: caseDefinitionKey,
+            planCaseDefinitionKey = config?.planCaseDefinitionKey?.takeIf { it.isNotBlank() },
             mapping = mapping,
             prefill = prefill
         )
@@ -155,14 +110,13 @@ class IntakeService(
         return try {
             objectMapper.readValue(configured, object : TypeReference<LinkedHashMap<String, String>>() {})
         } catch (e: Exception) {
-            log.warn("Ongeldige prefill mapping voor '$caseDefinitionKey', standaardpaden gebruikt: ${e.message}")
+            log.warn("Invalid prefill mapping for '{}'; using the default paths", caseDefinitionKey, e)
             DEFAULT_PREFILL_MAPPING
         }
     }
 
     private fun definitionName(document: Map<*, *>): String? =
         (document["definitionId"] as? Map<*, *>)?.get("name") as? String
-            ?: document["definitionName"] as? String
 
     /** Minimal JSON-pointer resolution ("/a/b/0") over maps and lists. */
     private fun resolvePointer(root: Any?, pointer: String): Any? {
@@ -180,429 +134,5 @@ class IntakeService(
             is List<*> -> huidig.takeIf { it.isNotEmpty() }
             else -> huidig
         }
-    }
-
-    // ------------------------------------------------ plan from the intake
-
-    fun createPlanFromIntake(request: PlanIntakeRequest): PlanIntakeResponse {
-        val warnings = mutableListOf<String>()
-
-        // Mode is decided by the dossier the task runs in:
-        //  - plan case type: the plan is linked to THIS dossier (which must
-        //    not have a plan yet, plan = dossier 1:1);
-        //  - intake case type (config with planCaseDefinitionKey): the plan
-        //    gets its own plan dossier of that type after creation;
-        //  - no documentId (standalone route): same, its own plan dossier.
-        // This way plan and plan dossier always come into existence
-        // together, in a single call.
-        var linkDocumentId: String? = null
-        var intakeDocumentId: String? = null
-        var planCaseDefinitionKey = request.caseDefinitionKey
-        request.documentId?.let { documentId ->
-            val dossierCaseDef = definitionName(gzacClient.getDocument(documentId))
-            val intakeDoelType = dossierCaseDef
-                ?.let { phaseConfigService.findByCaseDefinitionKey(it) }
-                ?.planCaseDefinitionKey?.takeIf { it.isNotBlank() }
-            if (intakeDoelType != null) {
-                planCaseDefinitionKey = intakeDoelType
-                intakeDocumentId = documentId
-                // Idempotent per intake: the create-plan task form can be
-                // submitted more than once for the same intake (a double
-                // click, a task submission that failed after the plan was
-                // created, a reopened task). Creating a second plan is never
-                // what is meant, and refusing outright would leave the task
-                // uncompletable — the one-active-plan-per-inwoner rule below
-                // would reject every retry. So hand back the plan this intake
-                // already produced and let the task complete on it.
-                bestaandIntakePlan(documentId)?.let { bestaand -> return bestaand }
-            } else {
-                dossierLinkService.findByDossier(documentId)?.let {
-                    throw ResponseStatusException(
-                        HttpStatus.CONFLICT,
-                        "Dossier $documentId heeft al een gekoppeld plan (${it.planUuid})"
-                    )
-                }
-                linkDocumentId = documentId
-            }
-        }
-        validatePositie(planCaseDefinitionKey, "beginPositie", request.beginPositie)
-        // Statuses are checked before anything is written to the registers.
-        val doelStatussen = request.doelen.map { doelStatus(it.status) }
-        val instrumentStatussen = request.instrumenten.map { instrumentStatus(it.status) }
-        val procesbegeleider = request.betrokkenen.firstOrNull { it.procesbegeleider }
-
-        val doeltypen = listRegister("/plannen/api/v0/doeltype")
-        val doeltypePerNaam = doeltypen.associateBy { (it["doelType"] as? String).orEmpty() }
-        val hoofddoelType = request.hoofddoel?.let {
-            doeltypePerNaam[it] ?: throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST, "Hoofddoel '$it' is onbekend in het doeltype-register"
-            )
-        }
-
-        val bsn = if (request.subjectType == "PERSON") request.subjectId else OBJECT_CONTACT_BSN
-        val persoonUuid = ensurePersoon(bsn)
-
-        // W&P rule: an inwoner has at most one active plan per plan case type.
-        // Overlay rows give the candidates; the register status decides.
-        if (request.subjectType == "PERSON" && planCaseDefinitionKey != null) {
-            val heeftActiefPlan = planDetailsRepository
-                .findByPersoonUuidAndCaseDefinitionKey(persoonUuid, planCaseDefinitionKey)
-                .any { (getRegister("/plannen/api/v0/plan/${it.planUuid}")?.get("status") as? String) == "actief" }
-            if (heeftActiefPlan) {
-                throw ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Deze inwoner heeft al een actief plan van het type '$planCaseDefinitionKey'; " +
-                        "rond dat plan eerst af of breek het af"
-                )
-            }
-        }
-        val plantypeUuid = resolvePlantype(request.dienstverlening, warnings)
-        val overkoepelendUuid = (listRegister("/plannen/api/v0/overkoepelendplan").firstOrNull()?.get("uuid") as? String)
-            ?: throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Open Plan mist een overkoepelend plan (draai de register-init)")
-
-        val domeinregister = if (request.subjectType == "PERSON") {
-            "urn:pdca:brp:persoon:${request.subjectId}"
-        } else {
-            "urn:pdca:objecten:object:${request.subjectId}"
-        }
-        val startdatum = request.startdatum?.takeIf { it.isNotBlank() }
-            ?: java.time.LocalDate.now().toString()
-
-        // 1. The plan in Open Plan.
-        val plan = postRegister(
-            "/plannen/api/v0/plan", buildMap {
-                put("titel", request.titel)
-                put("notitie", request.notitie ?: "")
-                put("startdatum", "${startdatum}T00:00:00Z")
-                put("plantypeUuid", plantypeUuid)
-                put("overkoepelendPlanUuid", overkoepelendUuid)
-                put("domeinregister", domeinregister)
-                put("medewerker", BetrokkeneService.medewerkerUrn(procesbegeleider?.naam))
-            }
-        )
-        val planUuid = UUID.fromString(plan["uuid"] as String)
-
-        // 2. Overlay: plan details (positions, subdoelgroep, hoofddoel, status, target date).
-        planDetailsRepository.save(
-            PlanDetails(
-                planUuid = planUuid,
-                persoonUuid = persoonUuid,
-                caseDefinitionKey = planCaseDefinitionKey,
-                intakeDossierId = intakeDocumentId,
-                weergaveStatus = request.weergaveStatus ?: "Concept",
-                beginPositie = request.beginPositie,
-                subdoelgroep = request.subdoelgroep?.takeIf { it.isNotBlank() },
-                hoofddoelTypeUuid = (hoofddoelType?.get("uuid") as? String)?.let { UUID.fromString(it) },
-                streefEinddatum = request.streefEinddatum?.takeIf { it.isNotBlank() }
-                    ?.let { java.time.LocalDate.parse(it) }
-            )
-        )
-
-        // 3. The hoofddoel as a real Doel (W&P hierarchy: plan -> 1 actief
-        //    hoofddoel -> subdoelen); the subdoelen reference it through the
-        //    register field hoofdDoel.
-        val hoofddoelDoelUuid = hoofddoelType?.let { type ->
-            val hoofddoelDoel = postRegister(
-                "/plannen/api/v0/doel", buildMap {
-                    put("plannenUuids", listOf(planUuid.toString()))
-                    put("persoonUuid", persoonUuid.toString())
-                    put("doeltypeUuid", type["uuid"])
-                    put("titel", request.hoofddoel ?: "")
-                    put("beschrijving", request.notitie ?: "")
-                    put("startdatum", "${startdatum}T00:00:00Z")
-                }
-            )
-            val uuid = hoofddoelDoel["uuid"] as String
-            // The hoofddoel runs from the start; its sortering keeps it out of the subdoel ordering.
-            doelDetailsRepository.save(
-                DoelDetails(
-                    doelUuid = UUID.fromString(uuid),
-                    planUuid = planUuid,
-                    uitvoeringsStatus = UitvoeringsStatus.GESTART,
-                    sortering = HOOFDDOEL_SORTERING
-                )
-            )
-            uuid
-        }
-
-        // 4. Subdoelen (register driven: titel = name of the doeltype),
-        //    linked to the hoofddoel.
-        val doelUuidPerType = mutableMapOf<String, UUID>()
-        val doelDetailsPerUuid = mutableMapOf<UUID, DoelDetails>()
-        request.doelen.forEachIndexed { index, doel ->
-            val doeltype = doeltypePerNaam[doel.doelType] ?: throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST, "Doel '${doel.doelType}' is onbekend in het doeltype-register"
-            )
-            val intakeStatus = doelStatussen[index]
-            val status = intakeStatus.registerStatus
-            val aangemaakt = postRegister(
-                "/plannen/api/v0/doel", buildMap {
-                    put("plannenUuids", listOf(planUuid.toString()))
-                    put("persoonUuid", persoonUuid.toString())
-                    put("doeltypeUuid", doeltype["uuid"])
-                    put("titel", doel.doelType)
-                    put("beschrijving", doel.beschrijving ?: "")
-                    put("startdatum", "${startdatum}T00:00:00Z")
-                    put("status", status)
-                    hoofddoelDoelUuid?.let { put("hoofdDoel", it) }
-                    if (status == "afgerond") {
-                        put("resultaat", doel.resultaat?.takeIf { it.isNotBlank() } ?: "behaald")
-                        put("einddatum", "${java.time.LocalDate.now()}T00:00:00Z")
-                    }
-                }
-            )
-            val doelUuid = UUID.fromString(aangemaakt["uuid"] as String)
-            doelUuidPerType[doel.doelType] = doelUuid
-            doelDetailsPerUuid[doelUuid] = doelDetailsRepository.save(
-                DoelDetails(
-                    doelUuid = doelUuid,
-                    planUuid = planUuid,
-                    uitvoeringsStatus = intakeStatus.uitvoeringsStatus ?: UitvoeringsStatus.GEPLAND,
-                    voortgangToelichting = doel.toelichting,
-                    sortering = index
-                )
-            )
-        }
-
-        // 5. Instrumenten, linked to their doel (reference = doeltype name).
-        val instrumenttypeUuid = listRegister("/plannen/api/v0/instrumenttype").firstOrNull()?.get("uuid") as? String
-        var instrumentCount = 0
-        request.instrumenten.forEachIndexed { index, instrument ->
-            val doelUuid = instrument.doel?.let { doelUuidPerType[it] } ?: doelUuidPerType.values.firstOrNull()
-            if (doelUuid == null) {
-                warnings += "Instrument '${instrument.titel}' overgeslagen: geen doel om aan te koppelen"
-                return@forEachIndexed
-            }
-            val intakeStatus = instrumentStatussen[index]
-            val status = intakeStatus.registerStatus
-            val aangemaakt = postRegister(
-                "/plannen/api/v0/instrument", buildMap {
-                    put("titel", instrument.titel)
-                    put("startdatum", "${startdatum}T00:00:00Z")
-                    put("doelenUuids", listOf(doelUuid.toString()))
-                    put("ontwikkelwensenUuids", emptyList<String>())
-                    instrumenttypeUuid?.let { put("instrumenttypeUuid", it) }
-                    instrument.product?.takeIf { it.isNotBlank() }?.let {
-                        put("product", "urn:pdca:openproduct:producttype:$it")
-                    }
-                    put("status", status)
-                    if (status == "afgerond") {
-                        put("resultaat", instrument.resultaat?.takeIf { it.isNotBlank() } ?: "behaald")
-                        put("einddatum", "${java.time.LocalDate.now()}T00:00:00Z")
-                    }
-                }
-            )
-            val instrumentUuid = UUID.fromString(aangemaakt["uuid"] as String)
-            instrumentDetailsRepository.save(
-                InstrumentDetails(
-                    instrumentUuid = instrumentUuid,
-                    planUuid = planUuid,
-                    uitvoeringsStatus = intakeStatus.uitvoeringsStatus,
-                    urenBesteed = instrument.urenBesteed,
-                    effectiviteitScore = instrument.effectiviteit
-                )
-            )
-            // A subdoel with work under way has started.
-            if (intakeStatus != IntakeStatus.GEPLAND) {
-                doelDetailsPerUuid[doelUuid]?.takeIf { it.uitvoeringsStatus == UitvoeringsStatus.GEPLAND }?.let {
-                    it.uitvoeringsStatus = UitvoeringsStatus.GESTART
-                    it.updatedAt = java.time.LocalDateTime.now()
-                    doelDetailsPerUuid[doelUuid] = doelDetailsRepository.save(it)
-                }
-            }
-            instrumentCount++
-        }
-
-        // 6. Contactmomenten (klantcontacten in Open Klant) + evaluation overlay.
-        request.contactmomenten.forEach { cm ->
-            val datum = cm.datum?.takeIf { it.isNotBlank() } ?: java.time.LocalDate.now().toString()
-            val evaluatieType = cm.evaluatieType?.takeIf { it.isNotBlank() } ?: "EVALUATION"
-            val klantcontactUuid = klantcontactService.create(
-                NewContactmoment(
-                    planUuid = planUuid,
-                    evaluatieType = evaluatieType,
-                    plaatsgevondenOp = java.time.OffsetDateTime.parse("${datum}T10:00:00Z"),
-                    afgerond = cm.status == "afgerond",
-                    verslag = cm.notitie
-                )
-            )
-            contactmomentDetailsRepository.save(
-                ContactmomentDetails(
-                    contactmomentUuid = klantcontactUuid,
-                    planUuid = planUuid,
-                    evaluatieType = evaluatieType,
-                    geplandeDatum = java.time.LocalDate.parse(datum),
-                    deelnemers = cm.deelnemers,
-                    actiepunten = cm.actiepunten?.takeIf { it.isNotEmpty() }
-                        ?.let { objectMapper.writeValueAsString(it) }
-                )
-            )
-        }
-
-        // 7. Betrokkenen (local contact cards); only the first flagged one is the procesbegeleider.
-        request.betrokkenen.forEach { b ->
-            involvedPartyRepository.save(
-                InvolvedParty(
-                    planUuid = planUuid,
-                    name = b.naam,
-                    role = b.rol,
-                    email = b.email,
-                    organization = b.organisatie,
-                    isPrimary = b === procesbegeleider
-                )
-            )
-        }
-
-        // 8. Plan = dossier (1:1): link to the current plan dossier, or
-        // create the plan dossier (intake and standalone route) — always both.
-        val planDossierId = linkDocumentId?.also { dossierLinkService.link(planUuid, it) }
-            ?: dossierLinkService.ensurePlanDossier(planUuid, request.subjectNaam).first
-        log.info(
-            "Plan $planUuid ($planCaseDefinitionKey) aangemaakt uit intake " +
-                "(taak-dossier ${request.documentId ?: "-"}, plan-dossier $planDossierId): " +
-                "${doelUuidPerType.size} doelen, $instrumentCount instrumenten, " +
-                "${request.contactmomenten.size} contactmomenten"
-        )
-
-        return PlanIntakeResponse(
-            planUuid = planUuid.toString(),
-            documentId = request.documentId,
-            planDossierId = planDossierId,
-            doelen = doelUuidPerType.size,
-            instrumenten = instrumentCount,
-            contactmomenten = request.contactmomenten.size,
-            betrokkenen = request.betrokkenen.size,
-            warnings = warnings
-        )
-    }
-
-    /** Status of an intake doel or instrument: register status plus overlay uitvoeringsstatus. */
-    private enum class IntakeStatus(val registerStatus: String, val uitvoeringsStatus: UitvoeringsStatus?) {
-        GEPLAND("actief", UitvoeringsStatus.GEPLAND),
-        GESTART("actief", UitvoeringsStatus.GESTART),
-        AFGEROND("afgerond", null)
-    }
-
-    /** Legacy `actief` (also the default) means gepland. */
-    private fun doelStatus(status: String?): IntakeStatus =
-        when (val value = status?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "actief") {
-            "actief" -> IntakeStatus.GEPLAND
-            else -> intakeStatus("doel", value)
-        }
-
-    /** Legacy `actief` (also the default) means gestart. */
-    private fun instrumentStatus(status: String?): IntakeStatus =
-        when (val value = status?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: "actief") {
-            "actief" -> IntakeStatus.GESTART
-            else -> intakeStatus("instrument", value)
-        }
-
-    private fun intakeStatus(kind: String, value: String): IntakeStatus =
-        IntakeStatus.entries.firstOrNull { it.name.lowercase() == value }
-            ?: throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Onbekende status '$value' voor een $kind (verwacht: gepland, gestart of afgerond)"
-            )
-
-    /**
-     * The plan this intake dossier already produced, as a response the task
-     * form can complete on, or null when it has none yet. A plan whose
-     * register entry is gone (demo reset) does not count — the intake may
-     * then create a new one.
-     */
-    private fun bestaandIntakePlan(intakeDocumentId: String): PlanIntakeResponse? {
-        val bestaand = planDetailsRepository.findByIntakeDossierId(intakeDocumentId)
-            .firstOrNull { getRegister("/plannen/api/v0/plan/${it.planUuid}") != null }
-            ?: return null
-        log.info(
-            "Intake-dossier $intakeDocumentId heeft al plan ${bestaand.planUuid} " +
-                "(plan-dossier ${bestaand.dossierId}); geen tweede plan aangemaakt"
-        )
-        return PlanIntakeResponse(
-            planUuid = bestaand.planUuid.toString(),
-            documentId = intakeDocumentId,
-            planDossierId = bestaand.dossierId,
-            doelen = 0,
-            instrumenten = 0,
-            contactmomenten = 0,
-            betrokkenen = 0,
-            warnings = emptyList(),
-            bestaand = true
-        )
-    }
-
-    private fun validatePositie(caseDefinitionKey: String, veld: String, waarde: String?) {
-        if (waarde.isNullOrBlank()) return
-        val register = phaseConfigService.getPositieTypen(caseDefinitionKey) ?: return
-        if (waarde !in register) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "$veld '$waarde' komt niet voor in het positietype-register van '$caseDefinitionKey'"
-            )
-        }
-    }
-
-    private fun resolvePlantype(dienstverlening: String?, warnings: MutableList<String>): String {
-        val plantypen = listRegister("/plannen/api/v0/plantype")
-        if (plantypen.isEmpty()) {
-            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Open Plan mist plantypen (draai de register-init)")
-        }
-        val gekozen = dienstverlening?.let { naam -> plantypen.firstOrNull { it["type"] == naam } }
-        if (dienstverlening != null && gekozen == null) {
-            warnings += "Dienstverlening '$dienstverlening' onbekend; '${plantypen.first()["type"]}' gebruikt"
-        }
-        return (gekozen ?: plantypen.first())["uuid"] as String
-    }
-
-    /** Get-or-create of an Open Plan persoon by bsn (the register has no bsn filter). */
-    private fun ensurePersoon(bsn: String): UUID {
-        val bestaand = listRegister("/plannen/api/v0/persoon").firstOrNull { it["bsn"] == bsn }
-        if (bestaand != null) return UUID.fromString(bestaand["uuid"] as String)
-        val aangemaakt = postRegister(
-            "/plannen/api/v0/persoon", mapOf(
-                "bsn" to bsn,
-                "klant" to "urn:pdca:openklant:klant:$bsn",
-                "persoonsprofiel" to "urn:pdca:profielen:persoonsprofiel:$bsn"
-            )
-        )
-        return UUID.fromString(aangemaakt["uuid"] as String)
-    }
-
-    // ---------------------------------------------- Open Plan REST helpers
-
-    private fun listRegister(path: String): List<Map<*, *>> {
-        val resultaten = mutableListOf<Map<*, *>>()
-        var page = 1
-        while (page <= 20) {
-            val body = openPlanRestClient.get()
-                .uri("$path?page=$page")
-                .retrieve()
-                .body(Map::class.java) ?: break
-            (body["results"] as? List<*>)?.filterIsInstance<Map<*, *>>()?.let { resultaten += it }
-            if (body["next"] == null) break
-            page++
-        }
-        return resultaten
-    }
-
-    /** Single register object, or null when unreachable/missing (best-effort checks). */
-    private fun getRegister(path: String): Map<*, *>? = try {
-        openPlanRestClient.get().uri(path).retrieve().body(Map::class.java)
-    } catch (e: Exception) {
-        null
-    }
-
-    private fun postRegister(path: String, body: Map<String, Any?>): Map<*, *> = try {
-        openPlanRestClient.post()
-            .uri(path)
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(objectMapper.writeValueAsBytes(body))
-            .retrieve()
-            .body(Map::class.java)
-            ?: throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Open Plan gaf geen antwoord op POST $path")
-    } catch (e: ResponseStatusException) {
-        throw e
-    } catch (e: Exception) {
-        throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Open Plan POST $path mislukt: ${e.message}")
     }
 }

@@ -30,6 +30,7 @@ import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import org.springframework.web.server.ResponseStatusException
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -76,21 +77,23 @@ data class EvaluationChangeRequest(
  * started for a planned contactmoment carries that one out instead of
  * creating a new one. Cancelling ends the session without a contactmoment;
  * a cancelled evaluation is never shown to colleagues.
+ *
+ * Starting and completing call Open Klant; those calls run outside any
+ * transaction, and only the repository work around them is transactional.
  */
 @Service
-@Transactional
 class EvaluationSessionService(
     private val repository: EvaluationSessionRepository,
     private val changeRepository: EvaluationChangeRepository,
     private val planDetailsRepository: PlanDetailsRepository,
     private val contactmomentDetailsRepository: ContactmomentDetailsRepository,
     private val phaseConfigService: PhaseConfigService,
-    private val klantcontactService: KlantcontactService
+    private val klantcontactService: KlantcontactService,
+    private val transactionTemplate: TransactionTemplate
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    @Transactional(readOnly = true)
     fun current(userLogin: String): EvaluationSession? =
         repository.findByUserLoginAndStatus(userLogin, EvaluationSessionStatus.RUNNING)
 
@@ -118,21 +121,24 @@ class EvaluationSessionService(
             ?.takeIf { type -> evaluationTypes(caseDefinitionKey).let { it.isEmpty() || type in it } }
             ?: defaultEvaluationType(caseDefinitionKey)
         return try {
-            repository.saveAndFlush(
-                EvaluationSession(
-                    dossierId = dossierId,
-                    caseDefinitionKey = caseDefinitionKey,
-                    planUuid = plan.planUuid,
-                    userLogin = userLogin,
-                    evaluatieType = evaluatieType,
-                    geplandContactmomentUuid = gepland
+            transactionTemplate.execute {
+                repository.saveAndFlush(
+                    EvaluationSession(
+                        dossierId = dossierId,
+                        caseDefinitionKey = caseDefinitionKey,
+                        planUuid = plan.planUuid,
+                        userLogin = userLogin,
+                        evaluatieType = evaluatieType,
+                        geplandContactmomentUuid = gepland
+                    )
                 )
-            )
+            }!!
         } catch (e: DataIntegrityViolationException) {
             throw EvaluationSessionConflictException(null)
         }
     }
 
+    @Transactional
     fun updateDraft(userLogin: String, draft: EvaluationDraft): EvaluationSession {
         val session = running(userLogin)
         draft.evaluatieType?.let { type ->
@@ -155,11 +161,11 @@ class EvaluationSessionService(
         return repository.save(session)
     }
 
-    @Transactional(readOnly = true)
     fun changes(session: EvaluationSession): List<EvaluationChange> =
         changeRepository.findBySessionIdOrderByCreatedAt(session.id)
 
     /** Records a plan change in the user's running evaluation of that plan. */
+    @Transactional
     fun recordChange(userLogin: String, request: EvaluationChangeRequest): EvaluationChange? {
         val session = running(userLogin)
         if (session.planUuid != request.planUuid) {
@@ -201,6 +207,7 @@ class EvaluationSessionService(
     }
 
     /** The reason for a change, given in the side panel. */
+    @Transactional
     fun updateChangeToelichting(userLogin: String, changeId: UUID, toelichting: String?): EvaluationChange {
         val session = running(userLogin)
         val change = changeRepository.findById(changeId).orElse(null)
@@ -233,23 +240,9 @@ class EvaluationSessionService(
 
         val contactmomentUuid = if (gepland != null) {
             klantcontactService.completePlanned(gepland.uuid, session.planUuid, evaluatieType, plaatsgevondenOp, verslag)
-            val details = contactmomentDetailsRepository.findById(gepland.uuid).orElse(null)?.apply {
-                this.evaluatieType = evaluatieType
-                this.deelnemers = deelnemers ?: this.deelnemers
-                evaluationSessionId = session.id
-                updatedAt = now
-            } ?: ContactmomentDetails(
-                contactmomentUuid = gepland.uuid,
-                planUuid = session.planUuid,
-                evaluatieType = evaluatieType,
-                geplandeDatum = gepland.plaatsgevondenOp?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDate(),
-                deelnemers = deelnemers,
-                evaluationSessionId = session.id
-            )
-            contactmomentDetailsRepository.save(details)
             gepland.uuid
         } else {
-            val created = klantcontactService.create(
+            klantcontactService.create(
                 NewContactmoment(
                     planUuid = session.planUuid,
                     evaluatieType = evaluatieType,
@@ -258,23 +251,29 @@ class EvaluationSessionService(
                     verslag = verslag
                 )
             )
-            contactmomentDetailsRepository.save(
-                ContactmomentDetails(
-                    contactmomentUuid = created,
-                    planUuid = session.planUuid,
-                    evaluatieType = evaluatieType,
-                    geplandeDatum = LocalDate.now(),
-                    deelnemers = deelnemers,
-                    evaluationSessionId = session.id
-                )
-            )
-            created
         }
-        session.evaluatieType = evaluatieType
-        session.contactmomentUuid = contactmomentUuid
-        session.status = EvaluationSessionStatus.COMPLETED
-        session.endedAt = now
-        return repository.save(session)
+        return transactionTemplate.execute {
+            val details = contactmomentDetailsRepository.findById(contactmomentUuid).orElse(null)?.apply {
+                this.evaluatieType = evaluatieType
+                this.deelnemers = deelnemers ?: this.deelnemers
+                evaluationSessionId = session.id
+                updatedAt = now
+            } ?: ContactmomentDetails(
+                contactmomentUuid = contactmomentUuid,
+                planUuid = session.planUuid,
+                evaluatieType = evaluatieType,
+                geplandeDatum = gepland?.plaatsgevondenOp?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDate()
+                    ?: LocalDate.now(),
+                deelnemers = deelnemers,
+                evaluationSessionId = session.id
+            )
+            contactmomentDetailsRepository.save(details)
+            session.evaluatieType = evaluatieType
+            session.contactmomentUuid = contactmomentUuid
+            session.status = EvaluationSessionStatus.COMPLETED
+            session.endedAt = now
+            repository.save(session)
+        }!!
     }
 
     /**
@@ -283,6 +282,7 @@ class EvaluationSessionService(
      * changes stay with the cancelled session. The plan changes themselves
      * were made in the registers already and are not reverted.
      */
+    @Transactional
     fun cancel(userLogin: String): EvaluationSession {
         val session = running(userLogin)
         session.status = EvaluationSessionStatus.CANCELLED
@@ -291,7 +291,6 @@ class EvaluationSessionService(
     }
 
     /** Completed evaluations of a plan with their changes, for every colleague. */
-    @Transactional(readOnly = true)
     fun completed(planUuid: UUID): List<Pair<EvaluationSession, List<EvaluationChange>>> {
         val sessions = repository.findByPlanUuidAndStatus(planUuid, EvaluationSessionStatus.COMPLETED)
         val changes = changeRepository.findBySessionIdInOrderByCreatedAt(sessions.map { it.id })
@@ -332,7 +331,7 @@ class EvaluationSessionService(
                 }
                 ?.uuid
         } catch (e: Exception) {
-            log.warn("Could not look up planned contactmomenten of plan $planUuid; starting the evaluation without one: ${e.message}")
+            log.warn("Could not look up planned contactmomenten of plan {}; starting the evaluation without one", planUuid, e)
             null
         }
     }

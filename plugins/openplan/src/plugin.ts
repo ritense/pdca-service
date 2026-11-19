@@ -15,18 +15,7 @@
  */
 
 import {httpRequest, log, onContractCall} from "@valtimo/plugin-sdk";
-import {handleOperation, OPENPLAN_CONTRACT, OPERATIONS, type HttpCall, type HttpReply} from "./openplan";
+import {serveContract} from "../../register-core/src/contract";
+import {OPENPLAN} from "./openplan";
 
-const transport = (call: HttpCall): HttpReply => httpRequest.request(call);
-
-for (const operation of OPERATIONS) {
-  onContractCall(OPENPLAN_CONTRACT, operation, (input) => {
-    const output = handleOperation(operation, input.payload, input.configuration, transport);
-    if (output.status === "error") {
-      log.warn(`Open Plan ${operation} failed: [${output.errorCode}] ${output.errorMessage}`, {
-        caller: input.caller,
-      });
-    }
-    return output;
-  });
-}
+serveContract(OPENPLAN, {httpRequest, log, onContractCall});
