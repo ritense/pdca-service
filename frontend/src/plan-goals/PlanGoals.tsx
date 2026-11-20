@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, InlineNotification, Tag } from '@carbon/react';
+import { Button, InlineNotification } from '@carbon/react';
 import { Add } from '@carbon/react/icons';
 import { Doel } from '../shared/api';
 import { EvaluatieBanner } from '../shared/EvaluatieBanner';
@@ -15,6 +15,7 @@ import { ActieContext, doelenActies } from './doelenActies';
 import { ActieModal, AfbreekModal, AfbreekTarget, DoelModal, VerwijderModal, VerwijderTarget } from './DoelenModals';
 import { DoelenHandlers, HoofddoelCard, SubdoelCard } from './SubdoelCard';
 import { useDoelenData } from './useDoelenModel';
+import { StatusTag } from '../shared/StatusTag';
 
 /** The "Doelen" case tab. */
 export function PlanGoals() {
@@ -129,7 +130,7 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
         return (
           <div key={d.uuid} className="pdca-tags pdca-eerder-hoofddoel">
             <span className="pdca-text-wrap">Eerder hoofddoel: {d.titel}</span>
-            <Tag size="sm" type={status.tag}>{status.label}</Tag>
+            <StatusTag kleur={status.tag}>{status.label}</StatusTag>
           </div>
         );
       })}

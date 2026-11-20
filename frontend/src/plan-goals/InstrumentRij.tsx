@@ -9,6 +9,7 @@ import { parseDossierUrn } from '../shared/urn';
 import type { DoelenHandlers } from './SubdoelCard';
 import type { DoelenModel } from './useDoelenModel';
 import { InstrumentVoortgangNotities } from './VoortgangNotities';
+import { StatusTag } from '../shared/StatusTag';
 
 /** After this many minutes an open verzoek says that its dossier has not shown up yet. */
 const VERZOEK_TRAAG_MINUTEN = 10;
@@ -41,7 +42,7 @@ export function InstrumentRij({ inst, doel, model, producttypen, handlers }: {
           {idet?.effectiviteitScore != null && <Tag size="sm" type="teal">effectiviteit {idet.effectiviteitScore}/5</Tag>}
         </div>
         <div className="pdca-row-actions">
-          <Tag size="sm" type={status.tag}>{status.label}</Tag>
+          <StatusTag kleur={status.tag}>{status.label}</StatusTag>
           {dossierRef && (
             <Button size="sm" kind="ghost" renderIcon={Launch} title="Open het instrumentdossier van dit instrument"
               onClick={() => openDossier(dossierRef.caseDefinitionKey, dossierRef.documentId)}>
@@ -124,7 +125,7 @@ export function ActieRow({ actie, busy, onStatus }: { actie: Actie; busy: boolea
       </div>
       <div className="pdca-row-actions">
         {actie.priority && <Tag size="sm" type={actie.priority === 'HIGH' ? 'red' : 'gray'}>{priorityLabel(actie.priority)}</Tag>}
-        <Tag size="sm" type={status.tag}>{status.label}</Tag>
+        <StatusTag kleur={status.tag}>{status.label}</StatusTag>
         {actie.status === 'PLANNED' && <Button size="sm" kind="ghost" disabled={busy} onClick={() => onStatus(actie.id, 'IN_PROGRESS')}>Starten</Button>}
         {actie.status === 'IN_PROGRESS' && <Button size="sm" kind="ghost" disabled={busy} onClick={() => onStatus(actie.id, 'PENDING_REVIEW')}>Ter beoordeling</Button>}
         {actie.status === 'PENDING_REVIEW' && <>

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Button, InlineNotification, Select, SelectItem, Tag, TextArea, TextInput } from '@carbon/react';
+import { Button, InlineNotification, Select, SelectItem, TextArea, TextInput } from '@carbon/react';
 import type { DoelDetails, InstrumentDetails, VoortgangStatusOptie } from '../shared/api';
 import { voortgangStatus } from '../shared/labels';
 import { useSubmit } from '../shared/useSubmit';
 import { Notities, RegistratieInvoer, registratieSamenvatting, VoortgangInvoer } from './doelenActies';
+import { StatusTag } from '../shared/StatusTag';
 
 const EFFECTIVITEIT_LABELS = ['geen effect', 'weinig effect', 'neutraal', 'effectief', 'zeer effectief'];
 
@@ -12,7 +13,7 @@ const eersteRegel = (tekst: string) => tekst.split('\n').find(r => r.trim())?.tr
 /** The voortgangsstatus of a doel as a tag, looked up in the plan's list. */
 export function VoortgangTag({ code, opties }: { code: string; opties: VoortgangStatusOptie[] }) {
   const weergave = voortgangStatus(code, opties);
-  return <Tag size="sm" type={weergave.tag}>{weergave.label}</Tag>;
+  return <StatusTag kleur={weergave.tag}>{weergave.label}</StatusTag>;
 }
 
 /**

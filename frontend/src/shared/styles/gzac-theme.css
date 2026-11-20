@@ -53,6 +53,29 @@
   --cds-highlight: var(--vcds-color-80);
 }
 
+/*
+ * Tag colours GZAC adds to Carbon's palette. Only the ones the bundles use;
+ * GZAC also registers yellow, light-green, periwinkle and brown. Carbon's Tag
+ * does not know these as a `type`, so StatusTag puts the class on a neutral
+ * tag and these rules colour it.
+ */
+.cds--white,
+.cds--g10 {
+  --vcds-tag-background-orange: #ffd9be;
+  --vcds-tag-color-orange: #8a3800;
+}
+
+.cds--g90,
+.cds--g100 {
+  --vcds-tag-background-orange: #8a3800;
+  --vcds-tag-color-orange: #ffd9be;
+}
+
+.cds--tag--orange {
+  background-color: var(--vcds-tag-background-orange);
+  color: var(--vcds-tag-color-orange);
+}
+
 /* Buttons take the same ramp in every theme, as in the host. */
 .cds--white,
 .cds--g10,

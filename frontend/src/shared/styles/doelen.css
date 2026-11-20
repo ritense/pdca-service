@@ -45,6 +45,11 @@
   border-left-color: var(--cds-tag-color-magenta, #9f1853);
 }
 
+/* Not a Carbon tag colour: GZAC adds it, gzac-theme.css carries it. */
+.pdca-goal-card--orange {
+  border-left-color: var(--vcds-tag-color-orange, #8a3800);
+}
+
 .pdca-goal-card--red {
   border-left-color: var(--cds-tag-color-red, #a2191f);
 }

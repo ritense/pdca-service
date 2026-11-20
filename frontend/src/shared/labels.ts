@@ -29,7 +29,9 @@ export function dienstverleningLabel(s: string): string { return DIENSTVERLENING
 /** Carbon tag colours (the `type` of a Carbon Tag). */
 export type TagKleur =
   | 'red' | 'magenta' | 'purple' | 'blue' | 'cyan' | 'teal' | 'green'
-  | 'gray' | 'cool-gray' | 'warm-gray' | 'high-contrast' | 'outline';
+  | 'gray' | 'cool-gray' | 'warm-gray' | 'high-contrast' | 'outline'
+  // Added by GZAC on top of Carbon's palette; see StatusTag.
+  | 'orange';
 
 /** A status as shown in the tabs: its label and the colour of its tag. */
 export interface StatusWeergave {
@@ -230,7 +232,7 @@ export function doelgroepVoorSubject(domeinregister: string | null | undefined):
 /** What a voortgangsstatus means, as chosen in PDCA Beheer; the tag colour follows it. */
 export const VOORTGANG_BETEKENISSEN: { betekenis: VoortgangBetekenis; label: string; tag: TagKleur }[] = [
   { betekenis: 'GAAT_GOED', label: 'Gaat goed', tag: 'green' },
-  { betekenis: 'LET_OP', label: 'Let op', tag: 'magenta' },
+  { betekenis: 'LET_OP', label: 'Let op', tag: 'orange' },
   { betekenis: 'GAAT_NIET_GOED', label: 'Gaat niet goed', tag: 'red' },
 ];
 

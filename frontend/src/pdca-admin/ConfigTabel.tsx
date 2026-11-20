@@ -5,6 +5,7 @@ import type { PhaseConfig, VoortgangStatusOptie } from '../shared/api';
 import { jsonLijst } from '../shared/caseConfig';
 import { evalTypeLabel, voortgangStatus } from '../shared/labels';
 import { parseSubdoelMapping, parseVoortgang } from './configForm';
+import { StatusTag } from '../shared/StatusTag';
 
 const thStyle: React.CSSProperties = {
   textAlign: 'left', padding: '12px 16px', borderBottom: '2px solid var(--cds-border-subtle)',
@@ -59,7 +60,7 @@ export function ConfigTabel({ configs, standaardVoortgang, onBewerk, onVerwijder
                     <div style={tagsStyle}>
                       {lijst.map(o => {
                         const weergave = voortgangStatus(o.code, lijst);
-                        return <Tag key={o.code} size="sm" type={weergave.tag}>{weergave.label}</Tag>;
+                        return <StatusTag key={o.code} kleur={weergave.tag}>{weergave.label}</StatusTag>;
                       })}
                       {!voortgang && <span style={nvtStyle}>standaard</span>}
                     </div>

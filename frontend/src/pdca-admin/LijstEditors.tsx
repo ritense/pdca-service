@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Button, Select, SelectItem, Tag, TextInput } from '@carbon/react';
+import { Button, Select, SelectItem, TextInput } from '@carbon/react';
 import { Add, Close, Draggable } from '@carbon/react/icons';
 import type { VoortgangBetekenis, VoortgangStatusOptie } from '../shared/api';
 import { VOORTGANG_BETEKENISSEN } from '../shared/labels';
 import { alsRijen, voortgangFout, VoortgangRij } from './configForm';
+import { StatusTag } from '../shared/StatusTag';
 
 export const sectionTitleStyle: React.CSSProperties = {
   fontSize: 13, fontWeight: 600, margin: '20px 0 4px', color: 'var(--cds-text-primary)',
@@ -153,7 +154,7 @@ export function VoortgangStatussenEditor({ rijen, onChange, standaard }: {
                 {VOORTGANG_BETEKENISSEN.map(b => <SelectItem key={b.betekenis} value={b.betekenis} text={b.label} />)}
               </Select>
               <div style={{ marginTop: 4 }}>
-                <Tag size="sm" type={tag}>{rij.naam.trim() || 'Naam'}</Tag>
+                <StatusTag kleur={tag}>{rij.naam.trim() || 'Naam'}</StatusTag>
               </div>
               <Button size="sm" kind="ghost" renderIcon={Close} iconDescription="Verwijderen" hasIconOnly
                 onClick={() => onChange(rijen.filter((_, ri) => ri !== i))} />

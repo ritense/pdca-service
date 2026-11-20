@@ -8,6 +8,7 @@ import type { Resource } from '../shared/useResource';
 import { parseSubject } from '../shared/urn';
 import type { PlanActie } from './overzichtActies';
 import type { SubjectData } from './useOverzicht';
+import { StatusTag } from '../shared/StatusTag';
 
 /** The plan's title, status with the plan actions, and its key facts. */
 export function PlanKop({ plan, details, procesbegeleider, planStatusOpties, onWeergaveStatus, onPlanActie }: {
@@ -28,7 +29,7 @@ export function PlanKop({ plan, details, procesbegeleider, planStatusOpties, onW
       <h1>{plan.titel}</h1>
       <div className="pdca-meta">
         <div className="pdca-status-control">
-          <Tag type={status.tag}>{status.label}</Tag>
+          <StatusTag kleur={status.tag} size="md">{status.label}</StatusTag>
           <MenuButton label="Planacties" size="sm" kind="ghost" menuAlignment="bottom-start">
             {actief ? <>
               {planStatusOpties.map(s => (

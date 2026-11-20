@@ -12,6 +12,7 @@ import { foutmelding } from '../shared/http';
 import { contactmomentStatus, evalTypeLabel } from '../shared/labels';
 import { NietGeladen } from '../shared/Meldingen';
 import { WijzigingenLijst } from '../shared/WijzigingenLijst';
+import { StatusTag } from '../shared/StatusTag';
 
 const evalTypeTag = (evalType: string): NonNullable<TagProps<'div'>['type']> =>
   evalType === 'INTAKE' ? 'purple' : evalType === 'CRISIS' ? 'red' : evalType === 'INSPECTION' ? 'warm-gray'
@@ -125,7 +126,7 @@ export function ContactmomentKaart({
         <div className="pdca-row-main">
           <Chevron open={open} />
           {evalType && <Tag size="sm" type={evalTypeTag(evalType)}>{evalTypeLabel(evalType)}</Tag>}
-          <Tag size="sm" type={status.tag}>{status.label}</Tag>
+          <StatusTag kleur={status.tag}>{status.label}</StatusTag>
           <span className="pdca-eval-kop-tekst">
             {datum ? `${gepland ? 'Gepland op ' : ''}${formatDate(datum)}` : 'Geen datum'}
           </span>

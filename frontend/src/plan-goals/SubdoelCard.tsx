@@ -11,6 +11,7 @@ import type { AfbreekTarget } from './DoelenModals';
 import { ActieRow, InstrumentRij, ProductMenu, VerzoekRij } from './InstrumentRij';
 import { aanvraagbareProducttypen, DoelenModel, verzoekenVan } from './useDoelenModel';
 import { DoelVoortgangNotities, VoortgangTag } from './VoortgangNotities';
+import { StatusTag } from '../shared/StatusTag';
 
 /** What the cards of the Doelen tab can ask the page to do. */
 export interface DoelenHandlers {
@@ -68,7 +69,7 @@ export function HoofddoelCard({ doel, model, handlers }: { doel: Doel; model: Do
           {/* The plan's beoogde einddatum: the subdoel dates below are read against it. */}
           <BeoogdDatum datum={model.details.streefEinddatum} lopend={model.plan.status === 'actief'} />
           {details?.voortgangStatus && <VoortgangTag code={details.voortgangStatus} opties={model.voortgangOpties} />}
-          <Tag size="sm" type={status.tag}>{status.label}</Tag>
+          <StatusTag kleur={status.tag}>{status.label}</StatusTag>
         </div>
       </div>
       {open && (
@@ -117,7 +118,7 @@ export function SubdoelCard({ doel, model, producttypen, verzoeken, handlers }: 
           {openVerzoeken.length > 0 && <Tag size="sm" type="blue">{aantal(openVerzoeken.length, 'aanvraag', 'aanvragen')} loopt</Tag>}
           <BeoogdDatum datum={details?.streefEinddatum} lopend={model.plan.status === 'actief' && actief} />
           {actief && details?.voortgangStatus && <VoortgangTag code={details.voortgangStatus} opties={model.voortgangOpties} />}
-          <Tag size="sm" type={status.tag}>{status.label}</Tag>
+          <StatusTag kleur={status.tag}>{status.label}</StatusTag>
         </div>
       </div>
       {open && (
