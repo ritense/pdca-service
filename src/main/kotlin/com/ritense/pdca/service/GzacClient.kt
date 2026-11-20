@@ -166,6 +166,36 @@ class GzacClient(
     }
 
     /**
+     * GZAC's accent colours: the `--vcds-color-*` ramp an administrator sets
+     * under Appearance. The bundles render in sandboxed iframes and cannot
+     * read the host's inline styles, so they take the ramp from here to match
+     * the GZAC around them. Never fatal: without the endpoint grant, or when
+     * GZAC does not answer, the bundles keep their built-in default ramp.
+     */
+    fun accentColors(): Map<String, String> {
+        val (baseUrl, token) = resolveAccess()
+        val body = try {
+            gzac.get()
+                .uri("$baseUrl/api/v1/admin-settings/accent-colors")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                .retrieve()
+                .body(Map::class.java)
+        } catch (e: Exception) {
+            log.debug("Reading GZAC accent colours failed; the bundles keep their default ramp", e)
+            return emptyMap()
+        }
+        val colors = body?.get("colors") as? Map<*, *> ?: return emptyMap()
+        return colors.entries
+            .mapNotNull { (key, value) ->
+                val name = key as? String ?: return@mapNotNull null
+                val colour = value as? String ?: return@mapNotNull null
+                // Only the ramp, and only plain hex: these end up in a style attribute.
+                if (name.matches(VCDS_COLOR) && colour.matches(HEX_COLOUR)) name to colour else null
+            }
+            .toMap()
+    }
+
+    /**
      * The document paths (JSON pointers) of a case definition's document
      * schema, for the path suggestions in the prefill mapping of PDCA
      * Beheer. Reads the document definition through the granted
@@ -435,5 +465,11 @@ class GzacClient(
 
         /** Matches a dossier search reads; more than a few means duplicates, and the oldest is what counts. */
         const val DOSSIER_SEARCH_SIZE = 10
+
+        /** The accent colour ramp GZAC exposes: --vcds-color-10 through -100. */
+        val VCDS_COLOR = Regex("^--vcds-color-(?:10|20|30|40|50|60|70|80|90|100)$")
+
+        /** A plain hex colour; anything else does not belong in a style attribute. */
+        val HEX_COLOUR = Regex("^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
     }
 }

@@ -118,6 +118,15 @@ class PluginHostController(
             mapOf(
                 "method" to "POST",
                 "pattern" to "/api/v1/process-document/operation/modify-document-and-start-process"
+            ),
+            // GZAC's accent colours (the --vcds-color-* ramp an administrator
+            // sets under Appearance). The bundles render in sandboxed iframes
+            // and cannot read the host's inline styles, so they fetch the ramp
+            // to colour themselves like the GZAC around them; without the
+            // grant they fall back to GZAC's default blue.
+            mapOf(
+                "method" to "GET",
+                "pattern" to "/api/v1/admin-settings/accent-colors"
             )
         )
     }

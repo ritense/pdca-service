@@ -2,11 +2,34 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Theme } from '@carbon/react';
 import { getHostTheme, getInitContext, GzacContext, HostTheme, onHostThemeChanged, onInit } from './bridge';
+import { get } from './http';
 
 /** GZAC's `init` context, including keys from a side-panel offer. */
 export type InitContext = GzacContext & Record<string, unknown>;
 
 const InitContextValue = createContext<InitContext | null>(null);
+
+/**
+ * Takes GZAC's accent colours (the --vcds-color-* ramp an administrator sets
+ * under Appearance) onto this document's root. The bundle runs in a sandboxed
+ * iframe and cannot read the host's inline styles, so the app reads them from
+ * GZAC for us. Never fatal: without the endpoint grant, or when GZAC does not
+ * answer, gzac-theme.css keeps the default ramp.
+ */
+function useAccentColors(ready: boolean): void {
+  useEffect(() => {
+    if (!ready) return;
+    let afgebroken = false;
+    get<{ colors?: Record<string, string> }>('/api/v1/pdca/accent-colors')
+      .then(({ colors }) => {
+        if (afgebroken || !colors) return;
+        Object.entries(colors).forEach(([naam, waarde]) =>
+          document.documentElement.style.setProperty(naam, waarde));
+      })
+      .catch(() => undefined);
+    return () => { afgebroken = true; };
+  }, [ready]);
+}
 
 /**
  * The root of every bundle: follows GZAC's theme (light or dark, also when
@@ -17,6 +40,8 @@ const InitContextValue = createContext<InitContext | null>(null);
 export function PdcaRoot({ className = 'pdca-root', children }: { className?: string; children: React.ReactNode }) {
   const [theme, setTheme] = useState<HostTheme>(getHostTheme());
   const [context, setContext] = useState<InitContext | null>(null);
+
+  useAccentColors(context !== null);
 
   useEffect(() => onHostThemeChanged(setTheme), []);
   useEffect(() => {

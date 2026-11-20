@@ -235,6 +235,17 @@ export const VOORTGANG_BETEKENISSEN: { betekenis: VoortgangBetekenis; label: str
 ];
 
 /**
+ * The colour of a doel's bar in the Doelen tab: how it is going when that has
+ * been assessed, otherwise where it stands in its lifecycle. Returns the tag
+ * colour, so the bar never disagrees with the tags on the same row.
+ */
+export function doelBalkKleur(
+  status: StatusWeergave, voortgangCode: string | null | undefined, opties: VoortgangStatusOptie[],
+): TagKleur {
+  return voortgangCode ? voortgangStatus(voortgangCode, opties).tag : status.tag;
+}
+
+/**
  * Names of the lifecycle statuses (register status plus gepland/gestart); a
  * voortgangsstatus may not reuse them. Mirrors VoortgangStatusOptie in the backend.
  */

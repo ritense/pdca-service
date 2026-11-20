@@ -7,8 +7,9 @@ import { verslagVan } from '../shared/documenten';
 import { offerEvaluationPanel, startEvaluationSession } from '../shared/evaluationSession';
 import { foutmelding } from '../shared/http';
 import { contactmomentDatum, evalTypeLabel, isHoofddoelType } from '../shared/labels';
-import { LaadFout, NietGeladen, PaginaLaden } from '../shared/Meldingen';
+import { LaadFout, NietGeladen } from '../shared/Meldingen';
 import { PlanDossierPagina, PlanPaginaProps } from '../shared/PlanDossierPagina';
+import { EvaluatiesSkeleton } from '../shared/Skeletons';
 import { useDocumenten } from '../shared/useDocumenten';
 import { useEvaluatieSessie } from '../shared/useEvaluatieSessie';
 import { usePlanData } from '../shared/usePlanData';
@@ -30,7 +31,7 @@ const isGepland = (cm: Klantcontact) => cm.indicatieContactGelukt == null;
  * evaluatieverslag (PDF).
  */
 export function PlanEvaluations() {
-  return <PlanDossierPagina>{props => <EvaluatiesPagina {...props} />}</PlanDossierPagina>;
+  return <PlanDossierPagina skeleton={<EvaluatiesSkeleton />}>{props => <EvaluatiesPagina {...props} />}</PlanDossierPagina>;
 }
 
 function EvaluatiesPagina({ documentId, plan, details }: PlanPaginaProps) {
@@ -63,7 +64,7 @@ function EvaluatiesPagina({ documentId, plan, details }: PlanPaginaProps) {
   if (!planData.data || !doeltypen.data || !caseConfig.data) {
     return fout
       ? <LaadFout pagina titel="De evaluaties konden niet geladen worden" error={fout.error} context="dossier" onRetry={fout.reload} />
-      : <PaginaLaden beschrijving="Evaluaties laden…" />;
+      : <EvaluatiesSkeleton />;
   }
 
   const { contactmomenten, contactmomentDetails, evaluaties } = planData.data;

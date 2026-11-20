@@ -28,7 +28,7 @@ class DevSetupTest {
         assertEquals("dev-only-insecure-secret", values.app.secret)
         assertEquals("pdca-document", values.app.configuration.properties.path("documentProces").asText())
         assertEquals(
-            GrantedEndpoint("POST", "/api/v1/process-document/operation/modify-document-and-start-process"),
+            GrantedEndpoint("GET", "/api/v1/admin-settings/accent-colors"),
             values.app.configuration.grantedEndpoints.last(),
         )
         assertEquals(EpistolaValues("http://localhost:4000/api", "demo", "epk_demo_000000000000000000000000000000000000", listOf("pdca-documenten")), values.epistola)

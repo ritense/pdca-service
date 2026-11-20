@@ -3,7 +3,7 @@ import { Button, InlineNotification, Layer, OverflowMenu, OverflowMenuItem, Tag 
 import { Add, Checkmark, ChevronRight } from '@carbon/react/icons';
 import type { Doel, Instrument, OpenVerzoek, ProductType } from '../shared/api';
 import { formatDate, isVerlopen } from '../shared/dates';
-import { aantal, doelStatus } from '../shared/labels';
+import { aantal, doelBalkKleur, doelStatus } from '../shared/labels';
 import { NietGeladen } from '../shared/Meldingen';
 import type { Resource } from '../shared/useResource';
 import type { ActieContext, Notities, RegistratieInvoer, VoortgangInvoer } from './doelenActies';
@@ -54,8 +54,9 @@ export function HoofddoelCard({ doel, model, handlers }: { doel: Doel; model: Do
   const [open, setOpen] = useState(false);
   const details = model.detailsVanDoel(doel.uuid);
   const status = doelStatus(doel, details, true);
+  const balk = doelBalkKleur(status, details?.voortgangStatus, model.voortgangOpties);
   return (
-    <Layer className="pdca-goal-card pdca-goal-card--hoofddoel">
+    <Layer className={`pdca-goal-card pdca-goal-card--hoofddoel pdca-goal-card--${balk}`}>
       <div className="pdca-goal-header" onClick={() => setOpen(o => !o)}>
         <div className="pdca-row-main">
           <ChevronRight size={16} className={`pdca-chevron${open ? ' pdca-chevron--open' : ''}`} />
@@ -99,8 +100,9 @@ export function SubdoelCard({ doel, model, producttypen, verzoeken, handlers }: 
   const aantalActies = model.alleActiesVan(doel.uuid).length;
   // Without the producttypen nothing can be said about what is requestable.
   const aanvraagbaar = producttypen.data ? aanvraagbareProducttypen(model, producttypen.data, doel) : null;
+  const balk = doelBalkKleur(status, actief ? details?.voortgangStatus : null, model.voortgangOpties);
   return (
-    <Layer className={`pdca-goal-card status-${doel.status}`}>
+    <Layer className={`pdca-goal-card status-${doel.status} pdca-goal-card--${balk}`}>
       <div className="pdca-goal-header" onClick={() => setOpen(o => !o)}>
         <div className="pdca-row-main pdca-row-main--nowrap">
           <ChevronRight size={16} className={`pdca-chevron${open ? ' pdca-chevron--open' : ''}`} />

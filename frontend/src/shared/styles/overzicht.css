@@ -135,37 +135,186 @@
   padding: 1.25rem;
 }
 
-/* Info blocks */
-.pdca-info-block {
-  margin-bottom: 1.25rem;
-}
-
-.pdca-info-block:last-child {
-  margin-bottom: 0;
-}
-
-.pdca-info-label {
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: var(--cds-text-secondary, #525252);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 6px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.pdca-info-value {
-  font-size: 0.875rem;
+/* Plan fields: Carbon ContainedList, one item per field.
+   Each row is a tinted icon tile, the value, and the field name under it. */
+/* A ContainedList filling a card: its header matches the h4 of .pdca-card-header
+   (heading-03) so it reads the same as the cards beside it. */
+.pdca-kaartlijst .cds--contained-list__header {
+  block-size: auto;
+  padding: var(--pdca-spacing-05) 1.25rem;
+  font-size: var(--cds-heading-03-font-size, 1.25rem);
+  font-weight: var(--cds-heading-03-font-weight, 400);
+  line-height: var(--cds-heading-03-line-height, 1.4);
+  letter-spacing: var(--cds-heading-03-letter-spacing, 0);
   color: var(--cds-text-primary, #161616);
-  line-height: 1.6;
-  white-space: pre-wrap;
+  background: transparent;
 }
 
-.pdca-info-value.empty {
+.pdca-kaartlijst .cds--contained-list-item__content {
+  padding-inline: 1.25rem;
+}
+
+/* The header's own action (Toevoegen) sits against the same right edge. */
+.pdca-kaartlijst .cds--contained-list__action {
+  inset-block: 0;
+  align-items: center;
+  padding-inline-end: var(--pdca-spacing-05);
+}
+
+/* Carbon lays __content out as a grid with a 1rem icon column; the tinted
+   tile is wider, so the column is widened to match it. */
+.pdca-veld.cds--contained-list-item--with-icon .cds--contained-list-item__content {
+  grid-template-columns: 2.5rem 1fr;
+  column-gap: var(--pdca-spacing-05);
+  align-items: center;
+  padding-block: var(--pdca-spacing-04);
+}
+
+/* Carbon pins the action to the top of the row; stretch the slot over the
+   full height so the edit button centres, clear of the row's edge. */
+.pdca-veld .cds--contained-list-item__action {
+  inset-block: 0;
+  align-items: center;
+  padding-inline-end: var(--pdca-spacing-05);
+}
+
+.pdca-veld .cds--contained-list-item__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  padding-block-start: 0;
+  border-radius: 4px;
+}
+
+.pdca-veld .cds--contained-list-item__icon svg {
+  fill: currentColor;
+}
+
+.pdca-veld--blue .cds--contained-list-item__icon {
+  background: var(--cds-tag-background-blue, #d0e2ff);
+  color: var(--cds-tag-color-blue, #0043ce);
+}
+
+.pdca-veld--green .cds--contained-list-item__icon {
+  background: var(--cds-tag-background-green, #a7f0ba);
+  color: var(--cds-tag-color-green, #0e6027);
+}
+
+.pdca-veld--purple .cds--contained-list-item__icon {
+  background: var(--cds-tag-background-purple, #e8daff);
+  color: var(--cds-tag-color-purple, #6929c4);
+}
+
+.pdca-veld--teal .cds--contained-list-item__icon {
+  background: var(--cds-tag-background-teal, #9ef0f0);
+  color: var(--cds-tag-color-teal, #005d5d);
+}
+
+.pdca-veld--cyan .cds--contained-list-item__icon {
+  background: var(--cds-tag-background-cyan, #bae6ff);
+  color: var(--cds-tag-color-cyan, #00539a);
+}
+
+.pdca-veld-waarde {
+  display: block;
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--cds-text-primary, #161616);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.pdca-veld-waarde.empty {
   color: var(--cds-text-placeholder, #a8a8a8);
   font-style: italic;
+}
+
+.pdca-veld-label {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.75rem;
+  line-height: 1.33;
+  color: var(--cds-text-secondary, #525252);
+}
+
+/* Betrokkenen: the same list, with an initials tile instead of an icon. */
+.pdca-betrokkene.cds--contained-list-item--with-icon .cds--contained-list-item__content {
+  grid-template-columns: 2.5rem 1fr;
+  column-gap: var(--pdca-spacing-05);
+  align-items: center;
+  padding-block: var(--pdca-spacing-04);
+}
+
+.pdca-betrokkene .cds--contained-list-item__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  padding-block-start: 0;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.32px;
+}
+
+.pdca-betrokkene .cds--contained-list-item__action {
+  inset-block: 0;
+  align-items: center;
+  padding-inline-end: var(--pdca-spacing-05);
+}
+
+.pdca-betrokkene--blue .cds--contained-list-item__icon {
+  background: var(--cds-tag-background-blue, #d0e2ff);
+  color: var(--cds-tag-color-blue, #0043ce);
+}
+
+.pdca-betrokkene--purple .cds--contained-list-item__icon {
+  background: var(--cds-tag-background-purple, #e8daff);
+  color: var(--cds-tag-color-purple, #6929c4);
+}
+
+.pdca-betrokkene--green .cds--contained-list-item__icon {
+  background: var(--cds-tag-background-green, #a7f0ba);
+  color: var(--cds-tag-color-green, #0e6027);
+}
+
+.pdca-betrokkene--teal .cds--contained-list-item__icon {
+  background: var(--cds-tag-background-teal, #9ef0f0);
+  color: var(--cds-tag-color-teal, #005d5d);
+}
+
+.pdca-betrokkene--cyan .cds--contained-list-item__icon {
+  background: var(--cds-tag-background-cyan, #bae6ff);
+  color: var(--cds-tag-color-cyan, #00539a);
+}
+
+.pdca-betrokkene--magenta .cds--contained-list-item__icon {
+  background: var(--cds-tag-background-magenta, #ffd6e8);
+  color: var(--cds-tag-color-magenta, #9f1853);
+}
+
+.pdca-betrokkene-naam {
+  display: flex;
+  align-items: center;
+  gap: var(--pdca-spacing-03);
+  flex-wrap: wrap;
+  font-size: 1rem;
+  line-height: 1.4;
+  color: var(--cds-text-primary, #161616);
+  overflow-wrap: anywhere;
+}
+
+.pdca-betrokkene-rol,
+.pdca-betrokkene-contact {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.75rem;
+  line-height: 1.33;
+  color: var(--cds-text-secondary, #525252);
+  overflow-wrap: anywhere;
 }
 
 /* Evaluation list items */

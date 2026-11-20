@@ -60,7 +60,8 @@
                 {"method": "GET", "pattern": "/api/v1/document/*"},
                 {"method": "GET", "pattern": "/api/management/v1/case/*"},
                 {"method": "POST", "pattern": "/api/v1/document-search"},
-                {"method": "POST", "pattern": "/api/v1/process-document/operation/modify-document-and-start-process"}
+                {"method": "POST", "pattern": "/api/v1/process-document/operation/modify-document-and-start-process"},
+                {"method": "GET", "pattern": "/api/v1/admin-settings/accent-colors"}
             ],
             "contractBindings": [
                 {"contract": "nl.ritense.openplan@2", "pluginId": "openplan"},

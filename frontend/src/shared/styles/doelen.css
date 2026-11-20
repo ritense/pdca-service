@@ -34,6 +34,50 @@
   border-left: 4px solid var(--cds-border-subtle, #e0e0e0);
 }
 
+/* The bar shows at a glance how a doel is going: it takes the colour of the
+   voortgangsstatus when one is set, otherwise of the lifecycle status, so it
+   always agrees with the tags on the same row (see doelBalkKleur). */
+.pdca-goal-card--green {
+  border-left-color: var(--cds-tag-color-green, #0e6027);
+}
+
+.pdca-goal-card--magenta {
+  border-left-color: var(--cds-tag-color-magenta, #9f1853);
+}
+
+.pdca-goal-card--red {
+  border-left-color: var(--cds-tag-color-red, #a2191f);
+}
+
+.pdca-goal-card--blue {
+  border-left-color: var(--cds-tag-color-blue, #0043ce);
+}
+
+.pdca-goal-card--purple {
+  border-left-color: var(--cds-tag-color-purple, #6929c4);
+}
+
+.pdca-goal-card--teal {
+  border-left-color: var(--cds-tag-color-teal, #005d5d);
+}
+
+.pdca-goal-card--cyan {
+  border-left-color: var(--cds-tag-color-cyan, #00539a);
+}
+
+.pdca-goal-card--cool-gray {
+  border-left-color: var(--cds-tag-color-cool-gray, #697077);
+}
+
+.pdca-goal-card--warm-gray {
+  border-left-color: var(--cds-tag-color-warm-gray, #565151);
+}
+
+.pdca-goal-card--gray,
+.pdca-goal-card--high-contrast {
+  border-left-color: var(--cds-tag-color-gray, #525252);
+}
+
 .pdca-goal-header {
   display: flex;
   flex-wrap: wrap;

@@ -240,3 +240,32 @@ html, body {
 .pdca-spacer {
   flex: 1;
 }
+
+/* Skeletons: a row of placeholders shaped like a list item (see Skeletons.tsx). */
+.pdca-skeleton-rij {
+  display: flex;
+  align-items: center;
+  gap: var(--pdca-spacing-05);
+  padding-block: var(--pdca-spacing-04);
+}
+
+.pdca-skeleton-rij + .pdca-skeleton-rij {
+  border-top: 1px solid var(--cds-border-subtle, #e0e0e0);
+}
+
+.pdca-skeleton-tegel.cds--skeleton__placeholder {
+  flex: none;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
+  border-radius: 4px;
+}
+
+.pdca-skeleton-tekst {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+/* The skeleton's own lines carry the spacing, not Carbon's default margin. */
+.pdca-skeleton-tekst .cds--skeleton__text {
+  margin-block-end: var(--pdca-spacing-02);
+}

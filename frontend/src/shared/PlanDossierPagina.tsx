@@ -20,7 +20,11 @@ export interface PlanPaginaProps {
  * another failure with a retry, a dossier without plan). The tab itself is
  * only rendered with its plan.
  */
-export function PlanDossierPagina({ children }: { children: (props: PlanPaginaProps) => React.ReactNode }) {
+export function PlanDossierPagina({ children, skeleton }: {
+  children: (props: PlanPaginaProps) => React.ReactNode;
+  /** The tab's own placeholder while the plan loads; a spinner without one. */
+  skeleton?: React.ReactNode;
+}) {
   const documentId = useInitContext().documentId;
   const resource = usePlanVoorDossier(documentId);
 
@@ -33,7 +37,7 @@ export function PlanDossierPagina({ children }: { children: (props: PlanPaginaPr
       return <LaadFout pagina titel="Het plan kon niet geladen worden" error={resource.error} context="dossier"
         onRetry={resource.reload} />;
     }
-    return <PaginaLaden beschrijving="Plan laden…" />;
+    return <>{skeleton ?? <PaginaLaden beschrijving="Plan laden…" />}</>;
   }
   if (resource.data === null) {
     return <PaginaMelding titel="Bij dit dossier hoort (nog) geen plan" tekst="Een plan ontstaat uit een intake." />;
