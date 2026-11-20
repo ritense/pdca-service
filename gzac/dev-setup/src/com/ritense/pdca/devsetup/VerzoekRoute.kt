@@ -4,9 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 
 /**
- * The verzoek route (ARCHITECTURE §6.2) in GZAC: an Objecttypen API
- * configuration that names the objecttype the way the stack's containers do,
- * the object management of InstrumentVerzoek, the Verzoek plugin
+ * The verzoek route (ARCHITECTURE §6.2) in GZAC: Objecttypen API and Objecten
+ * API configurations at the addresses the stack's containers use, the object
+ * management of InstrumentVerzoek, the Verzoek plugin
  * configuration and the callback URL Open Notificaties can reach. The zaak
  * type link goes in with the case definition ([CaseDefinitions]).
  */
@@ -16,15 +16,20 @@ class VerzoekRoute(private val api: GzacApi, private val values: DevValues) {
 
     fun apply() {
         val objecttypenApiChanged = classic.createOrUpdate(
-            verzoek.objecttypenApi.id, "objecttypenapi", verzoek.objecttypenApi.title, objecttypenApiProperties(), "Objecttypen API configuration"
+            verzoek.objecttypenApi.id, "objecttypenapi", verzoek.objecttypenApi.title,
+            apiProperties(verzoek.objecttypenApi, "objecttypenapi", "Objecttypen API"), "Objecttypen API configuration"
         )
-        val (objectManagementId, objectManagementChanged) = objectManagement(verzoek.objecttypenApi.id)
+        val objectenApiChanged = classic.createOrUpdate(
+            verzoek.objectenApi.id, "objectenapi", verzoek.objectenApi.title,
+            apiProperties(verzoek.objectenApi, "objectenapi", "Objecten API"), "Objecten API configuration"
+        )
+        val (objectManagementId, objectManagementChanged) = objectManagement(verzoek.objecttypenApi.id, verzoek.objectenApi.id)
         val notificaties = classic.existing("notificatiesapi", "Notificaties API")
         val verzoekChanged = verzoekPlugin(objectManagementId, notificaties.text("id")!!)
         val callbackChanged = notificatiesCallback(notificaties)
         // GZAC registers its abonnement again whenever a Notificaties API or Verzoek configuration
         // is saved; a changed objecttype address alone would wait for GZAC's next start.
-        if ((objecttypenApiChanged || objectManagementChanged) && !verzoekChanged && !callbackChanged) {
+        if ((objecttypenApiChanged || objectenApiChanged || objectManagementChanged) && !verzoekChanged && !callbackChanged) {
             classic.update(verzoek.plugin.id, verzoek.plugin.title, verzoekPluginProperties(objectManagementId, notificaties.text("id")!!), "the Verzoek plugin configuration")
             Console.info("Verzoek plugin configuration saved again, so GZAC renews its abonnement with the new objecttype address")
         }
@@ -38,23 +43,26 @@ class VerzoekRoute(private val api: GzacApi, private val values: DevValues) {
     }
 
     /**
-     * The Objecten API renders objecttype URLs with the address the stack's
-     * containers use (host.docker.internal), and Open Notificaties matches the
-     * Verzoek plugin's objecttype filter literally, so the object management
-     * gets its own Objecttypen API configuration at that address. It reuses
-     * the token configuration of the dev app's Objecttypen API.
+     * The object management gets its own Objecttypen API and Objecten API
+     * configurations at the address the stack's containers use
+     * (host.docker.internal): the Objecten API renders objecttype URLs with
+     * that address and Open Notificaties matches the Verzoek plugin's
+     * objecttype filter literally, and the notification names the verzoek by
+     * the URL it was created under (the `objecten` plugin on the plugin host
+     * uses that address too), which GZAC only fetches through a configuration
+     * with the same base URL. Each reuses the token configuration of the dev
+     * app's own configuration of that plugin.
      */
-    private fun objecttypenApiProperties(): ObjectNode {
-        val devConfiguration = classic.existing("objecttypenapi", "Objecttypen API", excludedId = verzoek.objecttypenApi.id)
+    private fun apiProperties(values: ApiConfigurationValues, definitionKey: String, what: String): ObjectNode {
+        val devConfiguration = classic.existing(definitionKey, what, excludedId = values.id)
         return Json.mapper.createObjectNode()
-            .put("url", verzoek.objecttypenApi.url)
+            .put("url", values.url)
             .put("authenticationPluginConfiguration", devConfiguration.path("properties").text("authenticationPluginConfiguration"))
     }
 
     /** Returns the object management's id and whether it changed. */
-    private fun objectManagement(objecttypenApiId: String): Pair<String, Boolean> {
+    private fun objectManagement(objecttypenApiId: String, objectenApiId: String): Pair<String, Boolean> {
         val values = verzoek.objectManagement
-        val objectenApiId = classic.existing("objectenapi", "Objecten API").text("id")!!
         val all = api.get(OBJECT_MANAGEMENT_LIST).orThrow("Listing the object management configurations").json().items()
         val current = all.firstOrNull { it.text("id") == values.id } ?: all.firstOrNull { it.text("title") == values.title }
         val id = current?.text("id") ?: values.id

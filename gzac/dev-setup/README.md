@@ -80,7 +80,7 @@ step.
 | Name resolution | warns when this machine does not resolve `host.docker.internal` (below) | — |
 | Verzoek objecttype | `registers/setup-registers.sh`: the objecttype `InstrumentVerzoek` (fixed uuid `00000000-0000-4000-8000-0000dca00001`, published version 1 with `../objecttypen/instrument-verzoek.schema.json`) in the stack's Objecttypen API, registered in its Objecten API with read/write for the stack's API token; Django shells in the containers through `docker exec` | — |
 | Register plugins | uploads `plugins/<name>/dist/<name>-<version>.zip` of `openplan`, `openproduct`, `openklant` and `objecten` to the stack's plugin host (a package with other content replaces the one of the same version), waits for their discovery and creates or updates their configurations | `POST …/external-plugin/host/{id}/upload`, `GET …/definition`, `POST`/`PUT …/configuration` |
-| Verzoek route | an Objecttypen API configuration at `host.docker.internal:8011` (below), the object management `InstrumentVerzoek`, the Verzoek plugin configuration (type `instrument` → case and process `instrument-verzoek`, copy strategy full) and the callback URL of the dev app's Notificaties API configuration | `/api/v1/plugin/configuration`, `/api/v1/object/management/configuration` |
+| Verzoek route | an Objecttypen API configuration at `host.docker.internal:8011` and an Objecten API configuration at `host.docker.internal:8010` (below), the object management `InstrumentVerzoek`, the Verzoek plugin configuration (type `instrument` → case and process `instrument-verzoek`, copy strategy full) and the callback URL of the dev app's Notificaties API configuration | `/api/v1/plugin/configuration`, `/api/v1/object/management/configuration` |
 | Epistola templates | imports each catalog of `../epistola/catalogs/` (`pdca-documenten`, zipped from its `catalog.json` and `resources/`) into the Epistola Suite tenant as authored catalog (mode merge) and releases it with the version of its `catalog.json`; a catalog whose release the Suite has is left alone | Epistola Suite: `GET /tenants/{tenant}/catalogs`, `POST …/catalogs/import`, `POST …/catalogs/{slug}/release` |
 | PDCA app | registers the app as external app (URL app) with its secret, callback URL and frontend origin, or re-applies them | `POST …/host`, `PATCH …/host/{id}/connection` |
 | PDCA configuration *(needs the app)* | waits until GZAC has discovered the app's manifest (accepting a changed manifest of the same version), then creates or updates the configuration with exactly the manifest's grants and the four contract bindings | `GET …/definition`, `POST`/`PUT …/configuration` |
@@ -115,6 +115,7 @@ GZAC. Values written as `${NAME:default}` take the environment variable
 | `PDCA_GZAC_CALLBACK_URL` | `http://localhost:8080` | GZAC as the app reaches it |
 | `PDCA_GZAC_NOTIFICATIES_CALLBACK_URL` | `http://host.docker.internal:8080/api/v1/notificatiesapi/callback` | the Notificaties API callback URL (below) |
 | `PDCA_VERZOEK_OBJECTTYPEN_API_URL` | `http://host.docker.internal:8011/api/v2/` | the verzoek's Objecttypen API configuration (below) |
+| `PDCA_VERZOEK_OBJECTEN_API_URL` | `http://host.docker.internal:8010/api/v2/` | the verzoek's Objecten API configuration (below); the same address as `PDCA_OBJECTEN_URL` |
 | `PDCA_VERZOEK_RSIN`, `PDCA_VERZOEK_INITIATOR_ROLTYPE_UUID`, `PDCA_VERZOEK_ZAAKTYPE_UUID` | `051845623`, `1c359a1b-…`, `744ca059-…` | the dev organisation's RSIN and the initiator roltype and zaaktype of the stack's catalogue |
 | `PDCA_EPISTOLA_URL` | `http://localhost:4000/api` | the Epistola Suite's API, for the catalog import |
 | `PDCA_EPISTOLA_TENANT`, `PDCA_EPISTOLA_API_KEY` | `demo`, the demo tenant's API key | the Suite tenant the catalogs go into: the tenant of the dev app's Epistola configuration |
@@ -147,6 +148,13 @@ on the plugin host creates verzoeken at `host.docker.internal:8010`). Hence:
   own Objecttypen API configuration "Objecttypen API (PDCA dev)" at
   `host.docker.internal:8011`, with the token configuration of the dev
   app's Objecttypen API. The dev app's own configurations stay as they are.
+- **Objecten API configuration** — GZAC only fetches an object through an
+  Objecten API configuration whose URL the object URL starts with, so the
+  object management uses its own configuration "Objecten API (PDCA
+  verzoek)" at `host.docker.internal:8010`, with the token configuration of
+  the dev app's Objecten API. With the dev app's own configuration
+  (`localhost:8010`) GZAC refuses every verzoek (`ObjectUrlNotAllowedException`)
+  and no instrument dossier is created.
 - **Notificaties API callback** — Open Notificaties verifies a callback URL
   by calling it from its container, so the setup sets the callback URL of
   the dev app's Notificaties API configuration to

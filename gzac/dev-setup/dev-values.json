@@ -91,6 +91,11 @@
             "title": "Objecttypen API (PDCA dev)",
             "url": "${PDCA_VERZOEK_OBJECTTYPEN_API_URL:http://host.docker.internal:8011/api/v2/}"
         },
+        "objectenApi": {
+            "id": "00000000-0000-4000-8000-0000dca00006",
+            "title": "Objecten API (PDCA verzoek)",
+            "url": "${PDCA_VERZOEK_OBJECTEN_API_URL:http://host.docker.internal:8010/api/v2/}"
+        },
         "objectManagement": {
             "id": "00000000-0000-4000-8000-0000dca00002",
             "title": "InstrumentVerzoek",

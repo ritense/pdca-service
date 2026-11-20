@@ -86,13 +86,15 @@ data class SystemProcessValues(val epistolaPlaceholderConfigurationId: String, v
 
 data class VerzoekValues(
     val notificatiesApiCallbackUrl: String,
-    val objecttypenApi: ObjecttypenApiValues,
+    val objecttypenApi: ApiConfigurationValues,
+    val objectenApi: ApiConfigurationValues,
     val objectManagement: ObjectManagementValues,
     val plugin: VerzoekPluginValues,
     val zaakTypeLink: ZaakTypeLinkValues,
 )
 
-data class ObjecttypenApiValues(val id: String, val title: String, val url: String)
+/** A classic API plugin configuration the setup owns: fixed id, title and the API's base URL. */
+data class ApiConfigurationValues(val id: String, val title: String, val url: String)
 
 data class ObjectManagementValues(
     val id: String,

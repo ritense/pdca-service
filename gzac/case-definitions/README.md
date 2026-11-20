@@ -397,7 +397,13 @@ parts: Objecten API on 8010, Objecttypen API on 8011, Open Notificaties on
    the abonnement.
 3. **GZAC plugins** — configure the Objecttypen API, Objecten API and
    Notificaties API plugins, and an **object management** configuration for
-   `InstrumentVerzoek`.
+   `InstrumentVerzoek`. Its Objecten API configuration must have the base URL
+   the `objecten` plugin creates the verzoeken at (`objectenUrl` + `/api/v2/`):
+   the notification names the verzoek by that URL, and GZAC refuses to fetch
+   an object URL that does not start with the configuration's URL. Likewise
+   its Objecttypen API configuration must have the address the Objecten API
+   renders objecttype URLs with, since Open Notificaties matches the
+   objecttype literally.
 4. **Zaaktype link** — the Verzoek plugin resolves the zaaktype of the case
    it creates, so `instrument-verzoek` needs a zaak type link. The zip
    carries none (it names environment values), and GZAC changes the zaak
