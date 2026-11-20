@@ -5,8 +5,9 @@ import { Doel } from '../shared/api';
 import { EvaluatieBanner } from '../shared/EvaluatieBanner';
 import { foutmelding } from '../shared/http';
 import { doelStatus } from '../shared/labels';
-import { LaadFout, NietGeladen, PaginaLaden } from '../shared/Meldingen';
+import { LaadFout, NietGeladen } from '../shared/Meldingen';
 import { PlanDossierPagina, PlanPaginaProps } from '../shared/PlanDossierPagina';
+import { DoelenSkeleton } from '../shared/Skeletons';
 import { useEvaluatieSessie } from '../shared/useEvaluatieSessie';
 import { eersteFout } from '../shared/useResource';
 import { formatUrn } from '../shared/urn';
@@ -17,7 +18,7 @@ import { useDoelenData } from './useDoelenModel';
 
 /** The "Doelen" case tab. */
 export function PlanGoals() {
-  return <PlanDossierPagina>{props => <DoelenPagina {...props} />}</PlanDossierPagina>;
+  return <PlanDossierPagina skeleton={<DoelenSkeleton />}>{props => <DoelenPagina {...props} />}</PlanDossierPagina>;
 }
 
 function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
@@ -41,7 +42,7 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
   if (!model) {
     return fout
       ? <LaadFout pagina titel="De doelen konden niet geladen worden" error={fout.error} context="dossier" onRetry={fout.reload} />
-      : <PaginaLaden beschrijving="Doelen laden…" />;
+      : <DoelenSkeleton />;
   }
 
   const acties = doelenActies(model);

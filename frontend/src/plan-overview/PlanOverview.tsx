@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { InlineNotification } from '@carbon/react';
 import { EvaluatieBanner } from '../shared/EvaluatieBanner';
 import { foutmelding } from '../shared/http';
-import { LaadFout, NietGeladen, PaginaLaden } from '../shared/Meldingen';
+import { LaadFout, NietGeladen } from '../shared/Meldingen';
 import { PlanDossierPagina, PlanPaginaProps } from '../shared/PlanDossierPagina';
+import { OverzichtSkeleton } from '../shared/Skeletons';
 import { useEvaluatieSessie } from '../shared/useEvaluatieSessie';
 import { eersteFout } from '../shared/useResource';
 import { KpiTegels } from './KpiTegels';
@@ -16,7 +17,7 @@ import { Betrokkenen } from './Betrokkenen';
 
 /** The "Planoverzicht" case tab. */
 export function PlanOverview() {
-  return <PlanDossierPagina>{props => <OverzichtPagina {...props} />}</PlanDossierPagina>;
+  return <PlanDossierPagina skeleton={<OverzichtSkeleton />}>{props => <OverzichtPagina {...props} />}</PlanDossierPagina>;
 }
 
 function OverzichtPagina({ documentId, plan, details, setPlan, setDetails }: PlanPaginaProps) {
@@ -32,7 +33,7 @@ function OverzichtPagina({ documentId, plan, details, setPlan, setDetails }: Pla
   if (!model) {
     return fout
       ? <LaadFout pagina titel="Het planoverzicht kon niet geladen worden" error={fout.error} context="dossier" onRetry={fout.reload} />
-      : <PaginaLaden beschrijving="Plan laden…" />;
+      : <OverzichtSkeleton />;
   }
 
   const { betrokkenen } = model.data;

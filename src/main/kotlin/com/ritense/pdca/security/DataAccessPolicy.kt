@@ -145,6 +145,10 @@ class DataAccessPolicy(private val scope: PlanScope) {
         }
 
         // ---- PDCA overlay and use cases
+        // GZAC's accent colours, so a bundle can paint itself like the GZAC
+        // around it; the same ramp every viewer of that GZAC sees, and no
+        // plan data, so any verified user may read it.
+        api("GET", "$pdca/accent-colors", requirement = anyUser)
         api("PUT", "$pdca/plandetails/{}", requirement = planInPath)
         api("GET", "$pdca/voortgangstatussen", "planUuid") { c, _ ->
             if (c.query["planUuid"] == null) Requirement.AnyUser else scope.plans(listOf(uuid(c.query["planUuid"])))

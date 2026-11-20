@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
-  Button, Checkbox, DataTable, InlineNotification, Layer, Modal, Select, SelectItem, Table, TableBody, TableCell,
-  TableHead, TableHeader, TableRow, Tag, TextInput, Tile,
+  Button, Checkbox, ContainedList, ContainedListItem, InlineNotification, Layer, Modal, Select, SelectItem,
+  Tag, TextInput, Tile,
 } from '@carbon/react';
 import { TrashCan } from '@carbon/react/icons';
 import type { Betrokkene, RelatieType } from '../shared/api';
@@ -10,12 +10,11 @@ import type { Resource } from '../shared/useResource';
 import { useSubmit } from '../shared/useSubmit';
 import type { NieuweBetrokkene } from './overzichtActies';
 
-const HEADERS = [
-  { key: 'name', header: 'Naam' },
-  { key: 'role', header: 'Rol' },
-  { key: 'contact', header: 'Contact' },
-  { key: 'actions', header: '' },
-];
+/** Tag tints the initials tile cycles through, so a plan's betrokkenen stay apart. */
+const TINTS = ['blue', 'purple', 'green', 'teal', 'cyan', 'magenta'] as const;
+
+/** First letter of the first two words: "S. Jansen" -> "SJ". */
+const initialen = (naam: string) => naam.trim().split(/\s+/).slice(0, 2).map(w => w[0] ?? '').join('').toUpperCase();
 
 /**
  * The plan's betrokkenen (roles from the Open Plan relatietype
@@ -31,52 +30,36 @@ export function Betrokkenen({ betrokkenen, relatietypen, onToevoegen, onVerwijde
   const [toevoegen, setToevoegen] = useState(false);
   const [teVerwijderen, setTeVerwijderen] = useState<Betrokkene | null>(null);
   const procesbegeleider = betrokkenen.find(b => b.isPrimary) ?? null;
-  const rows = betrokkenen.map(p => ({
-    id: p.id, name: p.name, role: p.role, contact: [p.email, p.phone].filter(Boolean).join(' / '), actions: p.id,
-  }));
 
   return (
     <Tile className="pdca-card">
       <Layer>
-        <div className="pdca-card-header">
-          <h4>Betrokkenen</h4>
-          <Button size="sm" kind="ghost" onClick={() => setToevoegen(true)}>Toevoegen</Button>
-        </div>
-        <div className="pdca-card-body">
-          {betrokkenen.length === 0 ? <p className="pdca-empty">Geen betrokkenen</p> : (
-            <div className="pdca-table-scroll">
-              <DataTable rows={rows} headers={HEADERS}>
-                {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (
-                  <Table {...getTableProps()} size="sm">
-                    <TableHead>
-                      <TableRow>
-                        {headers.map(header => (
-                          <TableHeader {...getHeaderProps({ header })} key={header.key}>{header.header}</TableHeader>
-                        ))}
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {rows.map(row => (
-                        <TableRow {...getRowProps({ row })} key={row.id}>
-                          {row.cells.map(cell => (
-                            <TableCell key={cell.id}>
-                              {cell.info.header === 'actions' ? (
-                                <Button size="sm" kind="danger--ghost" hasIconOnly renderIcon={TrashCan} iconDescription="Verwijderen"
-                                  onClick={() => setTeVerwijderen(betrokkenen.find(b => b.id === cell.value) ?? null)} />
-                              ) : cell.info.header === 'name' && row.id === procesbegeleider?.id ? (
-                                <>{cell.value} <Tag size="sm" type="green">Procesbegeleider</Tag></>
-                              ) : cell.value}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </DataTable>
-            </div>
-          )}
-        </div>
+        <ContainedList className="pdca-kaartlijst pdca-betrokkenenlijst" label="Betrokkenen" kind="on-page" isInset
+          action={<Button size="sm" kind="ghost" onClick={() => setToevoegen(true)}>Toevoegen</Button>}>
+          {betrokkenen.length === 0 ? (
+            <ContainedListItem className="pdca-betrokkene">
+              <span className="pdca-empty">Geen betrokkenen</span>
+            </ContainedListItem>
+          ) : betrokkenen.map((betrokkene, i) => {
+            const contact = [betrokkene.email, betrokkene.phone].filter(Boolean).join(' / ');
+            return (
+              <ContainedListItem key={betrokkene.id} className={`pdca-betrokkene pdca-betrokkene--${TINTS[i % TINTS.length]}`}
+                renderIcon={() => <span aria-hidden="true">{initialen(betrokkene.name)}</span>}
+                action={(
+                  <Button size="sm" kind="danger--ghost" hasIconOnly renderIcon={TrashCan}
+                    iconDescription={`${betrokkene.name} verwijderen`} tooltipPosition="left"
+                    onClick={() => setTeVerwijderen(betrokkene)} />
+                )}>
+                <span className="pdca-betrokkene-naam">
+                  {betrokkene.name}
+                  {betrokkene.id === procesbegeleider?.id && <Tag size="sm" type="green">Procesbegeleider</Tag>}
+                </span>
+                <span className="pdca-betrokkene-rol">{betrokkene.role}</span>
+                {contact && <span className="pdca-betrokkene-contact">{contact}</span>}
+              </ContainedListItem>
+            );
+          })}
+        </ContainedList>
       </Layer>
       <ToevoegenModal open={toevoegen} procesbegeleider={procesbegeleider} relatietypen={relatietypen}
         onClose={() => setToevoegen(false)} onSave={onToevoegen} />

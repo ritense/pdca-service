@@ -159,6 +159,17 @@ runs that build before packaging, so the jar always carries them, and
 bundle fetches nothing but its own files from the app and nothing from third
 parties; every API call goes through the GZAC host to `/data` (§4.4).
 
+A bundle paints itself like the GZAC around it. The host sends which Carbon
+theme it runs (white, g10, g90 or g100) over the bridge, and `PdcaRoot`
+applies it. The brand colours cannot travel the same way: GZAC writes the
+`--vcds-color-*` ramp an administrator sets under *Appearance* as inline
+styles on its own document, which a sandboxed iframe cannot read. So the app
+reads the ramp from GZAC (`GET /api/v1/admin-settings/accent-colors`, a
+granted endpoint) and the bundle applies it to its own root. Both ends are
+optional: without the grant, or when GZAC does not answer, `gzac-theme.css`
+keeps GZAC's default ramp, which it maps onto Carbon's interactive, link,
+focus and button tokens the way the Valtimo frontend does.
+
 ### 3.3 Register plugins and contracts (`plugins/`)
 
 Each register has its own contract and its own external plugin, a Wasm
@@ -1155,6 +1166,7 @@ path, query parameters) is a 403. *Caller*: **user** = any verified user;
 
 | Method | Path | Purpose | Caller |
 |---|---|---|---|
+| GET | `…/accent-colors` | GZAC's accent colour ramp for the bundles (§3.2) | any user |
 | PUT | `…/plandetails/{planUuid}` | edit the plan's overlay row (partial; 404 without row) | plan |
 | GET | `…/voortgangstatussen[?planUuid]` | voortgangsstatussen of the plan's case type; without plan the standard list | user / plan |
 | GET | `…/doeldetails?planUuid` | overlay rows of the plan's doelen | plan |
