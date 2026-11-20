@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  id="Definitions_pdca_document"
+                  targetNamespace="http://bpmn.io/schema/bpmn"
+                  exporter="pdca-app" exporterVersion="0.2.0">
+    <!--
+      System process "pdca-document": makes one document the PDCA app asked
+      for (a document aanvraag, e.g. the evaluatieverslag of a completed
+      evaluation) with the Epistola Document Suite and hands the PDF back to
+      the app. It is a global process, not part of a case definition: the
+      app starts it on the plan dossier (business key = plan dossier id)
+      through modify-document-and-start-process, with the process key of its
+      configuration property documentProces.
+
+      document-aanvraag-ophalen claims the oldest open aanvraag of the
+      dossier and sets pdcaAanvraagId, pdcaBestandsnaam and pdcaGegevens (the
+      data snapshot, which is the template's data model). Epistola renders
+      template evaluatieverslag of catalog pdca-documenten from it,
+      asynchronously: the process waits for the message
+      EpistolaDocumentGenerated, which fills epistolaResult. A completed
+      document is downloaded into pdcaDocumentInhoud and reported with
+      document-gereed (GEREED); anything else is reported as MISLUKT with
+      Epistola's error message.
+
+      The PDCA service tasks run asynchronously and are retried every
+      minute, five times, before they become an incident; both actions are
+      safe to repeat. The Epistola tasks run in the transaction of the step
+      before them (the Epistola plugin needs the generate task without
+      asyncAfter and the message catch event without asyncBefore). When the
+      process ends, the PDF and the data snapshot are removed from its
+      variables: the app holds the document, the process does not.
+    -->
+    <bpmn:message id="Message_EpistolaDocumentGenerated" name="EpistolaDocumentGenerated"/>
+    <bpmn:process id="pdca-document" isExecutable="true" name="PDCA document maken">
+        <bpmn:extensionElements>
+            <camunda:executionListener event="end" expression="${execution.removeVariable('pdcaDocumentInhoud')}"/>
+            <camunda:executionListener event="end" expression="${execution.removeVariable('pdcaGegevens')}"/>
+        </bpmn:extensionElements>
+        <bpmn:startEvent id="start-event" name="Document aangevraagd">
+            <bpmn:outgoing>flow-start-gegevens</bpmn:outgoing>
+        </bpmn:startEvent>
+        <bpmn:serviceTask camunda:asyncBefore="true" camunda:expression="${true}" id="gegevens-ophalen"
+                          name="Documentgegevens ophalen">
+            <bpmn:documentation>Plugin action document-aanvraag-ophalen: claims the oldest open
+                document aanvraag of this dossier and sets the process variables pdcaAanvraagId,
+                pdcaBestandsnaam and pdcaGegevens.
+            </bpmn:documentation>
+            <bpmn:extensionElements>
+                <camunda:failedJobRetryTimeCycle>R5/PT1M</camunda:failedJobRetryTimeCycle>
+            </bpmn:extensionElements>
+            <bpmn:incoming>flow-start-gegevens</bpmn:incoming>
+            <bpmn:outgoing>flow-gegevens-genereren</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:serviceTask camunda:expression="${null}" id="document-genereren" name="Document genereren">
+            <bpmn:documentation>Epistola action epistola-generate-document: template evaluatieverslag
+                of catalog pdca-documenten with pdcaGegevens as data, PDF named pdcaBestandsnaam; the
+                request lands in epistolaResult.
+            </bpmn:documentation>
+            <bpmn:incoming>flow-gegevens-genereren</bpmn:incoming>
+            <bpmn:outgoing>flow-genereren-wachten</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:intermediateCatchEvent camunda:asyncAfter="true" id="wachten-op-document" name="Wachten op het document">
+            <bpmn:extensionElements>
+                <camunda:failedJobRetryTimeCycle>R5/PT1M</camunda:failedJobRetryTimeCycle>
+            </bpmn:extensionElements>
+            <bpmn:incoming>flow-genereren-wachten</bpmn:incoming>
+            <bpmn:outgoing>flow-wachten-gemaakt</bpmn:outgoing>
+            <bpmn:messageEventDefinition id="MessageEventDefinition_wachten-op-document"
+                                         messageRef="Message_EpistolaDocumentGenerated"/>
+        </bpmn:intermediateCatchEvent>
+        <bpmn:exclusiveGateway default="flow-gemaakt-mislukt" id="document-gemaakt" name="Document gemaakt?">
+            <bpmn:incoming>flow-wachten-gemaakt</bpmn:incoming>
+            <bpmn:outgoing>flow-gemaakt-downloaden</bpmn:outgoing>
+            <bpmn:outgoing>flow-gemaakt-mislukt</bpmn:outgoing>
+        </bpmn:exclusiveGateway>
+        <bpmn:serviceTask camunda:expression="${null}" id="document-downloaden" name="Document downloaden">
+            <bpmn:documentation>Epistola action epistola-download-document: the PDF of epistolaResult
+                into the process variable pdcaDocumentInhoud.
+            </bpmn:documentation>
+            <bpmn:incoming>flow-gemaakt-downloaden</bpmn:incoming>
+            <bpmn:outgoing>flow-downloaden-gereed</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:serviceTask camunda:asyncBefore="true" camunda:expression="${true}" id="document-gereed"
+                          name="Document gereed melden">
+            <bpmn:documentation>Plugin action document-gereed with uitkomst GEREED: hands
+                pdcaDocumentInhoud and pdcaBestandsnaam to the aanvraag pdcaAanvraagId.
+            </bpmn:documentation>
+            <bpmn:extensionElements>
+                <camunda:failedJobRetryTimeCycle>R5/PT1M</camunda:failedJobRetryTimeCycle>
+            </bpmn:extensionElements>
+            <bpmn:incoming>flow-downloaden-gereed</bpmn:incoming>
+            <bpmn:outgoing>flow-gereed-einde</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:serviceTask camunda:asyncBefore="true" camunda:expression="${true}" id="document-mislukt"
+                          name="Mislukt document melden">
+            <bpmn:documentation>Plugin action document-gereed with uitkomst MISLUKT: reports
+                Epistola's error message (epistolaResult.errorMessage) on the aanvraag pdcaAanvraagId.
+            </bpmn:documentation>
+            <bpmn:extensionElements>
+                <camunda:failedJobRetryTimeCycle>R5/PT1M</camunda:failedJobRetryTimeCycle>
+            </bpmn:extensionElements>
+            <bpmn:incoming>flow-gemaakt-mislukt</bpmn:incoming>
+            <bpmn:outgoing>flow-mislukt-einde</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:endEvent id="einde-gereed" name="Document gereed">
+            <bpmn:incoming>flow-gereed-einde</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:endEvent id="einde-mislukt" name="Document mislukt">
+            <bpmn:incoming>flow-mislukt-einde</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="flow-start-gegevens" sourceRef="start-event" targetRef="gegevens-ophalen"/>
+        <bpmn:sequenceFlow id="flow-gegevens-genereren" sourceRef="gegevens-ophalen" targetRef="document-genereren"/>
+        <bpmn:sequenceFlow id="flow-genereren-wachten" sourceRef="document-genereren" targetRef="wachten-op-document"/>
+        <bpmn:sequenceFlow id="flow-wachten-gemaakt" sourceRef="wachten-op-document" targetRef="document-gemaakt"/>
+        <bpmn:sequenceFlow id="flow-gemaakt-downloaden" name="Ja" sourceRef="document-gemaakt" targetRef="document-downloaden">
+            <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${epistolaResult.status == 'COMPLETED'}</bpmn:conditionExpression>
+        </bpmn:sequenceFlow>
+        <bpmn:sequenceFlow id="flow-gemaakt-mislukt" name="Nee" sourceRef="document-gemaakt" targetRef="document-mislukt"/>
+        <bpmn:sequenceFlow id="flow-downloaden-gereed" sourceRef="document-downloaden" targetRef="document-gereed"/>
+        <bpmn:sequenceFlow id="flow-gereed-einde" sourceRef="document-gereed" targetRef="einde-gereed"/>
+        <bpmn:sequenceFlow id="flow-mislukt-einde" sourceRef="document-mislukt" targetRef="einde-mislukt"/>
+    </bpmn:process>
+    <bpmndi:BPMNDiagram id="BPMNDiagram_pdca_document">
+        <bpmndi:BPMNPlane bpmnElement="pdca-document" id="BPMNPlane_pdca_document">
+            <bpmndi:BPMNShape bpmnElement="start-event" id="Shape_start-event">
+                <dc:Bounds height="36" width="36" x="152" y="152"/>
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds height="27" width="80" x="130" y="195"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="gegevens-ophalen" id="Shape_gegevens-ophalen">
+                <dc:Bounds height="80" width="100" x="240" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="document-genereren" id="Shape_document-genereren">
+                <dc:Bounds height="80" width="100" x="400" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="wachten-op-document" id="Shape_wachten-op-document">
+                <dc:Bounds height="36" width="36" x="562" y="152"/>
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds height="27" width="80" x="540" y="195"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="document-gemaakt" id="Shape_document-gemaakt" isMarkerVisible="true">
+                <dc:Bounds height="50" width="50" x="655" y="145"/>
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds height="14" width="94" x="633" y="121"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="document-downloaden" id="Shape_document-downloaden">
+                <dc:Bounds height="80" width="100" x="770" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="document-gereed" id="Shape_document-gereed">
+                <dc:Bounds height="80" width="100" x="930" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="document-mislukt" id="Shape_document-mislukt">
+                <dc:Bounds height="80" width="100" x="770" y="250"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="einde-gereed" id="Shape_einde-gereed">
+                <dc:Bounds height="36" width="36" x="1092" y="152"/>
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds height="14" width="88" x="1066" y="195"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="einde-mislukt" id="Shape_einde-mislukt">
+                <dc:Bounds height="36" width="36" x="932" y="272"/>
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds height="14" width="88" x="906" y="315"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNEdge bpmnElement="flow-start-gegevens" id="Edge_flow-start-gegevens">
+                <di:waypoint x="188" y="170"/>
+                <di:waypoint x="240" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-gegevens-genereren" id="Edge_flow-gegevens-genereren">
+                <di:waypoint x="340" y="170"/>
+                <di:waypoint x="400" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-genereren-wachten" id="Edge_flow-genereren-wachten">
+                <di:waypoint x="500" y="170"/>
+                <di:waypoint x="562" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-wachten-gemaakt" id="Edge_flow-wachten-gemaakt">
+                <di:waypoint x="598" y="170"/>
+                <di:waypoint x="655" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-gemaakt-downloaden" id="Edge_flow-gemaakt-downloaden">
+                <di:waypoint x="705" y="170"/>
+                <di:waypoint x="770" y="170"/>
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds height="14" width="12" x="731" y="152"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-gemaakt-mislukt" id="Edge_flow-gemaakt-mislukt">
+                <di:waypoint x="680" y="195"/>
+                <di:waypoint x="680" y="290"/>
+                <di:waypoint x="770" y="290"/>
+                <bpmndi:BPMNLabel>
+                    <dc:Bounds height="14" width="20" x="686" y="235"/>
+                </bpmndi:BPMNLabel>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-downloaden-gereed" id="Edge_flow-downloaden-gereed">
+                <di:waypoint x="870" y="170"/>
+                <di:waypoint x="930" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-gereed-einde" id="Edge_flow-gereed-einde">
+                <di:waypoint x="1030" y="170"/>
+                <di:waypoint x="1092" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-mislukt-einde" id="Edge_flow-mislukt-einde">
+                <di:waypoint x="870" y="290"/>
+                <di:waypoint x="932" y="290"/>
+            </bpmndi:BPMNEdge>
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+</bpmn:definitions>

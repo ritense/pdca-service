@@ -17,7 +17,7 @@
 package com.ritense.pdca.config
 
 import com.ritense.pdca.plugin.ConfigurationStore
-import com.ritense.pdca.plugin.PushedGzacAccess
+import com.ritense.pdca.plugin.GzacAccess
 import com.ritense.pdca.repository.StoredPluginConfigurationRepository
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
@@ -42,7 +42,7 @@ class RegisterClientConfigTest {
         .withUserConfiguration(RegisterClientConfig::class.java)
         .withBean(StoredPluginConfigurationRepository::class.java, { mock(StoredPluginConfigurationRepository::class.java) })
         .withBean(ConfigurationStore::class.java)
-        .withBean(PushedGzacAccess::class.java)
+        .withBean(GzacAccess::class.java)
 
     @Test
     fun `every register goes through its contract`() {
@@ -50,7 +50,8 @@ class RegisterClientConfigTest {
             mapOf(
                 "openPlanRestClient" to "/plannen/api/v0/plan",
                 "openProductRestClient" to "/producttypen/api/v1/producttypen",
-                "openKlantRestClient" to "/klantinteracties/api/v1/klantcontacten"
+                "openKlantRestClient" to "/klantinteracties/api/v1/klantcontacten",
+                "objectenRestClient" to "/api/v2/objects"
             ).forEach { (bean, path) ->
                 val client = context.getBean(bean, RestClient::class.java)
 

@@ -1,11 +1,7 @@
 import React from 'react';
-import { createRoot } from 'react-dom/client';
-import '@carbon/styles/css/styles.css';
-import '../shared/styles.css';
+import '../shared/styles';
+import { mountBundle } from '../shared/PdcaRoot';
 import { EvaluationPanel } from './EvaluationPanel';
 
-createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <EvaluationPanel />
-  </React.StrictMode>
-);
+// The side panel takes the host theme's layer, like GZAC's own panel.
+mountBundle(<EvaluationPanel />, 'pdca-panel-theme');

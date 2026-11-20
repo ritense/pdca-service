@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2024 Ritense BV, the Netherlands.
+ * Copyright 2015-2026 Ritense BV, the Netherlands.
  *
  * Licensed under EUPL, Version 1.2 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,20 +18,17 @@ package com.ritense.pdca.service
 
 import com.ritense.pdca.domain.DoelDetails
 import com.ritense.pdca.domain.PlanDetails
+import com.ritense.pdca.registers.openplan.Doel
+import com.ritense.pdca.registers.openplan.OpenPlanGateway
 import com.ritense.pdca.repository.DoelDetailsRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertDoesNotThrow
 import org.junit.jupiter.api.assertThrows
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import org.springframework.http.HttpStatus
-import org.springframework.http.MediaType
-import org.springframework.test.web.client.MockRestServiceServer
-import org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo
-import org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess
-import org.springframework.web.client.RestClient
 import org.springframework.web.server.ResponseStatusException
 import java.time.LocalDate
 import java.util.Optional
@@ -48,15 +45,8 @@ class SubdoelEinddatumValidatorTest {
 
     private val planDetailsRepository = mock(PlanDetailsRepository::class.java)
     private val doelDetailsRepository = mock(DoelDetailsRepository::class.java)
-    private lateinit var openPlan: MockRestServiceServer
-    private lateinit var validator: SubdoelEinddatumValidator
-
-    @BeforeEach
-    fun setUp() {
-        val builder = RestClient.builder().baseUrl("http://openplan")
-        openPlan = MockRestServiceServer.bindTo(builder).build()
-        validator = SubdoelEinddatumValidator(planDetailsRepository, doelDetailsRepository, builder.build())
-    }
+    private val openPlan = mock(OpenPlanGateway::class.java)
+    private val validator = SubdoelEinddatumValidator(planDetailsRepository, doelDetailsRepository, openPlan)
 
     // ------------------------------------------------------------ violation
 
@@ -92,34 +82,29 @@ class SubdoelEinddatumValidatorTest {
     fun `the plan's date cannot move before the date of an actief subdoel`() {
         val doel = subdoel(LocalDate.of(2027, 6, 1))
         `when`(doelDetailsRepository.findByPlanUuid(planUuid)).thenReturn(listOf(doel, subdoel(null)))
-        openPlan.expect(requestTo("http://openplan/plannen/api/v0/doel/${doel.doelUuid}"))
-            .andRespond(withSuccess("""{"status":"actief"}""", MediaType.APPLICATION_JSON))
+        `when`(openPlan.getDoel(doel.doelUuid)).thenReturn(Doel(uuid = doel.doelUuid, status = "actief"))
 
         val fout = assertThrows<ResponseStatusException> {
             validator.validatePlan(planUuid, LocalDate.of(2027, 5, 1))
         }
         assertEquals(HttpStatus.CONFLICT, fout.statusCode)
         assertTrue(fout.reason!!.contains("01-06-2027"))
-        openPlan.verify()
     }
 
     @Test
     fun `closed subdoelen do not hold back the plan's date`() {
         val doel = subdoel(LocalDate.of(2027, 6, 1))
         `when`(doelDetailsRepository.findByPlanUuid(planUuid)).thenReturn(listOf(doel))
-        openPlan.expect(requestTo("http://openplan/plannen/api/v0/doel/${doel.doelUuid}"))
-            .andRespond(withSuccess("""{"status":"afgerond"}""", MediaType.APPLICATION_JSON))
+        `when`(openPlan.getDoel(doel.doelUuid)).thenReturn(Doel(uuid = doel.doelUuid, status = "afgerond"))
 
         assertDoesNotThrow { validator.validatePlan(planUuid, LocalDate.of(2027, 5, 1)) }
-        openPlan.verify()
     }
 
     @Test
     fun `subdoelen up to the new plan date are not looked up`() {
         `when`(doelDetailsRepository.findByPlanUuid(planUuid)).thenReturn(listOf(subdoel(LocalDate.of(2027, 5, 1))))
-        // No expectations: any call to Open Plan fails the test.
         assertDoesNotThrow { validator.validatePlan(planUuid, LocalDate.of(2027, 5, 1)) }
-        openPlan.verify()
+        verifyNoInteractions(openPlan)
     }
 
     // ------------------------------------------------------ validateSubdoel

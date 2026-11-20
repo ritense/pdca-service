@@ -1,5 +1,5 @@
 /*
- * Copyright 2015-2024 Ritense BV, the Netherlands.
+ * Copyright 2015-2026 Ritense BV, the Netherlands.
  *
  * Licensed under EUPL, Version 1.2 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,11 @@
 
 package com.ritense.pdca.service
 
+import com.ritense.pdca.registers.openplan.OpenPlanGateway
 import com.ritense.pdca.repository.DoelDetailsRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.client.RestClient
 import org.springframework.web.server.ResponseStatusException
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -41,7 +41,7 @@ import java.util.UUID
 class SubdoelEinddatumValidator(
     private val planDetailsRepository: PlanDetailsRepository,
     private val doelDetailsRepository: DoelDetailsRepository,
-    private val openPlanRestClient: RestClient
+    private val openPlanGateway: OpenPlanGateway
 ) {
 
     /** Checks a new or changed beoogde einddatum of a subdoel of [planUuid]. */
@@ -61,22 +61,12 @@ class SubdoelEinddatumValidator(
         val later = doelDetailsRepository.findByPlanUuid(planUuid)
             .filter { it.streefEinddatum?.isAfter(planEinddatum) == true }
             .sortedByDescending { it.streefEinddatum }
-        val blokkerend = later.firstOrNull { registerStatus(it.doelUuid) == "actief" } ?: return
+        val blokkerend = later.firstOrNull { openPlanGateway.getDoel(it.doelUuid).status == "actief" } ?: return
         throw ResponseStatusException(
             HttpStatus.CONFLICT,
             "De beoogde einddatum van het plan kan niet vóór die van een lopend subdoel liggen " +
                 "(${format(blokkerend.streefEinddatum!!)}); pas eerst de subdoelen aan"
         )
-    }
-
-    private fun registerStatus(doelUuid: UUID): String? = try {
-        openPlanRestClient.get()
-            .uri("/plannen/api/v0/doel/$doelUuid")
-            .retrieve()
-            .body(Map::class.java)
-            ?.get("status") as? String
-    } catch (e: Exception) {
-        throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "Doel $doelUuid ophalen uit Open Plan mislukt: ${e.message}")
     }
 
     companion object {

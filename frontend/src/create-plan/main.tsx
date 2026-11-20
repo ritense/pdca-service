@@ -1,12 +1,8 @@
 import React from 'react';
-import { createRoot } from 'react-dom/client';
-import '@carbon/styles/css/styles.css';
-import '../shared/styles.css';
+import '../shared/styles';
 import './create-plan.css';
+import { mountBundle } from '../shared/PdcaRoot';
 import { CreatePlan } from './CreatePlan';
 
-createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <CreatePlan />
-  </React.StrictMode>
-);
+// The task form takes the surface of GZAC's task modal.
+mountBundle(<CreatePlan />, 'cp-theme');

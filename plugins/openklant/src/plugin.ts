@@ -15,18 +15,7 @@
  */
 
 import {httpRequest, log, onContractCall} from "@valtimo/plugin-sdk";
-import {handleOperation, OPENKLANT_CONTRACT, OPERATIONS, type HttpCall, type HttpReply} from "./openklant";
+import {serveContract} from "../../register-core/src/contract";
+import {OPENKLANT} from "./openklant";
 
-const transport = (call: HttpCall): HttpReply => httpRequest.request(call);
-
-for (const operation of OPERATIONS) {
-  onContractCall(OPENKLANT_CONTRACT, operation, (input) => {
-    const output = handleOperation(operation, input.payload, input.configuration, transport);
-    if (output.status === "error") {
-      log.warn(`Open Klant ${operation} failed: [${output.errorCode}] ${output.errorMessage}`, {
-        caller: input.caller,
-      });
-    }
-    return output;
-  });
-}
+serveContract(OPENKLANT, {httpRequest, log, onContractCall});

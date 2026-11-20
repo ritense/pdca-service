@@ -16,9 +16,6 @@
 
 package com.ritense.pdca.web.rest
 
-import com.ritense.pdca.plugin.EvaluationChangeDto
-import com.ritense.pdca.plugin.EvaluationSessionDto
-import com.ritense.pdca.plugin.toDto
 import com.ritense.pdca.service.EvaluationSessionService
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.GetMapping

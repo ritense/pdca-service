@@ -27,4 +27,5 @@ interface EvaluationSessionRepository : JpaRepository<EvaluationSession, UUID> {
     fun findByUserLoginAndStatus(userLogin: String, status: EvaluationSessionStatus): EvaluationSession?
 
     fun findByPlanUuidAndStatus(planUuid: UUID, status: EvaluationSessionStatus): List<EvaluationSession>
+    fun findByPlanUuid(planUuid: UUID): List<EvaluationSession>
 }

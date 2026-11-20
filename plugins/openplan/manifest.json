@@ -1,17 +1,17 @@
 {
   "pluginId": "openplan",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "provider": "Ritense",
   "translations": {
     "en": {
       "name": "Open Plan",
-      "description": "Gives other plugins access to an Open Plan instance (Plannen API v0) through the contract nl.ritense.openplan@1.",
-      "contracts.nl.ritense.openplan@1.title": "Open Plan Plannen API v0",
-      "contracts.nl.ritense.openplan@1.operations.list.title": "List resources",
-      "contracts.nl.ritense.openplan@1.operations.get.title": "Get a resource",
-      "contracts.nl.ritense.openplan@1.operations.create.title": "Create a resource",
-      "contracts.nl.ritense.openplan@1.operations.update.title": "Update a resource",
-      "contracts.nl.ritense.openplan@1.operations.delete.title": "Delete a resource",
+      "description": "Gives other plugins access to an Open Plan instance (Plannen API v0) through the contract nl.ritense.openplan@2.",
+      "contracts.nl.ritense.openplan@2.title": "Open Plan Plannen API v0",
+      "contracts.nl.ritense.openplan@2.operations.list.title": "List resources",
+      "contracts.nl.ritense.openplan@2.operations.get.title": "Get a resource",
+      "contracts.nl.ritense.openplan@2.operations.create.title": "Create a resource",
+      "contracts.nl.ritense.openplan@2.operations.update.title": "Update a resource",
+      "contracts.nl.ritense.openplan@2.operations.delete.title": "Delete a resource",
       "config.title.label": "Configuration name",
       "config.title.placeholder": "e.g. Open Plan production",
       "config.title.required": "Enter a name for this configuration",
@@ -32,13 +32,13 @@
     },
     "nl": {
       "name": "Open Plan",
-      "description": "Geeft andere plugins toegang tot een Open Plan-omgeving (Plannen API v0) via het contract nl.ritense.openplan@1.",
-      "contracts.nl.ritense.openplan@1.title": "Open Plan Plannen API v0",
-      "contracts.nl.ritense.openplan@1.operations.list.title": "Registerobjecten opvragen",
-      "contracts.nl.ritense.openplan@1.operations.get.title": "Registerobject opvragen",
-      "contracts.nl.ritense.openplan@1.operations.create.title": "Registerobject aanmaken",
-      "contracts.nl.ritense.openplan@1.operations.update.title": "Registerobject bijwerken",
-      "contracts.nl.ritense.openplan@1.operations.delete.title": "Registerobject verwijderen",
+      "description": "Geeft andere plugins toegang tot een Open Plan-omgeving (Plannen API v0) via het contract nl.ritense.openplan@2.",
+      "contracts.nl.ritense.openplan@2.title": "Open Plan Plannen API v0",
+      "contracts.nl.ritense.openplan@2.operations.list.title": "Registerobjecten opvragen",
+      "contracts.nl.ritense.openplan@2.operations.get.title": "Registerobject opvragen",
+      "contracts.nl.ritense.openplan@2.operations.create.title": "Registerobject aanmaken",
+      "contracts.nl.ritense.openplan@2.operations.update.title": "Registerobject bijwerken",
+      "contracts.nl.ritense.openplan@2.operations.delete.title": "Registerobject verwijderen",
       "config.title.label": "Configuratienaam",
       "config.title.placeholder": "bijv. Open Plan productie",
       "config.title.required": "Geef deze configuratie een naam",
@@ -92,7 +92,7 @@
   "actions": [],
   "provides": [
     {
-      "contract": "nl.ritense.openplan@1",
+      "contract": "nl.ritense.openplan@2",
       "title": "Open Plan Plannen API v0",
       "operations": [
         {

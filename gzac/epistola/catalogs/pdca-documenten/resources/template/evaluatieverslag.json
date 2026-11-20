@@ -1,0 +1,1495 @@
+{
+  "schemaVersion": 4,
+  "resource": {
+    "type": "template",
+    "themeId": "pdca",
+    "slug": "evaluatieverslag",
+    "name": "Evaluatieverslag",
+    "dataModel": {
+      "type": "object",
+      "properties": {
+        "schemaVersie": {
+          "type": "integer",
+          "description": "Versie van de gegevensstructuur"
+        },
+        "titel": {
+          "type": "string",
+          "description": "Titel van het document"
+        },
+        "gemaaktOp": {
+          "type": "string",
+          "description": "Datum waarop het document is gemaakt"
+        },
+        "plan": {
+          "type": "object",
+          "description": "Gegevens van het plan",
+          "properties": {
+            "titel": {
+              "type": "string",
+              "description": "Titel van het plan"
+            },
+            "inwoner": {
+              "type": "string",
+              "description": "Naam van de inwoner"
+            },
+            "procesbegeleider": {
+              "type": "string",
+              "description": "Naam van de procesbegeleider"
+            }
+          }
+        },
+        "evaluatie": {
+          "type": "object",
+          "description": "Gegevens van de evaluatie",
+          "properties": {
+            "datum": {
+              "type": "string",
+              "description": "Datum van de evaluatie"
+            },
+            "type": {
+              "type": "string",
+              "description": "Soort evaluatie"
+            },
+            "uitgevoerdDoor": {
+              "type": "string",
+              "description": "Wie de evaluatie heeft uitgevoerd"
+            },
+            "deelnemers": {
+              "type": "string",
+              "description": "Deelnemers aan de evaluatie"
+            },
+            "verslag": {
+              "type": "string",
+              "description": "Verslag van de evaluatie; regels worden als alinea's weergegeven"
+            }
+          }
+        },
+        "wijzigingen": {
+          "type": "array",
+          "description": "Wijzigingen in het plan naar aanleiding van de evaluatie",
+          "items": {
+            "type": "object",
+            "description": "Wijziging",
+            "properties": {
+              "onderdeel": {
+                "type": "string",
+                "description": "Onderdeel van het plan"
+              },
+              "omschrijving": {
+                "type": "string",
+                "description": "Omschrijving van de wijziging"
+              },
+              "toelichting": {
+                "type": "string",
+                "description": "Toelichting op de wijziging"
+              }
+            }
+          }
+        },
+        "actiepunten": {
+          "type": "array",
+          "description": "Afgesproken actiepunten",
+          "items": {
+            "type": "object",
+            "description": "Actiepunt",
+            "properties": {
+              "tekst": {
+                "type": "string",
+                "description": "Omschrijving van het actiepunt"
+              }
+            }
+          }
+        }
+      },
+      "required": [
+        "titel"
+      ]
+    },
+    "dataExamples": [
+      {
+        "name": "Tussentijdse evaluatie",
+        "data": {
+          "schemaVersie": 1,
+          "titel": "Evaluatieverslag",
+          "gemaaktOp": "11 november 2026",
+          "plan": {
+            "titel": "Werk en inkomen",
+            "inwoner": "Sanne de Vries",
+            "procesbegeleider": "Mark Jansen"
+          },
+          "evaluatie": {
+            "datum": "4 november 2026",
+            "type": "Tussentijdse evaluatie",
+            "uitgevoerdDoor": "Mark Jansen",
+            "deelnemers": "Sanne de Vries, Mark Jansen, Fatima El Amrani (jobcoach)",
+            "verslag": "Sanne heeft de afgelopen drie maanden vier dagdelen per week vrijwilligerswerk gedaan bij de kringloopwinkel. Dit gaat goed: zij is er elke afgesproken dag geweest en krijgt positieve feedback van de coördinator.\n\nDe schulden zijn in beeld gebracht en het traject bij de schuldhulpverlening is gestart. Sanne geeft aan dat de rust die dit oplevert haar helpt om zich op werk te richten.\n\nHet doel om in het eerste kwartaal betaald werk te vinden blijkt nog te ambitieus. Samen is afgesproken eerst een werkervaringsplaats van zes maanden te zoeken."
+          },
+          "wijzigingen": [
+            {
+              "onderdeel": "Doel: betaald werk",
+              "omschrijving": "Termijn verlengd tot 1 juli 2027",
+              "toelichting": "Eerst werkervaring opdoen via een werkervaringsplaats"
+            },
+            {
+              "onderdeel": "Instrument: werkervaringsplaats",
+              "omschrijving": "Toegevoegd aan het plan",
+              "toelichting": "Zes maanden, met begeleiding door de jobcoach"
+            },
+            {
+              "onderdeel": "Instrument: budgetcoaching",
+              "omschrijving": "Beëindigd",
+              "toelichting": "Vervangen door het traject schuldhulpverlening"
+            }
+          ],
+          "actiepunten": [
+            {
+              "tekst": "Fatima zoekt voor 1 december twee passende werkervaringsplaatsen."
+            },
+            {
+              "tekst": "Sanne levert de ontbrekende stukken aan bij de schuldhulpverlening."
+            }
+          ]
+        }
+      },
+      {
+        "name": "Lege evaluatie",
+        "data": {
+          "schemaVersie": 1,
+          "titel": "Evaluatieverslag",
+          "gemaaktOp": "",
+          "plan": {
+            "titel": "",
+            "inwoner": "",
+            "procesbegeleider": ""
+          },
+          "evaluatie": {
+            "datum": "",
+            "type": "",
+            "uitgevoerdDoor": "",
+            "deelnemers": "",
+            "verslag": ""
+          },
+          "wijzigingen": [],
+          "actiepunten": []
+        }
+      }
+    ],
+    "templateModel": {
+      "modelVersion": 1,
+      "root": "n-root",
+      "themeRef": {
+        "type": "inherit"
+      },
+      "nodes": {
+        "n-titel": {
+          "id": "n-titel",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "expression",
+                      "attrs": {
+                        "expression": "titel"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontSize": "20pt",
+            "fontWeight": "700",
+            "color": "#154273",
+            "marginBottom": "2pt"
+          }
+        },
+        "n-ondertitel": {
+          "id": "n-ondertitel",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Plan-Do-Check-Act"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontSize": "9pt",
+            "color": "#5f6b7a",
+            "letterSpacing": "0.5pt",
+            "marginBottom": "10pt"
+          }
+        },
+        "n-plan-tabel-l0": {
+          "id": "n-plan-tabel-l0",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Plan"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontWeight": "700",
+            "color": "#5f6b7a",
+            "paddingTop": "2pt",
+            "paddingBottom": "2pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-plan-tabel-v0": {
+          "id": "n-plan-tabel-v0",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "expression",
+                      "attrs": {
+                        "expression": "plan.titel"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "paddingTop": "2pt",
+            "paddingBottom": "2pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-plan-tabel-l1": {
+          "id": "n-plan-tabel-l1",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Inwoner"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontWeight": "700",
+            "color": "#5f6b7a",
+            "paddingTop": "2pt",
+            "paddingBottom": "2pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-plan-tabel-v1": {
+          "id": "n-plan-tabel-v1",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "expression",
+                      "attrs": {
+                        "expression": "plan.inwoner"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "paddingTop": "2pt",
+            "paddingBottom": "2pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-plan-tabel-l2": {
+          "id": "n-plan-tabel-l2",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Procesbegeleider"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontWeight": "700",
+            "color": "#5f6b7a",
+            "paddingTop": "2pt",
+            "paddingBottom": "2pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-plan-tabel-v2": {
+          "id": "n-plan-tabel-v2",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "expression",
+                      "attrs": {
+                        "expression": "plan.procesbegeleider"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "paddingTop": "2pt",
+            "paddingBottom": "2pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-plan-tabel": {
+          "id": "n-plan-tabel",
+          "type": "table",
+          "slots": [
+            "s-plan-tabel-cell-0-0",
+            "s-plan-tabel-cell-0-1",
+            "s-plan-tabel-cell-1-0",
+            "s-plan-tabel-cell-1-1",
+            "s-plan-tabel-cell-2-0",
+            "s-plan-tabel-cell-2-1"
+          ],
+          "styles": {
+            "marginBottom": "0pt"
+          },
+          "props": {
+            "columnWidths": [
+              30,
+              70
+            ],
+            "rows": 3,
+            "columns": 2,
+            "headerRows": 0,
+            "merges": []
+          }
+        },
+        "n-plan-blok": {
+          "id": "n-plan-blok",
+          "type": "container",
+          "slots": [
+            "s-plan-blok-children"
+          ],
+          "styles": {
+            "backgroundColor": "#f2f5f9",
+            "padding": "8pt",
+            "borderRadius": "3pt",
+            "borderLeft": "3pt solid #154273",
+            "marginBottom": "6pt"
+          }
+        },
+        "n-kop-evaluatie": {
+          "id": "n-kop-evaluatie",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Evaluatie"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontSize": "12pt",
+            "fontWeight": "700",
+            "color": "#154273",
+            "marginTop": "14pt",
+            "marginBottom": "6pt",
+            "paddingBottom": "3pt",
+            "borderBottom": "1pt solid #d0d8e0",
+            "keepWithNext": true
+          }
+        },
+        "n-evaluatie-tabel-l0": {
+          "id": "n-evaluatie-tabel-l0",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Datum"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontWeight": "700",
+            "color": "#5f6b7a",
+            "paddingTop": "2pt",
+            "paddingBottom": "2pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-evaluatie-tabel-v0": {
+          "id": "n-evaluatie-tabel-v0",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "expression",
+                      "attrs": {
+                        "expression": "evaluatie.datum"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "paddingTop": "2pt",
+            "paddingBottom": "2pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-evaluatie-tabel-l1": {
+          "id": "n-evaluatie-tabel-l1",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Type"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontWeight": "700",
+            "color": "#5f6b7a",
+            "paddingTop": "2pt",
+            "paddingBottom": "2pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-evaluatie-tabel-v1": {
+          "id": "n-evaluatie-tabel-v1",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "expression",
+                      "attrs": {
+                        "expression": "evaluatie.type"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "paddingTop": "2pt",
+            "paddingBottom": "2pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-evaluatie-tabel-l2": {
+          "id": "n-evaluatie-tabel-l2",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Uitgevoerd door"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontWeight": "700",
+            "color": "#5f6b7a",
+            "paddingTop": "2pt",
+            "paddingBottom": "2pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-evaluatie-tabel-v2": {
+          "id": "n-evaluatie-tabel-v2",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "expression",
+                      "attrs": {
+                        "expression": "evaluatie.uitgevoerdDoor"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "paddingTop": "2pt",
+            "paddingBottom": "2pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-evaluatie-tabel-l3": {
+          "id": "n-evaluatie-tabel-l3",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Deelnemers"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontWeight": "700",
+            "color": "#5f6b7a",
+            "paddingTop": "2pt",
+            "paddingBottom": "2pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-evaluatie-tabel-v3": {
+          "id": "n-evaluatie-tabel-v3",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "expression",
+                      "attrs": {
+                        "expression": "evaluatie.deelnemers"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "paddingTop": "2pt",
+            "paddingBottom": "2pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-evaluatie-tabel": {
+          "id": "n-evaluatie-tabel",
+          "type": "table",
+          "slots": [
+            "s-evaluatie-tabel-cell-0-0",
+            "s-evaluatie-tabel-cell-0-1",
+            "s-evaluatie-tabel-cell-1-0",
+            "s-evaluatie-tabel-cell-1-1",
+            "s-evaluatie-tabel-cell-2-0",
+            "s-evaluatie-tabel-cell-2-1",
+            "s-evaluatie-tabel-cell-3-0",
+            "s-evaluatie-tabel-cell-3-1"
+          ],
+          "styles": {
+            "marginBottom": "0pt"
+          },
+          "props": {
+            "columnWidths": [
+              30,
+              70
+            ],
+            "rows": 4,
+            "columns": 2,
+            "headerRows": 0,
+            "merges": []
+          }
+        },
+        "n-kop-verslag": {
+          "id": "n-kop-verslag",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Verslag"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontSize": "12pt",
+            "fontWeight": "700",
+            "color": "#154273",
+            "marginTop": "14pt",
+            "marginBottom": "6pt",
+            "paddingBottom": "3pt",
+            "borderBottom": "1pt solid #d0d8e0",
+            "keepWithNext": true
+          }
+        },
+        "n-verslag-alinea": {
+          "id": "n-verslag-alinea",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "expression",
+                      "attrs": {
+                        "expression": "alinea"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "marginBottom": "6pt",
+            "textAlign": "left"
+          }
+        },
+        "n-verslag-alineas": {
+          "id": "n-verslag-alineas",
+          "type": "loop",
+          "slots": [
+            "s-verslag-alineas-body"
+          ],
+          "props": {
+            "expression": {
+              "raw": "$filter($split(evaluatie.verslag, \"\\n\"), function($v) { $trim($v) != \"\" })",
+              "language": "jsonata"
+            },
+            "itemAlias": "alinea"
+          }
+        },
+        "n-verslag-leeg-text": {
+          "id": "n-verslag-leeg-text",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Geen verslag vastgelegd."
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontStyle": "italic",
+            "color": "#5f6b7a"
+          }
+        },
+        "n-verslag-leeg": {
+          "id": "n-verslag-leeg",
+          "type": "conditional",
+          "slots": [
+            "s-verslag-leeg-body"
+          ],
+          "props": {
+            "condition": {
+              "raw": "$not($exists(evaluatie.verslag)) or $trim(evaluatie.verslag) = \"\"",
+              "language": "jsonata"
+            },
+            "inverse": false
+          }
+        },
+        "n-kop-wijzigingen": {
+          "id": "n-kop-wijzigingen",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Wijzigingen in het plan"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontSize": "12pt",
+            "fontWeight": "700",
+            "color": "#154273",
+            "marginTop": "14pt",
+            "marginBottom": "6pt",
+            "paddingBottom": "3pt",
+            "borderBottom": "1pt solid #d0d8e0",
+            "keepWithNext": true
+          }
+        },
+        "n-wijziging-onderdeel": {
+          "id": "n-wijziging-onderdeel",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "expression",
+                      "attrs": {
+                        "expression": "wijziging.onderdeel"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontSize": "9.5pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-kolom-onderdeel": {
+          "id": "n-kolom-onderdeel",
+          "type": "datatable-column",
+          "slots": [
+            "s-kolom-onderdeel-body"
+          ],
+          "styles": {
+            "padding": "4pt"
+          },
+          "props": {
+            "header": "Onderdeel",
+            "width": 25
+          }
+        },
+        "n-wijziging-omschrijving": {
+          "id": "n-wijziging-omschrijving",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "expression",
+                      "attrs": {
+                        "expression": "wijziging.omschrijving"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontSize": "9.5pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-kolom-omschrijving": {
+          "id": "n-kolom-omschrijving",
+          "type": "datatable-column",
+          "slots": [
+            "s-kolom-omschrijving-body"
+          ],
+          "styles": {
+            "padding": "4pt"
+          },
+          "props": {
+            "header": "Omschrijving",
+            "width": 40
+          }
+        },
+        "n-wijziging-toelichting": {
+          "id": "n-wijziging-toelichting",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "expression",
+                      "attrs": {
+                        "expression": "wijziging.toelichting"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontSize": "9.5pt",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-kolom-toelichting": {
+          "id": "n-kolom-toelichting",
+          "type": "datatable-column",
+          "slots": [
+            "s-kolom-toelichting-body"
+          ],
+          "styles": {
+            "padding": "4pt"
+          },
+          "props": {
+            "header": "Toelichting",
+            "width": 35
+          }
+        },
+        "n-wijzigingen-tabel": {
+          "id": "n-wijzigingen-tabel",
+          "type": "datatable",
+          "slots": [
+            "s-wijzigingen-tabel-columns"
+          ],
+          "props": {
+            "expression": {
+              "raw": "wijzigingen",
+              "language": "jsonata"
+            },
+            "itemAlias": "wijziging",
+            "borderStyle": "horizontal",
+            "headerEnabled": true
+          }
+        },
+        "n-wijzigingen-aanwezig": {
+          "id": "n-wijzigingen-aanwezig",
+          "type": "conditional",
+          "slots": [
+            "s-wijzigingen-aanwezig-body"
+          ],
+          "props": {
+            "condition": {
+              "raw": "$count(wijzigingen) > 0",
+              "language": "jsonata"
+            },
+            "inverse": false
+          }
+        },
+        "n-wijzigingen-leeg-text": {
+          "id": "n-wijzigingen-leeg-text",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Geen wijzigingen vastgelegd."
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontStyle": "italic",
+            "color": "#5f6b7a"
+          }
+        },
+        "n-wijzigingen-leeg": {
+          "id": "n-wijzigingen-leeg",
+          "type": "conditional",
+          "slots": [
+            "s-wijzigingen-leeg-body"
+          ],
+          "props": {
+            "condition": {
+              "raw": "$count(wijzigingen) = 0",
+              "language": "jsonata"
+            },
+            "inverse": false
+          }
+        },
+        "n-kop-actiepunten": {
+          "id": "n-kop-actiepunten",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Actiepunten"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontSize": "12pt",
+            "fontWeight": "700",
+            "color": "#154273",
+            "marginTop": "14pt",
+            "marginBottom": "6pt",
+            "paddingBottom": "3pt",
+            "borderBottom": "1pt solid #d0d8e0",
+            "keepWithNext": true
+          }
+        },
+        "n-actiepunt": {
+          "id": "n-actiepunt",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "expression",
+                      "attrs": {
+                        "expression": "actiepunt.tekst"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "marginBottom": "0pt"
+          }
+        },
+        "n-actiepunten-lijst": {
+          "id": "n-actiepunten-lijst",
+          "type": "datalist",
+          "slots": [
+            "s-actiepunten-lijst-item-template"
+          ],
+          "props": {
+            "expression": {
+              "raw": "actiepunten",
+              "language": "jsonata"
+            },
+            "itemAlias": "actiepunt",
+            "listType": "decimal",
+            "bulletStyle": "disc"
+          }
+        },
+        "n-actiepunten-aanwezig": {
+          "id": "n-actiepunten-aanwezig",
+          "type": "conditional",
+          "slots": [
+            "s-actiepunten-aanwezig-body"
+          ],
+          "props": {
+            "condition": {
+              "raw": "$count(actiepunten) > 0",
+              "language": "jsonata"
+            },
+            "inverse": false
+          }
+        },
+        "n-actiepunten-leeg-text": {
+          "id": "n-actiepunten-leeg-text",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Geen actiepunten."
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontStyle": "italic",
+            "color": "#5f6b7a"
+          }
+        },
+        "n-actiepunten-leeg": {
+          "id": "n-actiepunten-leeg",
+          "type": "conditional",
+          "slots": [
+            "s-actiepunten-leeg-body"
+          ],
+          "props": {
+            "condition": {
+              "raw": "$count(actiepunten) = 0",
+              "language": "jsonata"
+            },
+            "inverse": false
+          }
+        },
+        "n-voettekst": {
+          "id": "n-voettekst",
+          "type": "text",
+          "slots": [],
+          "props": {
+            "content": {
+              "type": "doc",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Gemaakt op "
+                    },
+                    {
+                      "type": "expression",
+                      "attrs": {
+                        "expression": "gemaaktOp"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "styles": {
+            "fontSize": "8pt",
+            "color": "#5f6b7a",
+            "textAlign": "center",
+            "paddingTop": "4pt",
+            "borderTop": "0.5pt solid #d0d8e0",
+            "marginBottom": "0pt"
+          }
+        },
+        "n-voet": {
+          "id": "n-voet",
+          "type": "pagefooter",
+          "slots": [
+            "s-voet-children"
+          ],
+          "props": {
+            "height": "30pt",
+            "hideOnFirstPage": false
+          }
+        },
+        "n-root": {
+          "id": "n-root",
+          "type": "root",
+          "slots": [
+            "s-root-children"
+          ]
+        }
+      },
+      "slots": {
+        "s-plan-tabel-cell-0-0": {
+          "id": "s-plan-tabel-cell-0-0",
+          "nodeId": "n-plan-tabel",
+          "name": "cell-0-0",
+          "children": [
+            "n-plan-tabel-l0"
+          ]
+        },
+        "s-plan-tabel-cell-0-1": {
+          "id": "s-plan-tabel-cell-0-1",
+          "nodeId": "n-plan-tabel",
+          "name": "cell-0-1",
+          "children": [
+            "n-plan-tabel-v0"
+          ]
+        },
+        "s-plan-tabel-cell-1-0": {
+          "id": "s-plan-tabel-cell-1-0",
+          "nodeId": "n-plan-tabel",
+          "name": "cell-1-0",
+          "children": [
+            "n-plan-tabel-l1"
+          ]
+        },
+        "s-plan-tabel-cell-1-1": {
+          "id": "s-plan-tabel-cell-1-1",
+          "nodeId": "n-plan-tabel",
+          "name": "cell-1-1",
+          "children": [
+            "n-plan-tabel-v1"
+          ]
+        },
+        "s-plan-tabel-cell-2-0": {
+          "id": "s-plan-tabel-cell-2-0",
+          "nodeId": "n-plan-tabel",
+          "name": "cell-2-0",
+          "children": [
+            "n-plan-tabel-l2"
+          ]
+        },
+        "s-plan-tabel-cell-2-1": {
+          "id": "s-plan-tabel-cell-2-1",
+          "nodeId": "n-plan-tabel",
+          "name": "cell-2-1",
+          "children": [
+            "n-plan-tabel-v2"
+          ]
+        },
+        "s-plan-blok-children": {
+          "id": "s-plan-blok-children",
+          "nodeId": "n-plan-blok",
+          "name": "children",
+          "children": [
+            "n-plan-tabel"
+          ]
+        },
+        "s-evaluatie-tabel-cell-0-0": {
+          "id": "s-evaluatie-tabel-cell-0-0",
+          "nodeId": "n-evaluatie-tabel",
+          "name": "cell-0-0",
+          "children": [
+            "n-evaluatie-tabel-l0"
+          ]
+        },
+        "s-evaluatie-tabel-cell-0-1": {
+          "id": "s-evaluatie-tabel-cell-0-1",
+          "nodeId": "n-evaluatie-tabel",
+          "name": "cell-0-1",
+          "children": [
+            "n-evaluatie-tabel-v0"
+          ]
+        },
+        "s-evaluatie-tabel-cell-1-0": {
+          "id": "s-evaluatie-tabel-cell-1-0",
+          "nodeId": "n-evaluatie-tabel",
+          "name": "cell-1-0",
+          "children": [
+            "n-evaluatie-tabel-l1"
+          ]
+        },
+        "s-evaluatie-tabel-cell-1-1": {
+          "id": "s-evaluatie-tabel-cell-1-1",
+          "nodeId": "n-evaluatie-tabel",
+          "name": "cell-1-1",
+          "children": [
+            "n-evaluatie-tabel-v1"
+          ]
+        },
+        "s-evaluatie-tabel-cell-2-0": {
+          "id": "s-evaluatie-tabel-cell-2-0",
+          "nodeId": "n-evaluatie-tabel",
+          "name": "cell-2-0",
+          "children": [
+            "n-evaluatie-tabel-l2"
+          ]
+        },
+        "s-evaluatie-tabel-cell-2-1": {
+          "id": "s-evaluatie-tabel-cell-2-1",
+          "nodeId": "n-evaluatie-tabel",
+          "name": "cell-2-1",
+          "children": [
+            "n-evaluatie-tabel-v2"
+          ]
+        },
+        "s-evaluatie-tabel-cell-3-0": {
+          "id": "s-evaluatie-tabel-cell-3-0",
+          "nodeId": "n-evaluatie-tabel",
+          "name": "cell-3-0",
+          "children": [
+            "n-evaluatie-tabel-l3"
+          ]
+        },
+        "s-evaluatie-tabel-cell-3-1": {
+          "id": "s-evaluatie-tabel-cell-3-1",
+          "nodeId": "n-evaluatie-tabel",
+          "name": "cell-3-1",
+          "children": [
+            "n-evaluatie-tabel-v3"
+          ]
+        },
+        "s-verslag-alineas-body": {
+          "id": "s-verslag-alineas-body",
+          "nodeId": "n-verslag-alineas",
+          "name": "body",
+          "children": [
+            "n-verslag-alinea"
+          ]
+        },
+        "s-verslag-leeg-body": {
+          "id": "s-verslag-leeg-body",
+          "nodeId": "n-verslag-leeg",
+          "name": "body",
+          "children": [
+            "n-verslag-leeg-text"
+          ]
+        },
+        "s-kolom-onderdeel-body": {
+          "id": "s-kolom-onderdeel-body",
+          "nodeId": "n-kolom-onderdeel",
+          "name": "body",
+          "children": [
+            "n-wijziging-onderdeel"
+          ]
+        },
+        "s-kolom-omschrijving-body": {
+          "id": "s-kolom-omschrijving-body",
+          "nodeId": "n-kolom-omschrijving",
+          "name": "body",
+          "children": [
+            "n-wijziging-omschrijving"
+          ]
+        },
+        "s-kolom-toelichting-body": {
+          "id": "s-kolom-toelichting-body",
+          "nodeId": "n-kolom-toelichting",
+          "name": "body",
+          "children": [
+            "n-wijziging-toelichting"
+          ]
+        },
+        "s-wijzigingen-tabel-columns": {
+          "id": "s-wijzigingen-tabel-columns",
+          "nodeId": "n-wijzigingen-tabel",
+          "name": "columns",
+          "children": [
+            "n-kolom-onderdeel",
+            "n-kolom-omschrijving",
+            "n-kolom-toelichting"
+          ]
+        },
+        "s-wijzigingen-aanwezig-body": {
+          "id": "s-wijzigingen-aanwezig-body",
+          "nodeId": "n-wijzigingen-aanwezig",
+          "name": "body",
+          "children": [
+            "n-wijzigingen-tabel"
+          ]
+        },
+        "s-wijzigingen-leeg-body": {
+          "id": "s-wijzigingen-leeg-body",
+          "nodeId": "n-wijzigingen-leeg",
+          "name": "body",
+          "children": [
+            "n-wijzigingen-leeg-text"
+          ]
+        },
+        "s-actiepunten-lijst-item-template": {
+          "id": "s-actiepunten-lijst-item-template",
+          "nodeId": "n-actiepunten-lijst",
+          "name": "item-template",
+          "children": [
+            "n-actiepunt"
+          ]
+        },
+        "s-actiepunten-aanwezig-body": {
+          "id": "s-actiepunten-aanwezig-body",
+          "nodeId": "n-actiepunten-aanwezig",
+          "name": "body",
+          "children": [
+            "n-actiepunten-lijst"
+          ]
+        },
+        "s-actiepunten-leeg-body": {
+          "id": "s-actiepunten-leeg-body",
+          "nodeId": "n-actiepunten-leeg",
+          "name": "body",
+          "children": [
+            "n-actiepunten-leeg-text"
+          ]
+        },
+        "s-voet-children": {
+          "id": "s-voet-children",
+          "nodeId": "n-voet",
+          "name": "children",
+          "children": [
+            "n-voettekst"
+          ]
+        },
+        "s-root-children": {
+          "id": "s-root-children",
+          "nodeId": "n-root",
+          "name": "children",
+          "children": [
+            "n-titel",
+            "n-ondertitel",
+            "n-plan-blok",
+            "n-kop-evaluatie",
+            "n-evaluatie-tabel",
+            "n-kop-verslag",
+            "n-verslag-alineas",
+            "n-verslag-leeg",
+            "n-kop-wijzigingen",
+            "n-wijzigingen-aanwezig",
+            "n-wijzigingen-leeg",
+            "n-kop-actiepunten",
+            "n-actiepunten-aanwezig",
+            "n-actiepunten-leeg",
+            "n-voet"
+          ]
+        }
+      }
+    },
+    "variants": [
+      {
+        "id": "default",
+        "isDefault": true,
+        "title": "Standaard",
+        "attributes": {}
+      }
+    ]
+  }
+}

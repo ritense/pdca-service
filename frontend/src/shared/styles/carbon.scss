@@ -1,0 +1,39 @@
+// Carbon's styles for the components the bundles use, instead of all of
+// @carbon/styles. Without Carbon's @font-face rules, which load IBM Plex
+// from IBM's CDN; fonts.css serves the fonts with the bundles instead.
+//
+// A component newly imported from @carbon/react needs its module here (and
+// those of the components it renders, e.g. an icon-only Button renders a
+// tooltip on a popover).
+@use '@carbon/styles/scss/config' with (
+  $css--font-face: false
+);
+
+// The base (reset and body type, layer and layout tokens, the theme zones
+// of <Theme>) and the components, in the order @carbon/styles emits them.
+@use '@carbon/styles/scss/reset';
+@use '@carbon/styles/scss/layer';
+@use '@carbon/styles/scss/layout';
+@use '@carbon/styles/scss/zone';
+
+@use '@carbon/styles/scss/components/accordion';
+@use '@carbon/styles/scss/components/button';
+@use '@carbon/styles/scss/components/checkbox';
+@use '@carbon/styles/scss/components/content-switcher';
+@use '@carbon/styles/scss/components/data-table';
+@use '@carbon/styles/scss/components/form';
+@use '@carbon/styles/scss/components/inline-loading';
+@use '@carbon/styles/scss/components/loading';
+@use '@carbon/styles/scss/components/menu-button';
+@use '@carbon/styles/scss/components/menu';
+@use '@carbon/styles/scss/components/modal';
+@use '@carbon/styles/scss/components/notification';
+@use '@carbon/styles/scss/components/overflow-menu';
+@use '@carbon/styles/scss/components/popover';
+@use '@carbon/styles/scss/components/radio-button';
+@use '@carbon/styles/scss/components/select';
+@use '@carbon/styles/scss/components/tag';
+@use '@carbon/styles/scss/components/text-area';
+@use '@carbon/styles/scss/components/text-input';
+@use '@carbon/styles/scss/components/tile';
+@use '@carbon/styles/scss/components/tooltip';

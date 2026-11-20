@@ -18,6 +18,7 @@ package com.ritense.pdca.web.rest.dto
 
 import com.ritense.pdca.domain.PhaseConfig
 import java.time.LocalDateTime
+import java.util.Optional
 import java.util.UUID
 
 /**
@@ -40,15 +41,33 @@ data class CreatePhaseConfigRequest(
     val planCaseDefinitionKey: String? = null
 )
 
+/**
+ * A partial update of a case configuration, like the overlay's (see
+ * [patch]): an absent field keeps its value, an explicit null clears it —
+ * clearing [planCaseDefinitionKey] turns an intake case type back into a
+ * plan case type. [evaluationTypes] is required by the configuration, so
+ * absent or null keeps it.
+ */
 data class UpdatePhaseConfigRequest(
     val evaluationTypes: String? = null,
-    val planStatussen: String? = null,
-    val voortgangStatussen: String? = null,
-    val positieTypen: String? = null,
-    val subdoelMapping: String? = null,
-    val prefillMapping: String? = null,
-    val planCaseDefinitionKey: String? = null
-)
+    val planStatussen: Optional<String>? = null,
+    val voortgangStatussen: Optional<String>? = null,
+    val positieTypen: Optional<String>? = null,
+    val subdoelMapping: Optional<String>? = null,
+    val prefillMapping: Optional<String>? = null,
+    val planCaseDefinitionKey: Optional<String>? = null
+) {
+    /** [existing] with this request's changes. */
+    fun applyTo(existing: PhaseConfig): PhaseConfig = existing.copy(
+        evaluationTypes = evaluationTypes ?: existing.evaluationTypes,
+        planStatussen = planStatussen.patch(existing.planStatussen),
+        voortgangStatussen = voortgangStatussen.patch(existing.voortgangStatussen),
+        positieTypen = positieTypen.patch(existing.positieTypen),
+        subdoelMapping = subdoelMapping.patch(existing.subdoelMapping),
+        prefillMapping = prefillMapping.patch(existing.prefillMapping),
+        planCaseDefinitionKey = planCaseDefinitionKey.patch(existing.planCaseDefinitionKey)?.takeIf { it.isNotBlank() }
+    )
+}
 
 data class PhaseConfigResponse(
     val id: UUID,

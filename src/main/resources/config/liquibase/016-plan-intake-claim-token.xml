@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The claim on an intake reservation gets an owner: the request that claims
+  it writes a random token, and renewing, recording the plan, completing and
+  releasing only change the row under that token. A request whose lease ran
+  out and was taken over can no longer change or release the reservation.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="016-01-plan-intake-claim-token" author="pdca">
+        <addColumn tableName="plan_intake">
+            <column name="claim_token" type="VARCHAR(36)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

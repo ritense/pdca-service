@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Plan creation from an intake is reserved per intake dossier before anything
+  is written to a register (plan_intake), so a repeated or concurrent
+  create-plan submission resumes or waits instead of building a second plan.
+  One intake has at most one plan: plan_details.intake_dossier_id becomes
+  unique. Where double submissions left several plans for one intake, the
+  plan that got its plan dossier (else the newest) keeps the link; the others
+  stay as plans without intake. Existing intake plans get their reservation:
+  GEREED with a plan dossier, otherwise IN_AANMAAK so the next submission
+  completes them.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="014-01-create-plan-intake" author="pdca">
+        <createTable tableName="plan_intake">
+            <column name="intake_dossier_id" type="VARCHAR(64)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="plan_uuid" type="UUID"/>
+            <column name="claimed_until" type="TIMESTAMP"/>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="014-02-one-plan-per-intake" author="pdca">
+        <sql>
+            UPDATE plan_details p SET intake_dossier_id = NULL
+            WHERE p.intake_dossier_id IS NOT NULL
+              AND EXISTS (
+                SELECT 1 FROM plan_details q
+                WHERE q.intake_dossier_id = p.intake_dossier_id
+                  AND q.plan_uuid &lt;&gt; p.plan_uuid
+                  AND (
+                    (q.dossier_id IS NOT NULL AND p.dossier_id IS NULL)
+                    OR ((q.dossier_id IS NULL) = (p.dossier_id IS NULL)
+                        AND (q.created_at &gt; p.created_at
+                             OR (q.created_at = p.created_at AND q.plan_uuid &gt; p.plan_uuid)))
+                  )
+              )
+        </sql>
+        <dropIndex tableName="plan_details" indexName="idx_plan_details_intake_dossier_id"/>
+        <addUniqueConstraint tableName="plan_details" columnNames="intake_dossier_id"
+                             constraintName="uc_plan_details_intake_dossier_id"/>
+    </changeSet>
+
+    <changeSet id="014-03-reserve-existing-intake-plans" author="pdca">
+        <sql>
+            INSERT INTO plan_intake (intake_dossier_id, status, plan_uuid, claimed_until, created_at, updated_at)
+            SELECT intake_dossier_id,
+                   CASE WHEN dossier_id IS NULL THEN 'IN_AANMAAK' ELSE 'GEREED' END,
+                   plan_uuid, NULL, created_at, updated_at
+            FROM plan_details
+            WHERE intake_dossier_id IS NOT NULL
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

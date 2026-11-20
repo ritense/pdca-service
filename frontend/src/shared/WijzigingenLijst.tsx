@@ -43,7 +43,7 @@ function ToelichtingVeld({ wijziging, onSave }: {
   useEffect(() => { setWaarde(wijziging.toelichting ?? ''); }, [wijziging.toelichting]);
   return (
     <TextInput id={`reden-${wijziging.id}`} size="sm" labelText="" hideLabel placeholder="Reden (optioneel)"
-      value={waarde} onChange={(e: any) => setWaarde(e.target.value)}
+      value={waarde} onChange={e => setWaarde(e.target.value)}
       onBlur={() => waarde !== (wijziging.toelichting ?? '') && onSave(wijziging.id, waarde)} />
   );
 }

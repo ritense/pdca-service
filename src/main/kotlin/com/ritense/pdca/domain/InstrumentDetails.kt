@@ -43,13 +43,12 @@ data class InstrumentDetails(
     val planUuid: UUID,
 
     /**
-     * Refinement of the register status `actief`: gepland or al gestart. Null
-     * on an actief instrument means gestart (instruments from product
-     * building blocks and older data).
+     * Refinement of the register status `actief`: gepland or al gestart. An
+     * actief instrument without a row is gestart as well.
      */
     @Enumerated(EnumType.STRING)
-    @Column(name = "uitvoerings_status")
-    var uitvoeringsStatus: UitvoeringsStatus? = null,
+    @Column(name = "uitvoerings_status", nullable = false)
+    var uitvoeringsStatus: UitvoeringsStatus = UitvoeringsStatus.GESTART,
 
     @Column(name = "uren_besteed")
     var urenBesteed: Int? = null,

@@ -100,15 +100,6 @@
   font-size: 0.875rem;
 }
 
-.cp-tile--koppel {
-  gap: var(--pdca-spacing-03);
-  border-inline-start: 3px solid var(--cds-support-info);
-}
-
-.cp-tile--koppel .cds--btn {
-  align-self: flex-start;
-}
-
 .cp-subject-naam {
   display: flex;
   flex-wrap: wrap;
@@ -174,6 +165,12 @@
 }
 
 .cp-leeg {
+  font-size: 0.875rem;
+  color: var(--cds-text-helper);
+}
+
+.cp-uitleg {
+  margin-bottom: 1rem;
   font-size: 0.875rem;
   color: var(--cds-text-helper);
 }

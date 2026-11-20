@@ -1,5 +1,6 @@
-import { offerPanel, pluginData } from './bridge';
-import { openplan } from './api';
+import { offerPanel } from './bridge';
+import { openplan, PDCA } from './api';
+import { get, HttpError, isHttpStatus, send } from './http';
 
 export const EVALUATION_PANEL_BUNDLE_KEY = 'evaluation';
 
@@ -54,8 +55,7 @@ export type StartResult =
   | { session: EvaluationSession; conflict: null }
   | { session: null; conflict: EvaluationSession | null; message: string };
 
-const errorMessage = (body: unknown, status: number) =>
-  (body as { message?: string } | null)?.message ?? `HTTP ${status}`;
+const SESSIONS = `${PDCA}/evaluation-sessions`;
 
 // ------------------------------------------------------ session events
 // GZAC sandboxes every bundle at its own opaque origin, so the side panel and
@@ -81,7 +81,11 @@ function setActiveSession(session: EvaluationSession | null) {
   if (!session && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 }
 
-/** Ends the session in this iframe once it was completed or cancelled elsewhere (in the side panel). */
+/**
+ * Ends the session in this iframe once it was completed or cancelled
+ * elsewhere (in the side panel). A failed check decides nothing: the next
+ * tick asks again.
+ */
 async function checkStillRunning() {
   const known = activeSession;
   if (!known) return;
@@ -105,43 +109,37 @@ export function onEvaluationEvent(listener: (event: EvaluationEvent) => void): (
 
 /** The user's own running evaluation session, if any. */
 export async function currentEvaluationSession(): Promise<EvaluationSession | null> {
-  const { status, body } = await pluginData<EvaluationSession | null>('GET', '/evaluation-sessions/current');
-  if (status === 204) return null;
-  if (status !== 200) throw new Error(errorMessage(body, status));
-  return body;
+  return (await get<EvaluationSession | undefined>(`${SESSIONS}/current`)) ?? null;
 }
 
 /**
  * Starts a session on the dossier of the current GZAC surface. With a
  * planned contactmoment the session carries that one out; without it the
- * backend links the earliest planned contactmoment that is due.
+ * backend links the earliest planned contactmoment that is due. 409: the
+ * user already runs one (returned as the conflict).
  */
 export async function startEvaluationSession(geplandContactmomentUuid?: string): Promise<StartResult> {
-  const { status, body } = await pluginData<any>(
-    'POST', '/evaluation-sessions', geplandContactmomentUuid ? { geplandContactmomentUuid } : undefined);
-  if (status === 201) {
-    emit({ type: 'started', session: body });
-    return { session: body, conflict: null };
+  try {
+    const session = await send<EvaluationSession>(
+      'POST', SESSIONS, geplandContactmomentUuid ? { geplandContactmomentUuid } : undefined);
+    emit({ type: 'started', session });
+    return { session, conflict: null };
+  } catch (e) {
+    if (!isHttpStatus(e, 409)) throw e;
+    const conflict = (e.body as { session?: EvaluationSession } | null)?.session ?? null;
+    return { session: null, conflict, message: e.message };
   }
-  if (status === 409) return { session: null, conflict: body?.session ?? null, message: errorMessage(body, status) };
-  throw new Error(errorMessage(body, status));
 }
 
 /** Saves the contactmoment fields of the running evaluation. */
-export async function updateEvaluationDraft(
-  draft: { evaluatieType?: string; deelnemers?: string; verslag?: string }
-): Promise<EvaluationSession> {
-  const { status, body } = await pluginData<any>('POST', '/evaluation-sessions/current/draft', draft);
-  if (status !== 200) throw new Error(errorMessage(body, status));
-  return body;
-}
+export const updateEvaluationDraft = (draft: { evaluatieType?: string; deelnemers?: string; verslag?: string }) =>
+  send<EvaluationSession>('POST', `${SESSIONS}/current/draft`, draft);
 
 /** Completes the running evaluation: it becomes an afgerond contactmoment, visible to colleagues. */
 export async function completeEvaluationSession(): Promise<EvaluationSession> {
-  const { status, body } = await pluginData<any>('POST', '/evaluation-sessions/current/complete');
-  if (status !== 200) throw new Error(errorMessage(body, status));
-  emit({ type: 'ended', session: body });
-  return body;
+  const session = await send<EvaluationSession>('POST', `${SESSIONS}/current/complete`);
+  emit({ type: 'ended', session });
+  return session;
 }
 
 /**
@@ -149,22 +147,15 @@ export async function completeEvaluationSession(): Promise<EvaluationSession> {
  * changes made during it stay, like any other plan edit.
  */
 export async function cancelEvaluationSession(): Promise<EvaluationSession> {
-  const { status, body } = await pluginData<any>('POST', '/evaluation-sessions/current/cancel');
-  if (status !== 200) throw new Error(errorMessage(body, status));
-  emit({ type: 'ended', session: body });
-  return body;
+  const session = await send<EvaluationSession>('POST', `${SESSIONS}/current/cancel`);
+  emit({ type: 'ended', session });
+  return session;
 }
 
-export async function listEvaluationChanges(): Promise<EvaluationChange[]> {
-  const { status, body } = await pluginData<any>('GET', '/evaluation-sessions/current/changes');
-  if (status !== 200) throw new Error(errorMessage(body, status));
-  return body;
-}
+export const listEvaluationChanges = () => get<EvaluationChange[]>(`${SESSIONS}/current/changes`);
 
-export async function updateChangeToelichting(id: string, toelichting: string): Promise<void> {
-  const { status, body } = await pluginData('POST', '/evaluation-sessions/current/change-toelichting', { id, toelichting });
-  if (status !== 200) throw new Error(errorMessage(body, status));
-}
+export const updateChangeToelichting = (id: string, toelichting: string) =>
+  send<void>('POST', `${SESSIONS}/current/change-toelichting`, { id, toelichting });
 
 /**
  * Plan tabs call this after every successful plan change. While the user's
@@ -175,27 +166,26 @@ export async function updateChangeToelichting(id: string, toelichting: string): 
 export async function recordEvaluationChange(planUuid: string, change: EvaluationChangeInput): Promise<void> {
   if (!activeSession || activeSession.planUuid !== planUuid) return;
   try {
-    const { status, body } = await pluginData('POST', '/evaluation-sessions/current/changes', { planUuid, ...change });
-    if (status === 404 || status === 409) {
+    await send<void>('POST', `${SESSIONS}/current/changes`, { planUuid, ...change });
+  } catch (e) {
+    if (e instanceof HttpError && (e.status === 404 || e.status === 409)) {
       if (activeSession) emit({ type: 'ended', session: activeSession });
       return;
     }
-    if (status !== 200 && status !== 204) throw new Error(errorMessage(body, status));
-  } catch (e) {
     console.warn('Wijziging niet vastgelegd in de evaluatie', e);
   }
 }
 
-export async function planTitle(session: EvaluationSession): Promise<string> {
-  return openplan.plannen.get(session.planUuid).then(p => p.titel).catch(() => 'Plan');
-}
+export const planTitle = (session: EvaluationSession): Promise<string> =>
+  openplan.plannen.get(session.planUuid).then(p => p.titel);
 
+/** Offers the side panel of [session]; without the plan's title (it could not be read) its subtitle is just "Plan". */
 export async function offerEvaluationPanel(session: EvaluationSession): Promise<void> {
   offerPanel({
     bundleKey: EVALUATION_PANEL_BUNDLE_KEY,
     key: session.id,
     title: 'Evaluatie',
-    subtitle: await planTitle(session),
+    subtitle: await planTitle(session).catch(() => 'Plan'),
     context: { evaluationSessionId: session.id },
   });
 }
@@ -207,7 +197,7 @@ export async function offerEvaluationPanel(session: EvaluationSession): Promise<
  */
 export async function syncEvaluationPanel(documentId: string | null | undefined): Promise<EvaluationSession | null> {
   if (!documentId) return null;
-  const session = await currentEvaluationSession().catch(() => null);
+  const session = await currentEvaluationSession();
   setActiveSession(session);
   if (session && session.dossierId === documentId) await offerEvaluationPanel(session);
   return session;

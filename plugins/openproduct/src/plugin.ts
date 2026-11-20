@@ -15,18 +15,7 @@
  */
 
 import {httpRequest, log, onContractCall} from "@valtimo/plugin-sdk";
-import {handleOperation, OPENPRODUCT_CONTRACT, OPERATIONS, type HttpCall, type HttpReply} from "./openproduct";
+import {serveContract} from "../../register-core/src/contract";
+import {OPENPRODUCT} from "./openproduct";
 
-const transport = (call: HttpCall): HttpReply => httpRequest.request(call);
-
-for (const operation of OPERATIONS) {
-  onContractCall(OPENPRODUCT_CONTRACT, operation, (input) => {
-    const output = handleOperation(operation, input.payload, input.configuration, transport);
-    if (output.status === "error") {
-      log.warn(`Open Product ${operation} failed: [${output.errorCode}] ${output.errorMessage}`, {
-        caller: input.caller,
-      });
-    }
-    return output;
-  });
-}
+serveContract(OPENPRODUCT, {httpRequest, log, onContractCall});

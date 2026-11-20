@@ -1,0 +1,242 @@
+/* Shared building blocks of every bundle: page frame, rows, notices, sections. */
+
+:root {
+  --pdca-spacing-02: 0.25rem;
+  --pdca-spacing-03: 0.5rem;
+  --pdca-spacing-04: 0.75rem;
+  --pdca-spacing-05: 1rem;
+  --pdca-spacing-06: 1.5rem;
+  --pdca-spacing-07: 2rem;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--cds-background, #f4f4f4);
+  font-family: var(--cds-font-family, 'IBM Plex Sans', sans-serif);
+}
+
+#root {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.pdca-container {
+  padding: 0;
+  min-height: 100%;
+}
+
+/* Shown by the bridge while GZAC has not sent its init message yet. */
+.pdca-wachten-op-gzac {
+  padding: var(--pdca-spacing-05);
+  color: var(--cds-text-secondary, #525252);
+  font-size: 0.875rem;
+}
+
+/* Responsive building blocks. Media queries match the iframe's own width,
+   which shrinks with the GZAC side panel and the case's tab layout. */
+.pdca-page-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--pdca-spacing-05);
+  margin-bottom: var(--pdca-spacing-06);
+}
+
+.pdca-page-toolbar h1 {
+  font-size: 1.75rem;
+  font-weight: 600;
+  margin-bottom: var(--pdca-spacing-03);
+}
+
+.pdca-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-03);
+}
+
+.pdca-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-03);
+}
+
+/* A row with a growing text part and a trailing block of tags/buttons;
+   the trailing block drops below the text when space runs out. */
+.pdca-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pdca-spacing-03);
+}
+
+.pdca-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pdca-spacing-03);
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.pdca-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.pdca-text-wrap {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pdca-text-ellipsis {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pdca-table-scroll {
+  overflow-x: auto;
+}
+
+/* Empty state */
+.pdca-empty {
+  text-align: center;
+  padding: 2.5rem 1.25rem;
+  color: var(--cds-text-helper, #6f6f6f);
+}
+
+.pdca-empty-inline {
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--cds-text-helper, #6f6f6f);
+}
+
+/* Toolbar above tab content (filters / add buttons) */
+.pdca-phase-bar {
+  display: flex;
+  gap: var(--pdca-spacing-03);
+  flex-wrap: wrap;
+  margin-bottom: var(--pdca-spacing-06);
+  align-items: center;
+}
+
+/* Modal content */
+.pdca-modal-form .cds--form-item {
+  margin-bottom: var(--pdca-spacing-05);
+}
+
+/* Section blocks */
+.pdca-section-block {
+  margin-top: var(--pdca-spacing-05);
+}
+
+.pdca-section-title {
+  flex-wrap: wrap;
+  gap: var(--pdca-spacing-03);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--cds-text-secondary, #525252);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--pdca-spacing-03);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Page-level notification (errors, the evaluation banner): full width with
+   space below, instead of Carbon's capped inline width. */
+.pdca-notification {
+  max-inline-size: none;
+  min-inline-size: 0;
+  margin-bottom: var(--pdca-spacing-05);
+}
+
+/* Edit action buttons row */
+.pdca-edit-actions {
+  display: flex;
+  gap: var(--pdca-spacing-03);
+  justify-content: flex-end;
+  margin-top: var(--pdca-spacing-03);
+}
+
+/* Modal form layout */
+.pdca-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pdca-spacing-05);
+}
+
+/* The root of every bundle (PdcaRoot): the host theme's background over the whole frame. */
+.pdca-root {
+  min-height: 100%;
+  background: var(--cds-background);
+  color: var(--cds-text-primary);
+}
+
+/* A part that could not be loaded: the notice with its retry below it. */
+.pdca-laadfout {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--pdca-spacing-03);
+  margin-bottom: var(--pdca-spacing-05);
+}
+
+.pdca-laadfout .cds--inline-notification {
+  max-inline-size: none;
+  min-inline-size: 0;
+  inline-size: 100%;
+}
+
+/* An optional part that could not be loaded, said in one line. */
+.pdca-niet-geladen {
+  margin: var(--pdca-spacing-02) 0 var(--pdca-spacing-03);
+  font-size: 0.75rem;
+  color: var(--cds-text-error, #da1e28);
+}
+
+.pdca-link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--cds-link-primary, #0f62fe);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Expand chevron of a card header. */
+.pdca-chevron {
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.pdca-chevron--open {
+  transform: rotate(90deg);
+}
+
+/* Small secondary text next to a title. */
+.pdca-meta-text {
+  font-size: 0.6875rem;
+  color: var(--cds-text-secondary, #525252);
+}
+
+.pdca-meta-text--italic {
+  font-style: italic;
+}
+
+.pdca-spacer {
+  flex: 1;
+}

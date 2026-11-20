@@ -20,7 +20,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.ritense.pdca.config.PdcaProperties
 import com.ritense.pdca.domain.StoredPluginConfiguration
 import com.ritense.pdca.plugin.ConfigurationStore
-import com.ritense.pdca.plugin.PushedGzacAccess
+import com.ritense.pdca.plugin.GzacAccess
 import com.ritense.pdca.repository.StoredPluginConfigurationRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -57,7 +57,7 @@ class RegisterContractRequestFactoryTest {
 
     @BeforeEach
     fun setUp() {
-        val access = PushedGzacAccess(ConfigurationStore(repository, objectMapper), PdcaProperties(gzac = PdcaProperties.GzacApi()))
+        val access = GzacAccess(ConfigurationStore(repository, objectMapper), PdcaProperties())
         val gzacBuilder = RestClient.builder()
         gzac = MockRestServiceServer.bindTo(gzacBuilder).build()
         openPlan = contractClient(Register.OPENPLAN, access, gzacBuilder)
@@ -68,7 +68,7 @@ class RegisterContractRequestFactoryTest {
     @Test
     fun `list carries resource and query and reproduces the register answer`() {
         expectCall(
-            """{"contract":"nl.ritense.openplan@1","operation":"list",
+            """{"contract":"nl.ritense.openplan@2","operation":"list",
                "payload":{"resource":"doel","query":{"plannen__uuid":"$planUuid","page":"1"}}}""",
             completed(200, """{"count":1,"next":null,"results":[{"uuid":"$planUuid"}]}""")
         )
@@ -97,25 +97,29 @@ class RegisterContractRequestFactoryTest {
     }
 
     @Test
-    fun `get, update, replace and delete map onto their operations`() {
+    fun `get, update and delete map onto their operations`() {
         expectCall("""{"operation":"get","payload":{"resource":"plan","uuid":"$planUuid"}}""", completed(200, "{}"))
         expectCall(
             """{"operation":"update","payload":{"resource":"doel","uuid":"$planUuid","body":{"status":"afgerond"}}}""",
-            completed(200, "{}")
-        )
-        expectCall(
-            """{"operation":"update","payload":{"resource":"plan","uuid":"$planUuid","body":{"titel":"x"},"replace":true}}""",
             completed(200, "{}")
         )
         expectCall("""{"operation":"delete","payload":{"resource":"instrument","uuid":"$planUuid"}}""", completed(204, "null"))
 
         send(HttpMethod.GET, "/plannen/api/v0/plan/$planUuid")
         send(HttpMethod.PATCH, "/plannen/api/v0/doel/$planUuid", """{"status":"afgerond"}""")
-        send(HttpMethod.PUT, "/plannen/api/v0/plan/$planUuid", """{"titel":"x"}""")
         val (status, body) = send(HttpMethod.DELETE, "/plannen/api/v0/instrument/$planUuid")
 
         assertEquals(204, status)
         assertEquals("", body)
+        gzac.verify()
+    }
+
+    @Test
+    fun `a PUT has no contract operation and never reaches GZAC`() {
+        val (status, body) = send(HttpMethod.PUT, "/plannen/api/v0/plan/$planUuid", """{"titel":"x"}""")
+
+        assertEquals(400, status)
+        assertTrue(detail(body).contains("wordt niet ondersteund"))
         gzac.verify()
     }
 
@@ -171,7 +175,78 @@ class RegisterContractRequestFactoryTest {
 
         assertEquals(503, unreachable.first)
         assertEquals(502, providerError.first)
-        assertTrue(detail(providerError.second).contains("OPENPLAN_UNREACHABLE"))
+        assertEquals("De Open Plan plugin meldt een fout (PROVIDER_ERROR)", detail(providerError.second))
+    }
+
+    @Test
+    fun `a call GZAC refuses as too many concurrent calls is retried after a pause`() {
+        expectCall("""{"operation":"create"}""", TOO_MANY)
+        expectCall("""{"operation":"create"}""", completed(201, """{"uuid":"$planUuid"}"""))
+
+        val (status, body) = send(HttpMethod.POST, "/plannen/api/v0/plan", """{"titel":"Plan"}""")
+
+        assertEquals(201, status)
+        assertTrue(body.contains(planUuid))
+        assertEquals(1, pauses.size)
+        gzac.verify()
+    }
+
+    @Test
+    fun `too many concurrent contract calls after the last retry is a 503 marked as a contract error`() {
+        repeat(3) { expectCall("""{"operation":"list"}""", TOO_MANY) }
+
+        val response = openPlan.get().uri("/plannen/api/v0/plan")
+            .exchange { _, r -> Triple(r.statusCode.value(), r.headers.getFirst(RegisterErrors.CONTRACT_ERROR_HEADER), String(r.body.readAllBytes())) }!!
+
+        assertEquals(503, response.first)
+        assertEquals("TOO_MANY_CONCURRENT_CALLS", response.second)
+        assertTrue(detail(response.third).contains("TOO_MANY_CONCURRENT_CALLS"))
+        assertTrue(!response.third.contains("8 calls in progress"))
+        assertEquals(2, pauses.size)
+        assertTrue(pauses[1] >= java.time.Duration.ofMillis(400), "the pause grows with every retry")
+        gzac.verify()
+    }
+
+    @Test
+    fun `the limiter lets no more calls run at once than configured`() {
+        val limiter = ContractCallLimiter(
+            PdcaProperties.Registers(contractConcurrency = 2, contractPermitTimeout = java.time.Duration.ofMillis(50))
+        )
+        val running = java.util.concurrent.atomic.AtomicInteger()
+        val maxRunning = java.util.concurrent.atomic.AtomicInteger()
+        val busy = java.util.concurrent.atomic.AtomicInteger()
+        val release = java.util.concurrent.CountDownLatch(1)
+        val threads = (1..4).map {
+            Thread {
+                try {
+                    limiter.withPermit {
+                        maxRunning.accumulateAndGet(running.incrementAndGet(), ::maxOf)
+                        release.await(1, java.util.concurrent.TimeUnit.SECONDS)
+                        running.decrementAndGet()
+                    }
+                } catch (e: ContractCallLimiter.Busy) {
+                    busy.incrementAndGet()
+                }
+            }.apply { start() }
+        }
+        Thread.sleep(300)
+        release.countDown()
+        threads.forEach { it.join() }
+
+        assertEquals(2, maxRunning.get())
+        assertEquals(2, busy.get())
+    }
+
+    @Test
+    fun `several configurations without a configured id are not used`() {
+        `when`(repository.findAll()).thenReturn(listOf(stored("config-a"), stored("config-b")))
+        gzac.expect(never(), requestTo(callUrl))
+
+        val (status, body) = send(HttpMethod.GET, "/plannen/api/v0/plan")
+
+        assertEquals(503, status)
+        assertTrue(detail(body).startsWith("Er zijn meerdere PDCA-configuraties"))
+        gzac.verify()
     }
 
     @Test
@@ -211,7 +286,7 @@ class RegisterContractRequestFactoryTest {
     @Test
     fun `another register uses its own contract, api path and kebab-case resources`() {
         expectCall(
-            """{"contract":"nl.ritense.openklant@1","operation":"create",
+            """{"contract":"nl.ritense.openklant@2","operation":"create",
                "payload":{"resource":"maak-klantcontact","body":{"klantcontact":{"kanaal":"gesprek"}}}}""",
             completed(201, """{"klantcontact":{"uuid":"$planUuid"}}""")
         )
@@ -227,7 +302,7 @@ class RegisterContractRequestFactoryTest {
 
     @Test
     fun `a binding is checked per register`() {
-        pushed(grantedContracts = listOf("nl.ritense.openplan@1"))
+        pushed(grantedContracts = listOf("nl.ritense.openplan@2"))
         gzac.expect(never(), requestTo(callUrl))
 
         val (status, body) = send(HttpMethod.GET, "/klantinteracties/api/v1/klantcontacten", client = openKlant)
@@ -251,19 +326,19 @@ class RegisterContractRequestFactoryTest {
     }
 
     private fun pushed(grantedContracts: List<String>) {
-        `when`(repository.findAll()).thenReturn(
-            listOf(
-                StoredPluginConfiguration(
-                    configId = "pdca-config",
-                    properties = "{}",
-                    serviceToken = "service-token",
-                    gzacBaseUrl = "http://gzac:8080/",
-                    grantedContracts = objectMapper.writeValueAsString(grantedContracts),
-                    updatedAt = LocalDateTime.now()
-                )
-            )
-        )
+        `when`(repository.findAll()).thenReturn(listOf(stored("pdca-config", grantedContracts)))
     }
+
+    private fun stored(configId: String, grantedContracts: List<String> = Register.entries.map { it.contract }) =
+        StoredPluginConfiguration(
+            configId = configId,
+            title = "PDCA Planbeheer",
+            properties = "{}",
+            serviceToken = "service-token",
+            gzacBaseUrl = "http://gzac:8080/",
+            grantedContracts = objectMapper.writeValueAsString(grantedContracts),
+            updatedAt = LocalDateTime.now()
+        )
 
     private fun expectCall(expectedJson: String, responseJson: String) {
         gzac.expect(requestTo(callUrl))
@@ -275,10 +350,14 @@ class RegisterContractRequestFactoryTest {
     private fun completed(status: Int, body: String) =
         """{"status":"completed","result":{"status":$status,"body":$body}}"""
 
-    private fun contractClient(register: Register, access: PushedGzacAccess, gzacBuilder: RestClient.Builder) =
+    /** Retries without real pauses; the pauses are recorded instead. */
+    private val pauses = mutableListOf<java.time.Duration>()
+    private val limiter = ContractCallLimiter(PdcaProperties.Registers(contractRetries = 2)) { pauses += it }
+
+    private fun contractClient(register: Register, access: GzacAccess, gzacBuilder: RestClient.Builder) =
         RestClient.builder()
             .baseUrl(register.contractBaseUrl)
-            .requestFactory(RegisterContractRequestFactory(register, access, objectMapper, gzacBuilder))
+            .requestFactory(RegisterContractRequestFactory(register, access, objectMapper, gzacBuilder, limiter))
             .build()
 
     private fun send(method: HttpMethod, path: String, body: String? = null, client: RestClient = openPlan): Pair<Int, String> =
@@ -288,4 +367,8 @@ class RegisterContractRequestFactoryTest {
             .exchange { _, response -> response.statusCode.value() to String(response.body.readAllBytes()) }!!
 
     private fun detail(body: String): String = objectMapper.readTree(body).path("detail").asText()
+
+    private companion object {
+        const val TOO_MANY = """{"status":"error","errorCode":"TOO_MANY_CONCURRENT_CALLS","errorMessage":"8 calls in progress"}"""
+    }
 }
