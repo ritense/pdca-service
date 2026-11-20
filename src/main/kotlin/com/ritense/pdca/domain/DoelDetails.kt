@@ -22,6 +22,7 @@ import jakarta.persistence.EnumType
 import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.UUID
 
@@ -29,8 +30,9 @@ import java.util.UUID
  * PDCA process overlay for a doel in Open Plan (pk = Open Plan doel uuid):
  * voortgangsstatus, the list ordering ([sortering] orders the flat doelen
  * list), the fine-grained uitvoeringsstatus (the register only knows
- * actief/afgerond/geannuleerd) and the internal and external note. Applies to
- * subdoelen and the hoofddoel alike.
+ * actief/afgerond/geannuleerd), the internal and external note and, for a
+ * subdoel, its beoogde einddatum. Applies to subdoelen and the hoofddoel
+ * alike.
  */
 @Entity
 @Table(name = "doel_details")
@@ -66,6 +68,15 @@ data class DoelDetails(
     /** Note that may be shared with the inwoner. */
     @Column(name = "externe_notitie", columnDefinition = "TEXT")
     var externeNotitie: String? = null,
+
+    /**
+     * Beoogde einddatum of a subdoel (optional). Open Plan's doel.einddatum
+     * is the actual end date, so the target lives here. Not in the past when
+     * it is set and never after the plan's [PlanDetails.streefEinddatum]
+     * ([com.ritense.pdca.service.SubdoelEinddatumValidator]).
+     */
+    @Column(name = "streef_einddatum")
+    var streefEinddatum: LocalDate? = null,
 
     @Column(nullable = false)
     var sortering: Int = 0,

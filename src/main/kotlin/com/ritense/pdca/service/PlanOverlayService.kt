@@ -55,7 +55,8 @@ import java.util.UUID
  * instrument's doel, the klantcontact's onderwerpobject), so a row can never
  * be filed under another plan. Those reads, and the check that a doel still
  * runs before it gets a voortgangsstatus, happen before — not inside — the
- * transaction that writes the row. Plan rows are only created by the intake
+ * transaction that writes the row. Beoogde einddata are checked against
+ * each other ([SubdoelEinddatumValidator]). Plan rows are only created by the intake
  * (ARCHITECTURE §6.1); here they are edited.
  */
 @Service
@@ -70,6 +71,7 @@ class PlanOverlayService(
     private val evaluationChangeRepository: EvaluationChangeRepository,
     private val documentAanvraagRepository: DocumentAanvraagRepository,
     private val phaseConfigService: PhaseConfigService,
+    private val subdoelEinddatumValidator: SubdoelEinddatumValidator,
     private val openPlanGateway: OpenPlanGateway,
     private val transactionTemplate: TransactionTemplate
 ) {
@@ -87,6 +89,9 @@ class PlanOverlayService(
         val configKey = details.caseDefinitionKey
         request.weergaveStatus?.orElse(null)?.let { validateWeergaveStatus(configKey, it) }
         request.beginPositie?.orElse(null)?.let { validatePositie(configKey, "positie", it) }
+        request.streefEinddatum?.orElse(null)
+            ?.takeIf { it != details.streefEinddatum }
+            ?.let { subdoelEinddatumValidator.validatePlan(planUuid, it) }
         details.weergaveStatus = request.weergaveStatus.patch(details.weergaveStatus)
         details.beginPositie = request.beginPositie.patch(details.beginPositie)
         details.subdoelgroep = request.subdoelgroep.patch(details.subdoelgroep)?.takeIf { it.isNotBlank() }
@@ -139,6 +144,11 @@ class PlanOverlayService(
         request.voortgangStatus?.orElse(null)
             ?.takeIf { it != existing?.voortgangStatus }
             ?.let { validateVoortgangStatus(planUuid, doelUuid, it) }
+        // Only a new or changed date is checked: a date that has since
+        // passed does not block saving the doel's other fields.
+        request.streefEinddatum?.orElse(null)
+            ?.takeIf { it != existing?.streefEinddatum }
+            ?.let { subdoelEinddatumValidator.validateSubdoel(planUuid, it) }
 
         return transactionTemplate.execute {
             val current = doelDetailsRepository.findById(doelUuid).orElse(null)
@@ -155,6 +165,7 @@ class PlanOverlayService(
                 voortgangStatus = request.voortgangStatus.patch(voortgangStatus)
                 interneNotitie = request.interneNotitie.patch(interneNotitie)
                 externeNotitie = request.externeNotitie.patch(externeNotitie)
+                streefEinddatum = request.streefEinddatum.patch(streefEinddatum)
                 sortering = request.sortering ?: sortering
                 updatedAt = LocalDateTime.now()
             }

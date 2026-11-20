@@ -23,5 +23,7 @@
     <include file="config/liquibase/016-plan-intake-claim-token.xml"/>
     <include file="config/liquibase/017-document-aanvraag.xml"/>
     <include file="config/liquibase/018-document-aanvraag-proces.xml"/>
+    <include file="config/liquibase/019-doel-streef-einddatum.xml"/>
+    <include file="config/liquibase/020-drop-action-assignee-type.xml"/>
 
 </databaseChangeLog>

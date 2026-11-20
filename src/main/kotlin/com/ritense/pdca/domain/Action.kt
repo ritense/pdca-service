@@ -54,10 +54,6 @@ data class Action(
     @Column(nullable = false)
     var status: ActionStatus = ActionStatus.PLANNED,
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "assignee_type")
-    var assigneeType: AssigneeType? = null,
-
     @Column(name = "assignee_name")
     var assigneeName: String? = null,
 
@@ -88,5 +84,4 @@ data class Action(
 )
 
 enum class ActionStatus { PLANNED, IN_PROGRESS, PENDING_REVIEW, COMPLETED, REJECTED }
-enum class AssigneeType { PROFESSIONAL, SUBJECT, PROVIDER }
 enum class Priority { HIGH, NORMAL, LOW }

@@ -12,7 +12,7 @@ import { PlanActieModal } from './PlanActieModal';
 import { PlanGegevens, RecenteEvaluaties } from './PlanGegevens';
 import { PlanKop, SubjectKaart } from './PlanKop';
 import { useOverzicht } from './useOverzicht';
-import { Verantwoordelijkheden } from './Verantwoordelijkheden';
+import { Betrokkenen } from './Betrokkenen';
 
 /** The "Planoverzicht" case tab. */
 export function PlanOverview() {
@@ -79,23 +79,21 @@ function OverzichtPagina({ documentId, plan, details, setPlan, setDetails }: Pla
             onSave={async (veld, waarde) => {
               const resultaat = await acties.bewaarVeld(veld, waarde);
               if ('plan' in resultaat) setPlan(resultaat.plan);
-              else if ('details' in resultaat) setDetails(resultaat.details);
-              else if ('betrokkenen' in resultaat) setBetrokkenen(resultaat.betrokkenen);
-              else if (resultaat.doelenGewijzigd) await overzicht.planData.reload();
+              else setBetrokkenen(resultaat.betrokkenen);
               showSuccess('Wijziging opgeslagen');
             }} />
           <RecenteEvaluaties contactmomenten={model.data.contactmomenten} details={model.data.contactmomentDetails} />
         </div>
         <div>
-          <Verantwoordelijkheden betrokkenen={betrokkenen} relatietypen={overzicht.relatietypen}
+          <Betrokkenen betrokkenen={betrokkenen} relatietypen={overzicht.relatietypen}
             onToevoegen={async invoer => {
               setBetrokkenen(await acties.voegBetrokkeneToe(invoer));
-              showSuccess('Verantwoordelijkheid toegevoegd');
+              showSuccess('Betrokkene toegevoegd');
             }}
             onVerwijderen={async betrokkene => {
               await acties.verwijderBetrokkene(betrokkene);
               setBetrokkenen(betrokkenen.filter(b => b.id !== betrokkene.id));
-              showSuccess('Verantwoordelijkheid verwijderd');
+              showSuccess('Betrokkene verwijderd');
             }} />
         </div>
       </div>

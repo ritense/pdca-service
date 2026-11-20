@@ -1,5 +1,5 @@
 /**
- * The changes the Doelen & Acties tab makes, each as one call to the API
+ * The changes the Doelen tab makes, each as one call to the API
  * (lifecycle steps are backend use cases) followed by recording it in the
  * user's running evaluation of this plan (a no-op without one). Reloading
  * is up to the page.
@@ -7,13 +7,15 @@
 
 import { Actie, Doel, Instrument, InstrumentDetails, LevenscyclusResultaat, openplan, pdca, ProductType } from '../shared/api';
 import { EvaluationChangeInput, recordEvaluationChange } from '../shared/evaluationSession';
+import { formatDate } from '../shared/dates';
 import { actieStatus, voortgangStatus } from '../shared/labels';
 import type { DoelenModel } from './useDoelenModel';
 
 export type Notities = { interneNotitie: string; externeNotitie: string };
 export type VoortgangInvoer = { status: string; toelichting: string };
 export type RegistratieInvoer = { uren: number | null; score: number | null; toelichting: string };
-export type DoelInvoer = { titel: string; toelichting: string; doeltypeUuid: string };
+/** What the subdoel modal saves; streefEinddatum is yyyy-mm-dd, empty for none. */
+export type DoelInvoer = { titel: string; toelichting: string; doeltypeUuid: string; streefEinddatum: string };
 export type ActieInvoer = Partial<Actie> & { title: string };
 /** The doel (and optionally the instrument) a new actie belongs to. */
 export type ActieContext = { doelUuid: string; instrumentUuid?: string };
@@ -72,13 +74,19 @@ export function doelenActies(model: DoelenModel) {
      */
     async bewaarDoel(bestaand: Doel | null, data: DoelInvoer) {
       if (bestaand) {
-        await openplan.doelen.update(bestaand.uuid, { titel: data.titel, beschrijving: data.toelichting, doeltypeUuid: data.doeltypeUuid });
-        const titelGewijzigd = bestaand.titel !== data.titel;
-        if (titelGewijzigd || (bestaand.beschrijving || '') !== data.toelichting) {
-          subdoel({ uuid: bestaand.uuid, titel: data.titel }, 'SUBDOEL_BEWERKT', {
-            vanWaarde: titelGewijzigd ? bestaand.titel : null,
-            naarWaarde: titelGewijzigd ? data.titel : 'toelichting aangepast',
+        // The beoogde einddatum goes first: the backend checks it against
+        // today and the plan's date before anything else is written.
+        const oudeEinddatum = model.detailsVanDoel(bestaand.uuid)?.streefEinddatum || '';
+        if (oudeEinddatum !== data.streefEinddatum) {
+          await pdca.doeldetails.upsert(bestaand.uuid, { planUuid: plan.uuid, streefEinddatum: data.streefEinddatum || null });
+          subdoel(bestaand, 'BEOOGDE_EINDDATUM', {
+            samenvoegen: true, vanWaarde: formatDate(oudeEinddatum) || null, naarWaarde: formatDate(data.streefEinddatum) || null,
           });
+        }
+        // The doeltype (and with it the title) is fixed once the subdoel exists.
+        if ((bestaand.beschrijving || '') !== data.toelichting) {
+          await openplan.doelen.update(bestaand.uuid, { beschrijving: data.toelichting });
+          subdoel(bestaand, 'SUBDOEL_BEWERKT', { vanWaarde: null, naarWaarde: 'toelichting aangepast' });
         }
         return;
       }
@@ -92,7 +100,9 @@ export function doelenActies(model: DoelenModel) {
         // New subdoelen hang under the plan's active hoofddoel (W&P hierarchy).
         ...(model.actiefHoofddoel ? { hoofdDoel: model.actiefHoofddoel.uuid } : {}),
       });
-      await pdca.doeldetails.upsert(doel.uuid, { planUuid: plan.uuid, uitvoeringsStatus: 'GEPLAND' });
+      await pdca.doeldetails.upsert(doel.uuid, {
+        planUuid: plan.uuid, uitvoeringsStatus: 'GEPLAND', ...(data.streefEinddatum ? { streefEinddatum: data.streefEinddatum } : {}),
+      });
       subdoel(doel, 'SUBDOEL_TOEGEVOEGD');
     },
 

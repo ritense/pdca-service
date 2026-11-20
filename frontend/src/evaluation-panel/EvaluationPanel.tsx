@@ -294,7 +294,7 @@ export function EvaluationPanel() {
         <div className="pdca-section-title"><span>Wijzigingen in het plan ({wijzigingen.length})</span></div>
         {wijzigingen.length === 0
           ? <p className="pdca-panel-hint">
-              Pas het plan aan in de tabbladen Planoverzicht en Doelen &amp; Acties. Elke wijziging die je
+              Pas het plan aan in de tabbladen Planoverzicht en Doelen. Elke wijziging die je
               tijdens deze evaluatie doet, verschijnt hier.
             </p>
           : <WijzigingenLijst wijzigingen={wijzigingen} onToelichting={handleToelichting} />}

@@ -560,7 +560,9 @@ as done**:
 
 1. **Validate first.** Everything that can be checked is checked before the
    first write, and every problem is reported in one 400: doeltypen,
-   statuses and resultaten, dates, lengths (titel ≤ 255, toelichtingen and
+   statuses and resultaten, dates (a subdoel's beoogde einddatum against
+   the rules of §6.3, except for an afgerond subdoel; form.io date values
+   are read by their date part), lengths (titel ≤ 255, toelichtingen and
    evaluation notes ≤ 1000, the registers' limits), evaluation types,
    positie and display status against the plan case type, betrokkenen, the
    subject and the one-active-plan rule (plans of this intake excepted).
@@ -758,13 +760,26 @@ registers itself.
   with 409 *"Sluit eerst de instrumentdossiers af: …"* while one of its
   instruments is actief and dossier-managed. Instruments go first and the
   doel last, so a retry completes an interrupted cascade. Completing a
-  subdoel and editing its texts are single-object proxy edits.
+  subdoel and editing its toelichting are single-object proxy edits; its
+  doeltype (and so its title) is fixed once it exists.
+- **Beoogde einddatum of a subdoel** (`DoelDetails.streefEinddatum`,
+  optional): the order in which the subdoelen come up. Open Plan's
+  `doel.einddatum` is the actual end date, so the target lives in the
+  overlay. `SubdoelEinddatumValidator` holds the rules, from both sides: a
+  new or changed date is not in the past and not after the plan's
+  `streefEinddatum` (`PUT /doeldetails`, 400; no upper bound when the plan
+  has none; an unchanged date that has since passed does not block saving
+  the row's other fields), and the plan's `streefEinddatum` cannot move
+  before the date of a subdoel that is still actief in Open Plan
+  (`PUT /plandetails`, 409; closed subdoelen no longer count). The forms
+  apply the same rules before saving.
 - **Hoofddoel switch** (`PUT /plannen/{uuid}/hoofddoel`,
   `PlanLifecycleService`): makes an actief doel of the chosen hoofddoel type
   the hoofddoel (the one an interrupted switch created, else a new one),
   completes every other actief hoofddoel (it stays visible as history) and
   re-points the subdoelen. Each step skips what is done. Refused (409) on a
-  closed plan.
+  closed plan. The plan tabs offer no switch: hoofddoel, subdoelgroep and
+  positie are set by the intake and shown read-only (§13.3).
 - **Closing a plan** (`POST /plannen/{uuid}/afronden|afbreken`, reason
   optional resp. required) sets the register status with today as
   `einddatum` and the text as `redenEinde`. `GET /plannen/{uuid}/afsluitcheck`
@@ -1239,11 +1254,11 @@ the demo case types.
 |---|---|---|
 | `PlanDetails` (`plan_details`) | `planUuid` | `persoonUuid`, `caseDefinitionKey`, `dossierId` (plan dossier, unique), `intakeDossierId` (unique: one plan per intake), `weergaveStatus` (display status), `beginPositie` (positie), `subdoelgroep`, `streefEinddatum` |
 | `PlanIntake` (`plan_intake`) | `intakeDossierId` | plan creation from an intake: `status` IN_AANMAAK → GEREED, `planUuid` once created, `claimToken` + `claimedUntil` (the owned claim and its lease; every write is a conditional update on the token) |
-| `DoelDetails` (`doel_details`) | `doelUuid` | `planUuid`, `uitvoeringsStatus` (GEPLAND, GESTART), `voortgangStatus` (a code of the plan's list) and `voortgangToelichting`, `interneNotitie`, `externeNotitie`, `sortering` (the hoofddoel −1) |
+| `DoelDetails` (`doel_details`) | `doelUuid` | `planUuid`, `uitvoeringsStatus` (GEPLAND, GESTART), `voortgangStatus` (a code of the plan's list) and `voortgangToelichting`, `interneNotitie`, `externeNotitie`, `streefEinddatum` (beoogde einddatum of a subdoel, §6.3), `sortering` (the hoofddoel −1) |
 | `InstrumentDetails` (`instrument_details`) | `instrumentUuid` | `planUuid`, `uitvoeringsStatus` (default GESTART), `urenBesteed`, `effectiviteitScore` (1–5) and `effectiviteitToelichting`, `afbreekReden`, `interneNotitie`, `externeNotitie` |
 | `ContactmomentDetails` (`contactmoment_details`) | `contactmomentUuid` (= klantcontact uuid) | `planUuid`, `evaluatieType`, `geplandeDatum`, `deelnemers`, `actiepunten`, `evaluationSessionId` |
 | `InvolvedParty` (`involved_party`) | id | `planUuid`, name, role, contact details, `isPrimary` (the procesbegeleider; at most one per plan, partial unique index) |
-| `Action` (`action`) | id | `doelUuid`, optional `instrumentUuid` and `contactmomentUuid`, title, description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED), assignee type and name, priority, dates, result |
+| `Action` (`action`) | id | `doelUuid`, optional `instrumentUuid` and `contactmomentUuid`, title, description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED), assignee name, priority, dates, result |
 | `EvaluationSession` (`evaluation_session`) | id | `dossierId`, `planUuid`, `caseDefinitionKey`, `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED/CANCELLED; at most one RUNNING per user), start/end, `evaluatieType`, `deelnemers`, `verslag`, `geplandContactmomentUuid`, `contactmomentUuid` |
 | `EvaluationChange` (`evaluation_change`) | id | `sessionId`, `subjectType` (PLAN, HOOFDDOEL, SUBDOEL, INSTRUMENT, ACTIE), `subjectUuid`, `subjectTitel`, `soort`, `vanWaarde`, `naarWaarde`, `toelichting` |
 | `DocumentAanvraag` (`document_aanvraag`) | id | a document made by the document process (§6.6): `planUuid`, `dossierId` (the plan dossier the process runs on), `soort` (EVALUATIEVERSLAG), `bronUuid` (the evaluation session), `status` (AANGEVRAAGD → BEZIG → GEREED/MISLUKT), `processInstanceId` (its GZAC process; unique), `gegevens` (JSON data snapshot, cleared when the request ends), `bestandsnaam`, `mediatype`, `inhoud` (the PDF, GEREED only), `foutmelding` (MISLUKT only), `aangevraagdDoor`, `aangevraagdOp`, `bijgewerktOp`; at most one open request per (`soort`, `bronUuid`) |
@@ -1374,8 +1389,8 @@ Details, versions and the manual setup steps:
 
 | Bundle (`frontend/src/`) | Manifest key | GZAC surface | Purpose |
 |---|---|---|---|
-| `plan-overview` | `plan-overview` | case tab *Planoverzicht* | plan header and actions, KPIs, plan data, hoofddoel, verantwoordelijken |
-| `plan-goals` | `plan-goals` | case tab *Doelen & Acties* | hoofddoel and subdoelen, instruments, acties, voortgang and notes |
+| `plan-overview` | `plan-overview` | case tab *Planoverzicht* | plan header and actions, KPIs, plan data, hoofddoel, betrokkenen |
+| `plan-goals` | `plan-goals` | case tab *Doelen* | hoofddoel and subdoelen, instruments, acties, voortgang and notes |
 | `plan-evaluations` | `plan-evaluations` | case tab *Evaluaties* | planned and past evaluations with their evaluatieverslag, start of an evaluation |
 | `pdca-admin` | `pdca-admin` | page *PDCA Beheer* | case configuration per case type |
 | `create-plan` | `create-plan` | task form | prefilled plan creation from an intake (§6.1) |
@@ -1455,8 +1470,19 @@ bundles, so nothing is loaded from third parties.
   status calls one backend endpoint; the close-plan modal shows the
   afsluitcheck first. A closed doel shows its register status and no
   voortgang.
+- **Plangegevens** on the Planoverzicht edit only the procesbegeleider (one
+  of the betrokkenen) and the toelichting bij het hoofddoel; hoofddoel,
+  subdoelgroep and positie come from the intake and are read-only. Editing
+  a subdoel shows its doeltype read-only.
+- **Beoogde einddata** show as "Beoogd: <datum>": the plan's in the plan
+  header and in the hoofddoel card (next to the subdoel dates, so it is
+  clear whether they fit), a subdoel's in its card header; the subdoel modal
+  and the create-plan rows set them. A date that has passed while its doel
+  (or plan) is still actief is shown in red with *verlopen* — flagged, never
+  blocked; during an evaluation a change is recorded as
+  `BEOOGDE_EINDDATUM`.
 - **Evaluation** — while the user's own session runs on the plan, the
-  Planoverzicht and Doelen & Acties tabs show an "Evaluatie loopt" banner;
+  Planoverzicht and Doelen tabs show an "Evaluatie loopt" banner;
   the Evaluaties tab shows the running evaluation on top (owner only).
   Completing writes a pending draft first, so the latest verslag is the one
   recorded.

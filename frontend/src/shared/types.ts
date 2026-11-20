@@ -183,6 +183,8 @@ export interface DoelDetails {
   interneNotitie?: string;
   /** Note that may be shared with the inwoner. */
   externeNotitie?: string;
+  /** Beoogde einddatum of a subdoel (yyyy-mm-dd): not in the past when set, not after the plan's streefEinddatum. */
+  streefEinddatum?: string;
   sortering: number;
 }
 
@@ -235,7 +237,6 @@ export interface Actie {
   title: string;
   description?: string;
   status: string;
-  assigneeType?: string;
   assigneeName?: string;
   priority: string;
   startDate?: string;

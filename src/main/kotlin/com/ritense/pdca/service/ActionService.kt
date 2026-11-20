@@ -88,7 +88,6 @@ class ActionService(
         existing.title = updated.title
         existing.description = updated.description
         existing.status = updated.status
-        existing.assigneeType = updated.assigneeType
         existing.assigneeName = updated.assigneeName
         existing.priority = updated.priority
         existing.startDate = updated.startDate

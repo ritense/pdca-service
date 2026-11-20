@@ -95,7 +95,7 @@ All five definitions here are final releases (see the table above).
 The PDCA couplings ship **in the zips**:
 
 - the plan case types carry the three PDCA case tabs of type *external
-  plugin* — Planoverzicht (`plan-overview`), Doelen & Acties (`plan-goals`)
+  plugin* — Planoverzicht (`plan-overview`), Doelen (`plan-goals`)
   and Evaluaties (`plan-evaluations`); on `inwonerplan` these are the only
   tabs;
 - the intake case types carry an `external_plugin_task_form` process link
@@ -144,7 +144,7 @@ so the case has no entry in the Start menu.
 The plan-dossier process has **no user tasks**: `start-event` →
 `einde` ("Plandossier aangemaakt"). There are no start form, task forms or
 process links. The plan is kept up to date in the PDCA tabs (Planoverzicht,
-Doelen & Acties, Evaluaties); acties live in that tab, and a product
+Doelen, Evaluaties); acties live in that tab, and a product
 requested there — or by the intake when the plan was created — gets an
 instrument dossier of its own (see "The instrument dossier").
 
@@ -257,13 +257,20 @@ intake gives them no status. The row shapes are the input of the
 
 | Grid | Row fields |
 |---|---|
-| `doelen` | `doelType`, `beschrijving`, `status` |
+| `doelen` | `doelType`, `beschrijving`, `status`, `streefEinddatum` |
 | `instrumenten` | `product` (producttype code; the select shows the product name), `doel` (the subdoel it is requested under) |
 | `betrokkenen` | `naam`, `rol`, `organisatie`, `email`, `procesbegeleider` |
 | `contactmomenten` (renovatie-intake only) | `datum`, `evaluatieType`, `status`, `notitie`, `deelnemers` |
 
 - **Status** of doelen: `gepland`, `gestart` or `afgerond` (Gepland /
   Gestart / Afgerond); of contactmomenten: `gepland` or `afgerond`.
+- **Beoogde einddatum** (`streefEinddatum`) of a doel: an optional date
+  picker per row, stored as form.io's date value (date, time and offset;
+  the app reads the date part). Custom validation on the field applies the
+  app's rules for a subdoel: not in the past and, in `renovatie-intake`,
+  not after the plan's `streefEinddatum`; an afgerond doel is not checked.
+  The intake-werk-participatie Samenvatting tab shows it as a column in the
+  Doelen table.
 - **Products** in the selects are producttypen seeded in Open Product, all
   with a `StartInstrument` actie (`renovatie-intake` offers only the
   objectdomein ones); the demo defaults put each under a subdoel with a

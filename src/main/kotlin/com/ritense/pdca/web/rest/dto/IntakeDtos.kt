@@ -86,14 +86,19 @@ data class PlanIntakeRequest(
         get() = subjectType != "PERSON" || subjectId.isBlank() || Bsn.isValid(subjectId.trim())
 }
 
-/** [status]: gepland (the default), gestart or afgerond. */
+/**
+ * [status]: gepland (the default), gestart or afgerond.
+ * [streefEinddatum]: the beoogde einddatum, `yyyy-MM-dd` (a form.io date
+ * value with time and offset is read by its date part).
+ */
 data class IntakeDoel(
     @field:NotBlank(message = "Elk subdoel heeft een doeltype")
     val doelType: String,
     val beschrijving: String? = null,
     val status: String? = null,
     val resultaat: String? = null,
-    val toelichting: String? = null
+    val toelichting: String? = null,
+    val streefEinddatum: String? = null
 )
 
 /**

@@ -9,7 +9,7 @@
         "showTasks": true
     },
     {
-        "name": "Doelen & Acties",
+        "name": "Doelen",
         "key": "pdca-plan-goals",
         "type": "external_plugin",
         "contentKey": "00000000-0000-4000-8000-00000000dca0:plan-goals",

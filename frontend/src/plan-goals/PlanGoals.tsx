@@ -15,7 +15,7 @@ import { ActieModal, AfbreekModal, AfbreekTarget, DoelModal, VerwijderModal, Ver
 import { DoelenHandlers, HoofddoelCard, SubdoelCard } from './SubdoelCard';
 import { useDoelenData } from './useDoelenModel';
 
-/** The "Doelen & Acties" case tab. */
+/** The "Doelen" case tab. */
 export function PlanGoals() {
   return <PlanDossierPagina>{props => <DoelenPagina {...props} />}</PlanDossierPagina>;
 }
@@ -146,6 +146,8 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
 
       <DoelModal open={!!doelModal} doel={doelModal?.doel ?? null} doeltypen={model.doeltypen}
         hoofddoelNaam={model.actiefHoofddoelNaam} subdoelMapping={model.caseConfig.subdoelMapping}
+        huidigeEinddatum={doelModal?.doel ? model.detailsVanDoel(doelModal.doel.uuid)?.streefEinddatum : undefined}
+        planEinddatum={details.streefEinddatum}
         onClose={() => setDoelModal(null)}
         onSave={invoer => opslaan(() => acties.bewaarDoel(doelModal?.doel ?? null, invoer), () => setDoelModal(null))()} />
       <ActieModal open={!!actieModal} ctx={actieModal} onClose={() => setActieModal(null)}

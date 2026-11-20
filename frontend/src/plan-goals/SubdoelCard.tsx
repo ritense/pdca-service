@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button, InlineNotification, Layer, OverflowMenu, OverflowMenuItem, Tag } from '@carbon/react';
 import { Add, Checkmark, ChevronRight } from '@carbon/react/icons';
 import type { Doel, Instrument, OpenVerzoek, ProductType } from '../shared/api';
+import { formatDate, isVerlopen } from '../shared/dates';
 import { aantal, doelStatus } from '../shared/labels';
 import { NietGeladen } from '../shared/Meldingen';
 import type { Resource } from '../shared/useResource';
@@ -11,7 +12,7 @@ import { ActieRow, InstrumentRij, ProductMenu, VerzoekRij } from './InstrumentRi
 import { aanvraagbareProducttypen, DoelenModel, verzoekenVan } from './useDoelenModel';
 import { DoelVoortgangNotities, VoortgangTag } from './VoortgangNotities';
 
-/** What the cards of the Doelen & Acties tab can ask the page to do. */
+/** What the cards of the Doelen tab can ask the page to do. */
 export interface DoelenHandlers {
   /** A state action is under way; the state buttons wait for it. */
   busy: boolean;
@@ -33,7 +34,22 @@ export interface DoelenHandlers {
     (registratie: RegistratieInvoer | null, notities: Notities | null) => Promise<void>;
 }
 
-/** The plan's active hoofddoel (the strategy) as a fixed card; switching it happens on the overview tab. */
+/**
+ * A beoogde einddatum in a card header. A date cannot be set in the past but
+ * time moves on: once it has passed on a doel that still runs, it is marked
+ * verlopen instead of blocked.
+ */
+function BeoogdDatum({ datum, lopend }: { datum?: string; lopend: boolean }) {
+  if (!datum) return null;
+  const verlopen = lopend && isVerlopen(datum);
+  return (
+    <span className={verlopen ? 'pdca-muted-count pdca-muted-count--verlopen' : 'pdca-muted-count'}>
+      Beoogd: {formatDate(datum)}{verlopen && ' · verlopen'}
+    </span>
+  );
+}
+
+/** The plan's active hoofddoel (the strategy) as a fixed card; it is set when the plan is created from the intake. */
 export function HoofddoelCard({ doel, model, handlers }: { doel: Doel; model: DoelenModel; handlers: DoelenHandlers }) {
   const [open, setOpen] = useState(false);
   const details = model.detailsVanDoel(doel.uuid);
@@ -48,6 +64,8 @@ export function HoofddoelCard({ doel, model, handlers }: { doel: Doel; model: Do
           {doel.beschrijving && <span className="pdca-text-ellipsis pdca-goal-beschrijving">— {doel.beschrijving}</span>}
         </div>
         <div className="pdca-row-actions">
+          {/* The plan's beoogde einddatum: the subdoel dates below are read against it. */}
+          <BeoogdDatum datum={model.details.streefEinddatum} lopend={model.plan.status === 'actief'} />
           {details?.voortgangStatus && <VoortgangTag code={details.voortgangStatus} opties={model.voortgangOpties} />}
           <Tag size="sm" type={status.tag}>{status.label}</Tag>
         </div>
@@ -95,6 +113,7 @@ export function SubdoelCard({ doel, model, producttypen, verzoeken, handlers }: 
             </span>
           )}
           {openVerzoeken.length > 0 && <Tag size="sm" type="blue">{aantal(openVerzoeken.length, 'aanvraag', 'aanvragen')} loopt</Tag>}
+          <BeoogdDatum datum={details?.streefEinddatum} lopend={model.plan.status === 'actief' && actief} />
           {actief && details?.voortgangStatus && <VoortgangTag code={details.voortgangStatus} opties={model.voortgangOpties} />}
           <Tag size="sm" type={status.tag}>{status.label}</Tag>
         </div>

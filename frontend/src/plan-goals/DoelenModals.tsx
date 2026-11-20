@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { InlineNotification, Modal, Select, SelectItem, TextArea, TextInput } from '@carbon/react';
 import type { Doel, DoelType } from '../shared/api';
+import { formatDate, vandaag } from '../shared/dates';
 import { aantal, doelTypeNaam, subdoelTypen, subdoelTypenVoorHoofddoel } from '../shared/labels';
 import { useSubmit } from '../shared/useSubmit';
 import type { ActieContext, ActieInvoer, DoelInvoer } from './doelenActies';
@@ -77,54 +78,86 @@ export function VerwijderModal({ target, onClose, onSubmit }: {
 }
 
 /**
+ * Why a beoogde einddatum is not allowed (same rules as the backend), or
+ * null. Only a new or changed date is checked, so a date that has since
+ * passed can stay.
+ */
+function einddatumFout(datum: string, huidig: string, planEinddatum?: string): string | null {
+  if (!datum || datum === huidig) return null;
+  if (datum < vandaag()) return 'De beoogde einddatum kan niet in het verleden liggen';
+  if (planEinddatum && datum > planEinddatum.slice(0, 10)) {
+    return `De beoogde einddatum mag niet na die van het plan (${formatDate(planEinddatum)}) liggen`;
+  }
+  return null;
+}
+
+/**
  * Register-driven doel entry: the doel is chosen from
  * the doeltype register and the title is the register name — no free text.
- * Free text is allowed only as explanation for the inwoner.
+ * Free text is allowed only as explanation for the inwoner. When editing, the
+ * doeltype is shown read-only: only the explanation and the beoogde
+ * einddatum can change.
  */
-export function DoelModal({ open, doel, doeltypen, hoofddoelNaam, subdoelMapping, onClose, onSave }: {
+export function DoelModal({ open, doel, doeltypen, hoofddoelNaam, subdoelMapping, huidigeEinddatum, planEinddatum, onClose, onSave }: {
   open: boolean; doel: Doel | null; doeltypen: DoelType[];
   hoofddoelNaam?: string | null; subdoelMapping?: string | null;
+  /** The subdoel's current beoogde einddatum (when editing). */
+  huidigeEinddatum?: string;
+  /** The plan's beoogde einddatum: the latest date a subdoel can get. */
+  planEinddatum?: string;
   onClose: () => void; onSave: (data: DoelInvoer) => Promise<void>;
 }) {
   const [toelichting, setToelichting] = useState('');
   const [doeltypeUuid, setDoeltypeUuid] = useState('');
+  const [streefEinddatum, setStreefEinddatum] = useState('');
   const { saving, fout, submit, reset } = useSubmit();
   useEffect(() => {
     if (open) {
       setToelichting(doel?.beschrijving || '');
       setDoeltypeUuid(doel?.doeltype?.uuid || '');
+      setStreefEinddatum(huidigeEinddatum?.slice(0, 10) || '');
       reset();
     }
-  }, [open, doel, reset]);
+  }, [open, doel, huidigeEinddatum, reset]);
+  const datumFout = einddatumFout(streefEinddatum, huidigeEinddatum?.slice(0, 10) || '', planEinddatum);
 
   const opties = subdoelTypenVoorHoofddoel(doeltypen, hoofddoelNaam, subdoelMapping);
   const gescoped = opties.length < subdoelTypen(doeltypen).length;
-  // Doel with a doeltype predating the named register: show as its own option
-  // so the explanation stays editable without reclassification.
-  const huidigOnbekend = doel?.doeltype && !opties.some(t => t.uuid === doel.doeltype!.uuid);
   const gekozen = opties.find(t => t.uuid === doeltypeUuid);
-  const titel = gekozen ? doelTypeNaam(gekozen) : doel?.titel || '';
+  const titel = doel ? doel.titel : gekozen ? doelTypeNaam(gekozen) : '';
+  const kanOpslaan = !!titel && (!!doel || !!doeltypeUuid) && !datumFout;
 
   return (
     <Modal open={open} modalHeading={doel ? 'Subdoel bewerken' : 'Subdoel toevoegen'}
       primaryButtonText={saving ? 'Opslaan…' : 'Opslaan'} secondaryButtonText="Annuleren"
-      primaryButtonDisabled={saving || !doeltypeUuid || !titel}
+      primaryButtonDisabled={saving || !kanOpslaan}
       onRequestClose={onClose}
-      onRequestSubmit={() => doeltypeUuid && titel && submit(() => onSave({ titel, toelichting, doeltypeUuid }))}>
+      onRequestSubmit={() => kanOpslaan && submit(() => onSave({ titel, toelichting, doeltypeUuid, streefEinddatum }))}>
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
-        <Select id="doel-type" labelText="Subdoel" value={doeltypeUuid} onChange={e => setDoeltypeUuid(e.target.value)}
-          helperText={gescoped
-            ? `Subdoelen die horen bij hoofddoel "${hoofddoelNaam}"`
-            : 'Vast gedefinieerde doelen uit het doeltype-register'}>
-          <SelectItem value="" text="-- Kies subdoel --" />
-          {huidigOnbekend && <SelectItem value={doel!.doeltype!.uuid} text={`${doel!.titel} (huidig)`} />}
-          {opties.map(t => (
-            <SelectItem key={t.uuid} value={t.uuid} text={t.doelType} />
-          ))}
-        </Select>
+        {doel ? (
+          <TextInput id="doel-type" labelText="Subdoel" value={doel.titel} readOnly
+            helperText="Het subdoel zelf kan niet worden gewijzigd" />
+        ) : (
+          <Select id="doel-type" labelText="Subdoel" value={doeltypeUuid} onChange={e => setDoeltypeUuid(e.target.value)}
+            helperText={gescoped
+              ? `Subdoelen die horen bij hoofddoel "${hoofddoelNaam}"`
+              : 'Vast gedefinieerde doelen uit het doeltype-register'}>
+            <SelectItem value="" text="-- Kies subdoel --" />
+            {opties.map(t => (
+              <SelectItem key={t.uuid} value={t.uuid} text={t.doelType} />
+            ))}
+          </Select>
+        )}
         <TextArea id="doel-toelichting" labelText="Toelichting" helperText="Uitleg voor de inwoner" value={toelichting}
           onChange={e => setToelichting(e.target.value)} />
+        <TextInput id="doel-einddatum" type="date" labelText="Beoogde einddatum (optioneel)"
+          helperText={planEinddatum
+            ? `Uiterlijk de beoogde einddatum van het plan (${formatDate(planEinddatum)})`
+            : 'Laat zien in welke volgorde de subdoelen aan bod komen'}
+          min={vandaag()} max={planEinddatum?.slice(0, 10) || undefined}
+          value={streefEinddatum} onChange={e => setStreefEinddatum(e.target.value)}
+          invalid={!!datumFout} invalidText={datumFout || undefined} />
       </div>
     </Modal>
   );
@@ -138,7 +171,6 @@ export function ActieModal({ open, ctx, onClose, onSave }: {
 }) {
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
-  const [assigneeType, setAssigneeType] = useState('PROFESSIONAL');
   const [assigneeName, setAssigneeName] = useState('');
   const [priority, setPriority] = useState('NORMAL');
   const [dueDate, setDueDate] = useState('');
@@ -147,7 +179,7 @@ export function ActieModal({ open, ctx, onClose, onSave }: {
   const opslaan = () => {
     if (!ctx || !title.trim()) return;
     submit(() => onSave(ctx, {
-      title: title.trim(), description: desc, assigneeType, assigneeName, priority, dueDate: dueDate || undefined,
+      title: title.trim(), description: desc, assigneeName, priority, dueDate: dueDate || undefined,
     }));
   };
   return (
@@ -159,11 +191,6 @@ export function ActieModal({ open, ctx, onClose, onSave }: {
         {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
         <TextInput id="actie-title" labelText="Titel (verplicht)" value={title} onChange={e => setTitle(e.target.value)} />
         <TextArea id="actie-desc" labelText="Beschrijving" value={desc} onChange={e => setDesc(e.target.value)} />
-        <Select id="actie-assignee-type" labelText="Uitvoerder type" value={assigneeType} onChange={e => setAssigneeType(e.target.value)}>
-          <SelectItem value="PROFESSIONAL" text="Behandelaar" />
-          <SelectItem value="SUBJECT" text="Inwoner / Eigenaar" />
-          <SelectItem value="PROVIDER" text="Aanbieder" />
-        </Select>
         <TextInput id="actie-assignee" labelText="Naam uitvoerder" value={assigneeName} onChange={e => setAssigneeName(e.target.value)} />
         <Select id="actie-priority" labelText="Prioriteit" value={priority} onChange={e => setPriority(e.target.value)}>
           <SelectItem value="NORMAL" text="Normaal" />

@@ -2,10 +2,11 @@ import React, { Dispatch } from 'react';
 import { AccordionItem, Button, Checkbox, Select, SelectItem, Tag, TextInput } from '@carbon/react';
 import { Add, TrashCan } from '@carbon/react/icons';
 import { heeftStartActie, ProductType } from '../shared/api';
-import { formatDate } from '../shared/dates';
+import { formatDate, vandaag } from '../shared/dates';
 import { doelgroepVoorSubject, evalTypeLabel, producttypenVoorDoel, subdoelTypenVoorHoofddoel } from '../shared/labels';
 import { subjectUrn } from '../shared/urn';
 import type { DoelStatus, EvaluatieStatus } from './createPlanApi';
+import { subdoelEinddatumFout } from './createPlanForm';
 import type { FormActie, FormState, InstrumentRij, Registers, Sectie } from './createPlanForm';
 
 const DOEL_STATUSSEN: { value: DoelStatus; text: string }[] = [
@@ -69,10 +70,12 @@ export function SubdoelenSectie(props: SectieProps) {
   const { state, dispatch, registers, subdoelMapping } = props;
   const opties = subdoelTypenVoorHoofddoel(registers.doeltypen, state.hoofddoel, subdoelMapping).map(t => t.doelType);
   const wijzig = (key: number, wijziging: Record<string, unknown>) => dispatch({ type: 'wijzigRij', sectie: 'subdoelen', key, wijziging });
+  const datumFout = (d: FormState['subdoelen'][number]) => subdoelEinddatumFout(d, state.streefEinddatum);
   return (
     <LijstSectie {...props} sectie="subdoelen" titel={`Subdoelen (${state.subdoelen.length})`} toevoegen="Subdoel toevoegen"
       samenvatting={state.subdoelen.map(d => d.doelType || 'Nog geen doel').join(', ') || 'Nog geen subdoelen'}
-      waarschuwing={state.poging && state.subdoelen.some(d => !d.doelType) ? 'Doel ontbreekt' : undefined}>
+      waarschuwing={state.poging && state.subdoelen.some(d => !d.doelType) ? 'Doel ontbreekt'
+        : state.subdoelen.some(d => datumFout(d)) ? 'Beoogde einddatum ongeldig' : undefined}>
       {state.subdoelen.length === 0 && <p className="cp-leeg">Nog geen subdoelen.</p>}
       {state.subdoelen.map((d, i) => (
         <Rij key={d.key} label="Subdoel verwijderen" onVerwijder={() => dispatch({ type: 'verwijderRij', sectie: 'subdoelen', key: d.key })}>
@@ -93,6 +96,13 @@ export function SubdoelenSectie(props: SectieProps) {
               onChange={e => wijzig(d.key, { status: e.target.value as DoelStatus })}>
               {DOEL_STATUSSEN.map(s => <SelectItem key={s.value} value={s.value} text={s.text} />)}
             </Select>
+          </div>
+          <div className="cp-veld cp-veld--smal">
+            <TextInput id={`cp-subdoel-${d.key}-einddatum`} size="sm" type="date" labelText="Beoogde einddatum"
+              value={d.streefEinddatum} min={d.status === 'afgerond' ? undefined : vandaag()}
+              max={state.streefEinddatum || undefined}
+              invalid={!!datumFout(d)} invalidText={datumFout(d) || undefined}
+              onChange={e => wijzig(d.key, { streefEinddatum: e.target.value })} />
           </div>
         </Rij>
       ))}

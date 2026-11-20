@@ -268,6 +268,7 @@ const WIJZIGING_LABELS: Record<string, string> = {
   SUBDOEL_AFGEROND: 'Subdoel afgerond',
   SUBDOEL_AFGEBROKEN: 'Subdoel afgebroken',
   SUBDOEL_VERWIJDERD: 'Subdoel verwijderd',
+  BEOOGDE_EINDDATUM: 'Beoogde einddatum',
   VOORTGANG: 'Voortgang',
   INTERNE_NOTITIE: 'Interne notitie',
   EXTERNE_NOTITIE: 'Externe notitie',
@@ -286,8 +287,8 @@ const WIJZIGING_LABELS: Record<string, string> = {
   POSITIE: 'Positie',
   SUBDOELGROEP: 'Subdoelgroep',
   PROCESBEGELEIDER: 'Procesbegeleider',
-  BETROKKENE_TOEGEVOEGD: 'Verantwoordelijke toegevoegd',
-  BETROKKENE_VERWIJDERD: 'Verantwoordelijke verwijderd',
+  BETROKKENE_TOEGEVOEGD: 'Betrokkene toegevoegd',
+  BETROKKENE_VERWIJDERD: 'Betrokkene verwijderd',
 };
 
 /** Text changes: only the new text is shown, not old → new. */

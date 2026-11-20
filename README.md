@@ -169,7 +169,7 @@ their defaults form a complete demo) and complete its tasks. The last task,
 submitting it creates the plan, its plan dossier and the requested
 instruments' verzoeken; each instrument appears in the plan once its own
 instrument dossier has created it. The intake's *Aangemaakt plan* widget
-leads to the plan dossier, whose tabs Planoverzicht, Doelen & Acties and
+leads to the plan dossier, whose tabs Planoverzicht, Doelen and
 Evaluaties are the PDCA bundles.
 
 On the Evaluaties tab, "Start evaluatie" opens the evaluation in GZAC's side

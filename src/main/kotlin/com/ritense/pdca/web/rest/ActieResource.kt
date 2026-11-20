@@ -18,7 +18,6 @@ package com.ritense.pdca.web.rest
 
 import com.ritense.pdca.domain.Action
 import com.ritense.pdca.domain.ActionStatus
-import com.ritense.pdca.domain.AssigneeType
 import com.ritense.pdca.domain.Priority
 import com.ritense.pdca.service.ActionService
 import jakarta.validation.Valid
@@ -59,7 +58,6 @@ class ActieResource(
                 instrumentUuid = request.instrumentUuid,
                 title = request.title,
                 description = request.description,
-                assigneeType = request.assigneeType,
                 assigneeName = request.assigneeName,
                 priority = request.priority ?: Priority.NORMAL,
                 startDate = request.startDate,
@@ -82,7 +80,6 @@ class ActieResource(
                 title = request.title ?: existing.title,
                 description = request.description ?: existing.description,
                 status = request.status ?: existing.status,
-                assigneeType = request.assigneeType ?: existing.assigneeType,
                 assigneeName = request.assigneeName ?: existing.assigneeName,
                 priority = request.priority ?: existing.priority,
                 startDate = request.startDate ?: existing.startDate,
@@ -107,7 +104,6 @@ data class CreateActieRequest(
     @field:NotBlank(message = "Vul een titel voor de actie in")
     val title: String,
     val description: String? = null,
-    val assigneeType: AssigneeType? = null,
     val assigneeName: String? = null,
     val priority: Priority? = null,
     val startDate: LocalDate? = null,
@@ -119,7 +115,6 @@ data class UpdateActieRequest(
     val title: String? = null,
     val description: String? = null,
     val status: ActionStatus? = null,
-    val assigneeType: AssigneeType? = null,
     val assigneeName: String? = null,
     val priority: Priority? = null,
     val startDate: LocalDate? = null,

@@ -133,6 +133,8 @@ class PlanIntakeService(
         val hoofddoelType: DoelType?,
         val subdoelTypen: List<DoelType>,
         val doelStatussen: List<IntakeStatus>,
+        /** Per subdoel: its beoogde einddatum, or null. */
+        val doelEinddata: List<LocalDate?>,
         val startdatum: LocalDate,
         val streefEinddatum: LocalDate?,
         val contactmomentDatums: List<LocalDate>,
@@ -295,6 +297,15 @@ class PlanIntakeService(
                 fouten += "onbekende status '${doel.status}' bij subdoel '${doel.doelType}' (verwacht: gepland, gestart of afgerond)"
             }
         }
+        val doelEinddata = request.doelen.mapIndexed { index, doel ->
+            datum(doel.streefEinddatum, "beoogde einddatum bij subdoel '${doel.doelType}'", fouten)?.also { einddatum ->
+                // An afgerond subdoel is history: its target may lie in the past.
+                if (doelStatussen[index] == IntakeStatus.AFGEROND) return@also
+                SubdoelEinddatumValidator.violation(einddatum, streefEinddatum, LocalDate.now())?.let {
+                    fouten += "${it.replaceFirstChar { c -> c.lowercase() }} (subdoel '${doel.doelType}')"
+                }
+            }
+        }
 
         val evaluatieTypen = phaseConfigService.findByCaseDefinitionKey(planCaseDefinitionKey)
             ?.let { phaseConfigService.getEvaluationTypes(planCaseDefinitionKey) }.orEmpty()
@@ -367,6 +378,7 @@ class PlanIntakeService(
             hoofddoelType = hoofddoelType,
             subdoelTypen = subdoelTypen,
             doelStatussen = doelStatussen,
+            doelEinddata = doelEinddata,
             startdatum = startdatum,
             streefEinddatum = streefEinddatum,
             contactmomentDatums = contactmomentDatums,
@@ -395,10 +407,11 @@ class PlanIntakeService(
         }
     }
 
+    /** A date from the intake: `yyyy-MM-dd`, or a form.io date value (with time and offset) read by its date part. */
     private fun datum(waarde: String?, veld: String, fouten: MutableList<String>): LocalDate? {
         val tekst = waarde?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         return try {
-            LocalDate.parse(tekst)
+            LocalDate.parse(tekst.take(10))
         } catch (e: DateTimeParseException) {
             fouten += "$veld '$tekst' is geen geldige datum (jjjj-mm-dd)"
             null
@@ -599,6 +612,7 @@ class PlanIntakeService(
                         planUuid = planUuid,
                         uitvoeringsStatus = status.uitvoeringsStatus,
                         voortgangToelichting = doel.toelichting,
+                        streefEinddatum = intake.doelEinddata[index],
                         sortering = index
                     )
                 )

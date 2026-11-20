@@ -230,7 +230,7 @@ class PluginHostController(
             mapOf(
                 "type" to "case-tab",
                 "key" to "plan-goals",
-                "title" to "Doelen & Acties",
+                "title" to "Doelen",
                 "path" to "/bundles/plan-goals.html"
             ),
             mapOf(

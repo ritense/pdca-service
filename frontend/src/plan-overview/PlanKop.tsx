@@ -1,7 +1,7 @@
 import React from 'react';
 import { MenuButton, MenuItem, MenuItemDivider, Tag } from '@carbon/react';
 import type { Betrokkene, Plan, PlanDetails } from '../shared/api';
-import { formatDate } from '../shared/dates';
+import { formatDate, isVerlopen } from '../shared/dates';
 import { dienstverleningLabel, planStatus } from '../shared/labels';
 import { NietGeladen } from '../shared/Meldingen';
 import type { Resource } from '../shared/useResource';
@@ -20,6 +20,8 @@ export function PlanKop({ plan, details, procesbegeleider, planStatusOpties, onW
 }) {
   const status = planStatus(plan.status, details.weergaveStatus);
   const actief = plan.status === 'actief';
+  // The beoogde einddatum cannot be set in the past, but it can pass while the plan runs.
+  const einddatumVerlopen = actief && isVerlopen(details.streefEinddatum);
   const huidigeWeergave = details.weergaveStatus || 'Concept';
   return (
     <div className="pdca-page-header">
@@ -45,7 +47,11 @@ export function PlanKop({ plan, details, procesbegeleider, planStatusOpties, onW
         {details.subdoelgroep && <Tag size="sm" type="teal">Subdoelgroep: {details.subdoelgroep}</Tag>}
         {details.beginPositie && <Tag size="sm" type="purple">Positie: {details.beginPositie}</Tag>}
         {plan.startdatum && <span>Start: {formatDate(plan.startdatum)}</span>}
-        {details.streefEinddatum && <span>Streefdatum: {formatDate(details.streefEinddatum)}</span>}
+        {details.streefEinddatum && (
+          <span className={einddatumVerlopen ? 'pdca-muted-count--verlopen' : undefined}>
+            Beoogd: {formatDate(details.streefEinddatum)}{einddatumVerlopen && ' · verlopen'}
+          </span>
+        )}
         {plan.einddatum && <span>Einde: {formatDate(plan.einddatum)}</span>}
       </div>
       {!actief && plan.redenEinde && (

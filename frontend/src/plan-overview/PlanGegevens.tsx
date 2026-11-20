@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Button, InlineNotification, Layer, Select, SelectItem, Tag, TextArea, Tile, type TagProps } from '@carbon/react';
 import type { Betrokkene, ContactmomentDetails, Klantcontact, Plan, PlanDetails } from '../shared/api';
 import { formatDate } from '../shared/dates';
-import { doelTypeNaam, evalTypeLabel, hoofddoelTypen } from '../shared/labels';
+import { doelTypeNaam, evalTypeLabel } from '../shared/labels';
 import { useSubmit } from '../shared/useSubmit';
 import type { PlanVeld } from './overzichtActies';
 import type { OverzichtModel } from './useOverzicht';
@@ -10,7 +10,7 @@ import type { OverzichtModel } from './useOverzicht';
 const betrokkeneNaam = (b: Betrokkene) => `${b.name} · ${b.role}`;
 
 interface VeldDefinitie {
-  key: PlanVeld;
+  key: PlanVeld | 'hoofddoel' | 'subdoelgroep' | 'beginPositie';
   label: string;
   emptyText: string;
   value?: string;
@@ -20,13 +20,15 @@ interface VeldDefinitie {
   placeholder?: string;
   /** Shown instead of the edit button when the field cannot be edited yet. */
   hint?: string;
+  /** Set when the plan is created from the intake; shown without edit button. */
+  readOnly?: boolean;
 }
 
 /**
- * The editable plan fields. Positions and hoofddoel are register-driven
- * choices (positietype resp. doeltype register), the procesbegeleider one
- * of the plan's verantwoordelijken; only the explanation for the inwoner is
- * free text.
+ * The plan fields. Only the procesbegeleider (one of the plan's betrokkenen)
+ * and the explanation for the inwoner are edited here; hoofddoel,
+ * subdoelgroep and positie are set when the plan is created from the intake
+ * and shown read-only.
  */
 export function PlanGegevens({ plan, details, model, procesbegeleider, onSave }: {
   plan: Plan;
@@ -46,25 +48,22 @@ export function PlanGegevens({ plan, details, model, procesbegeleider, onSave }:
       key: 'procesbegeleider', label: 'Procesbegeleider', emptyText: 'Nog geen procesbegeleider',
       value: procesbegeleider?.id || '', display: procesbegeleider ? betrokkeneNaam(procesbegeleider) : '',
       options: betrokkenen.map(b => ({ value: b.id, text: betrokkeneNaam(b) })),
-      placeholder: '-- Kies een verantwoordelijke --',
-      hint: betrokkenen.length === 0 ? 'Voeg eerst een verantwoordelijke toe onder Verantwoordelijkheden.' : undefined,
+      placeholder: '-- Kies een betrokkene --',
+      hint: betrokkenen.length === 0 ? 'Voeg eerst een betrokkene toe onder Betrokkenen.' : undefined,
     },
     {
       key: 'hoofddoel', label: 'Hoofddoel', emptyText: 'Nog geen hoofddoel gekozen',
-      value: model.hoofddoelType?.uuid || '', display: doelTypeNaam(model.hoofddoelType),
-      options: hoofddoelTypen(model.doeltypen).map(t => ({ value: t.uuid, text: t.doelType })),
+      value: model.hoofddoelType?.uuid || '', display: doelTypeNaam(model.hoofddoelType), readOnly: true,
     },
     { key: 'notitie', label: 'Toelichting bij hoofddoel', emptyText: 'Geen toelichting', value: plan.notitie },
-    { key: 'subdoelgroep', label: 'Subdoelgroep', emptyText: 'Nog niet bepaald', value: details.subdoelgroep },
-    {
-      key: 'beginPositie', label: 'Positie', emptyText: 'Nog niet gezet',
-      value: details.beginPositie, options: model.caseConfig.positieTypen.map(p => ({ value: p, text: p })),
-    },
+    { key: 'subdoelgroep', label: 'Subdoelgroep', emptyText: 'Nog niet bepaald', value: details.subdoelgroep, readOnly: true },
+    { key: 'beginPositie', label: 'Positie', emptyText: 'Nog niet gezet', value: details.beginPositie, readOnly: true },
   ];
 
   const bewerk = (veld: VeldDefinitie) => {
+    if (veld.readOnly) return;
     reset();
-    setBewerkt(veld.key);
+    setBewerkt(veld.key as PlanVeld);
     setWaarde(veld.value || '');
   };
 
@@ -82,7 +81,7 @@ export function PlanGegevens({ plan, details, model, procesbegeleider, onSave }:
             <div key={veld.key} className="pdca-info-block">
               <div className="pdca-info-label">
                 <span>{veld.label}</span>
-                {bewerkt !== veld.key && !veld.hint && (
+                {bewerkt !== veld.key && !veld.hint && !veld.readOnly && (
                   <Button size="sm" kind="ghost" onClick={() => bewerk(veld)}>Bewerken</Button>
                 )}
               </div>

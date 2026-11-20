@@ -1,6 +1,6 @@
 /**
- * The changes the Planoverzicht makes, each as one call to the API (closing,
- * reopening and the hoofddoel switch are backend use cases) followed by
+ * The changes the Planoverzicht makes, each as one call to the API (closing
+ * and reopening are backend use cases) followed by
  * recording it in the user's running evaluation of this plan (a no-op
  * without one). Each returns what the page needs to show the new state.
  */
@@ -13,7 +13,7 @@ import { planStatus } from '../shared/labels';
 export type PlanActie = 'afronden' | 'afbreken' | 'heractiveren';
 
 /** The plan fields edited in the Plangegevens card. */
-export type PlanVeld = 'procesbegeleider' | 'hoofddoel' | 'notitie' | 'subdoelgroep' | 'beginPositie';
+export type PlanVeld = 'procesbegeleider' | 'notitie';
 
 export interface NieuweBetrokkene {
   name: string;
@@ -56,42 +56,24 @@ export function overzichtActies(plan: Plan, details: PlanDetails, betrokkenen: B
     },
 
     /**
-     * Saves one plan field. notitie lives on the Open Plan plan; positie and
-     * subdoelgroep in the overlay; the procesbegeleider is one of the plan's
-     * betrokkenen (the backend keeps plan.medewerker in step); the hoofddoel
-     * is the plan's active hoofddoel-type doel (W&P: one active hoofddoel).
+     * Saves one plan field. notitie lives on the Open Plan plan; the
+     * procesbegeleider is one of the plan's betrokkenen (the backend keeps
+     * plan.medewerker in step).
      */
-    async bewaarVeld(veld: PlanVeld, waarde: string): Promise<
-      { plan: Plan } | { details: PlanDetails } | { betrokkenen: Betrokkene[] } | { doelenGewijzigd: boolean }
-    > {
+    async bewaarVeld(veld: PlanVeld, waarde: string): Promise<{ plan: Plan } | { betrokkenen: Betrokkene[] }> {
       if (veld === 'notitie') {
         const updated = await openplan.plannen.update(plan.uuid, { notitie: waarde.trim() });
         rec({ soort: 'HOOFDDOEL_TOELICHTING', samenvoegen: true, vanWaarde: plan.notitie, naarWaarde: waarde.trim() });
         return { plan: updated };
       }
-      if (veld === 'procesbegeleider') {
-        if (waarde === procesbegeleider?.id) return { betrokkenen };
-        const bijgewerkt = await pdca.betrokkenen.setProcesbegeleider(waarde);
-        const nieuw = bijgewerkt.find(b => b.id === waarde);
-        rec({ soort: 'PROCESBEGELEIDER', samenvoegen: true, vanWaarde: procesbegeleider?.name, naarWaarde: nieuw?.name });
-        return { betrokkenen: bijgewerkt };
-      }
-      if (veld === 'hoofddoel') {
-        // The backend completes the current hoofddoel-doel (history in the doelen
-        // tab), creates one of the chosen type and re-points the subdoelen to it.
-        const wissel = await pdca.plannen.wisselHoofddoel(plan.uuid, waarde);
-        if (wissel.gewijzigd) rec({ soort: 'HOOFDDOEL_GEWISSELD', vanWaarde: wissel.van, naarWaarde: wissel.naar });
-        return { doelenGewijzigd: wissel.gewijzigd };
-      }
-      const updated = await pdca.plandetails.update(plan.uuid, { [veld]: waarde.trim() || null });
-      rec({
-        soort: veld === 'beginPositie' ? 'POSITIE' : 'SUBDOELGROEP', samenvoegen: true,
-        vanWaarde: details[veld], naarWaarde: waarde.trim(),
-      });
-      return { details: updated };
+      if (waarde === procesbegeleider?.id) return { betrokkenen };
+      const bijgewerkt = await pdca.betrokkenen.setProcesbegeleider(waarde);
+      const nieuw = bijgewerkt.find(b => b.id === waarde);
+      rec({ soort: 'PROCESBEGELEIDER', samenvoegen: true, vanWaarde: procesbegeleider?.name, naarWaarde: nieuw?.name });
+      return { betrokkenen: bijgewerkt };
     },
 
-    /** Adds a verantwoordelijke; returns the plan's betrokkenen. */
+    /** Adds a betrokkene; returns the plan's betrokkenen. */
     async voegBetrokkeneToe(invoer: NieuweBetrokkene): Promise<Betrokkene[]> {
       const name = invoer.name.trim();
       await pdca.betrokkenen.create({

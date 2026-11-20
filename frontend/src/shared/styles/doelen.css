@@ -1,4 +1,4 @@
-/* Doelen & Acties: goal cards, actie and instrument rows, voortgang & notities. */
+/* Doelen: goal cards, actie and instrument rows, voortgang & notities. */
 
 /* Dropdown menu under a toolbar button (the product picker). */
 .pdca-menu {
@@ -67,6 +67,11 @@
   font-size: 0.75rem;
   color: var(--cds-text-helper, #6f6f6f);
   white-space: nowrap;
+}
+
+/* A beoogde einddatum that has passed while its doel or plan still runs. */
+.pdca-muted-count--verlopen {
+  color: var(--cds-text-error, #da1e28);
 }
 
 /* Compact "Voortgang & notities" summary of a doel or instrument. */

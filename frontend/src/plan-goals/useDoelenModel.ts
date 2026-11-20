@@ -12,7 +12,7 @@ import { parseDossierUrn } from '../shared/urn';
 
 const BRONNEN = ['doelen', 'doelDetails', 'acties', 'instrumenten', 'instrumentDetails'] as const;
 
-/** What the Doelen & Acties tab shows, once all of it is there. */
+/** What the Doelen tab shows, once all of it is there. */
 export interface DoelenModel {
   plan: Plan;
   details: PlanDetails;
@@ -39,7 +39,7 @@ export interface DoelenModel {
 }
 
 /**
- * The data of the Doelen & Acties tab, each source with its own state. The
+ * The data of the Doelen tab, each source with its own state. The
  * page needs the plan data, the doeltypen (which doel is the hoofddoel), the
  * voortgangsstatussen and the case configuration (subdoelmapping); the
  * producttypen (what can be requested) and the open verzoeken are sections

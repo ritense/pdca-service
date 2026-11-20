@@ -18,10 +18,10 @@ const HEADERS = [
 ];
 
 /**
- * The plan's verantwoordelijken (roles from the Open Plan relatietype
+ * The plan's betrokkenen (roles from the Open Plan relatietype
  * register); one of them is the plan's procesbegeleider.
  */
-export function Verantwoordelijkheden({ betrokkenen, relatietypen, onToevoegen, onVerwijderen }: {
+export function Betrokkenen({ betrokkenen, relatietypen, onToevoegen, onVerwijderen }: {
   betrokkenen: Betrokkene[];
   relatietypen: Resource<RelatieType[]>;
   /** Throw on failure, so the modal keeps the error and stays open. */
@@ -39,11 +39,11 @@ export function Verantwoordelijkheden({ betrokkenen, relatietypen, onToevoegen, 
     <Tile className="pdca-card">
       <Layer>
         <div className="pdca-card-header">
-          <h4>Verantwoordelijkheden</h4>
+          <h4>Betrokkenen</h4>
           <Button size="sm" kind="ghost" onClick={() => setToevoegen(true)}>Toevoegen</Button>
         </div>
         <div className="pdca-card-body">
-          {betrokkenen.length === 0 ? <p className="pdca-empty">Geen verantwoordelijkheden</p> : (
+          {betrokkenen.length === 0 ? <p className="pdca-empty">Geen betrokkenen</p> : (
             <div className="pdca-table-scroll">
               <DataTable rows={rows} headers={HEADERS}>
                 {({ rows, headers, getTableProps, getHeaderProps, getRowProps }) => (
@@ -87,7 +87,7 @@ export function Verantwoordelijkheden({ betrokkenen, relatietypen, onToevoegen, 
 
 const LEEG: NieuweBetrokkene = { name: '', role: '', email: '', phone: '', isPrimary: false };
 
-/** Adds a verantwoordelijke; a plan without procesbegeleider gets its first one as procesbegeleider by default. */
+/** Adds a betrokkene; a plan without procesbegeleider gets its first one as procesbegeleider by default. */
 function ToevoegenModal({ open, procesbegeleider, relatietypen, onClose, onSave }: {
   open: boolean; procesbegeleider: Betrokkene | null; relatietypen: Resource<RelatieType[]>;
   onClose: () => void; onSave: (invoer: NieuweBetrokkene) => Promise<void>;
@@ -108,7 +108,7 @@ function ToevoegenModal({ open, procesbegeleider, relatietypen, onClose, onSave 
     if (await submit(() => onSave(form))) onClose();
   };
   return (
-    <Modal open={open} modalHeading="Verantwoordelijkheid toevoegen" size="sm"
+    <Modal open={open} modalHeading="Betrokkene toevoegen" size="sm"
       primaryButtonText={saving ? 'Toevoegen…' : 'Toevoegen'} secondaryButtonText="Annuleren"
       primaryButtonDisabled={saving || !form.name.trim() || !form.role}
       onRequestClose={onClose} onRequestSubmit={opslaan} onSecondarySubmit={onClose}>
@@ -150,13 +150,13 @@ function VerwijderenModal({ betrokkene, onClose, onSubmit }: {
     if (betrokkene && await submit(() => onSubmit(betrokkene))) onClose();
   };
   return (
-    <Modal open={!!betrokkene} danger modalHeading="Verantwoordelijke verwijderen" size="sm"
+    <Modal open={!!betrokkene} danger modalHeading="Betrokkene verwijderen" size="sm"
       primaryButtonText={saving ? 'Verwijderen…' : 'Verwijderen'} secondaryButtonText="Annuleren"
       primaryButtonDisabled={saving} onRequestClose={onClose} onRequestSubmit={verwijder}>
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Verwijderen mislukt" subtitle={fout} lowContrast hideCloseButton />}
         <p>
-          <strong>{betrokkene?.name}</strong> ({betrokkene?.role}) wordt verwijderd als verantwoordelijke bij dit plan.
+          <strong>{betrokkene?.name}</strong> ({betrokkene?.role}) wordt verwijderd als betrokkene bij dit plan.
           {betrokkene?.isPrimary && ' Het plan heeft daarna geen procesbegeleider meer.'}
         </p>
       </div>
