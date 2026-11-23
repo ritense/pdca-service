@@ -1,22 +1,20 @@
 /**
- * The order the Doelen tab shows the subdoelen in. "Standaard" is the
- * overlay sortering (the order they were added in); the others sort on the
- * subdoel's startdatum (Open Plan), its beoogde einddatum (overlay) or its
- * title. A subdoel without the date sorts last in both directions, and ties
- * keep the standard order. The choice is the viewer's own and is not stored:
- * the sandboxed tab has no storage of its own.
+ * The order the Doelen tab shows the subdoelen in: on the subdoel's
+ * startdatum (Open Plan; oldest first unless chosen otherwise), its beoogde
+ * einddatum (overlay) or its title. A subdoel without the date sorts last in
+ * both directions, and ties keep the order they were added in (the overlay
+ * sortering). The choice is the viewer's own and is not stored: the
+ * sandboxed tab has no storage of its own.
  */
 
 import type { Doel, DoelDetails } from '../shared/api';
 
 export type SubdoelVolgorde =
-  | 'standaard'
   | 'startdatum-op' | 'startdatum-af'
   | 'einddatum-op' | 'einddatum-af'
   | 'titel-op' | 'titel-af';
 
 export const SUBDOEL_VOLGORDES: { key: SubdoelVolgorde; label: string }[] = [
-  { key: 'standaard', label: 'Standaardvolgorde' },
   { key: 'startdatum-op', label: 'Startdatum (oudste eerst)' },
   { key: 'startdatum-af', label: 'Startdatum (nieuwste eerst)' },
   { key: 'einddatum-op', label: 'Beoogde einddatum (vroegste eerst)' },
@@ -40,16 +38,18 @@ function vergelijk<T>(a: T | null, b: T | null, richting: 1 | -1, cmp: (x: T, y:
   return richting * cmp(a, b);
 }
 
+/** The order a tab opens with: the planned start, oldest first. */
+export const STANDAARD_VOLGORDE: SubdoelVolgorde = 'startdatum-op';
+
 /**
- * [subdoelen] (in their standard order) in the chosen order; a new array,
- * the input is left as it is.
+ * [subdoelen] (in the order they were added in) in the chosen order; a new
+ * array, the input is left as it is.
  */
 export function sorteerSubdoelen(
   subdoelen: Doel[],
   volgorde: SubdoelVolgorde,
   detailsVan: (uuid: string) => DoelDetails | undefined,
 ): Doel[] {
-  if (volgorde === 'standaard') return [...subdoelen];
   const [veld, kant] = volgorde.split('-') as ['startdatum' | 'einddatum' | 'titel', 'op' | 'af'];
   const richting = kant === 'op' ? 1 : -1;
   const getal = (x: number, y: number) => x - y;

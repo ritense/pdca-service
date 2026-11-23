@@ -1669,10 +1669,10 @@ bundles, so nothing is loaded from third parties.
   names what still runs under the subdoel — each actief instrument (and
   whether its dossier manages it), open aanvraag and open actie task — and
   says how to end it, and offers no confirm until nothing runs.
-- **Subdoelen order** — above the list a *Sorteren op* choice: the standard
-  order (`sortering`), startdatum, beoogde einddatum or title, each
-  ascending or descending; a subdoel without the date goes last, ties keep
-  the standard order (`plan-goals/subdoelVolgorde.ts`). The choice is the
+- **Subdoelen order** — above the list a *Sorteren op* choice: startdatum
+  (the default, oldest first), beoogde einddatum or title, each ascending
+  or descending; a subdoel without the date goes last, ties keep the order
+  the subdoelen were added in (`sortering`, `plan-goals/subdoelVolgorde.ts`). The choice is the
   viewer's own and lasts while the tab is open: the sandboxed iframe has no
   storage of its own. Each subdoel card shows both dates (*Start* and
   *Beoogd*), and adding or editing a subdoel sets both.

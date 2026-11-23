@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Doel, DoelDetails } from '../shared/types';
-import { sorteerSubdoelen } from './subdoelVolgorde';
+import { sorteerSubdoelen, STANDAARD_VOLGORDE } from './subdoelVolgorde';
 
 const doel = (uuid: string, titel: string, startdatum: string): Doel => ({
   uuid, titel, startdatum, plannen: [], status: 'actief',
@@ -20,10 +20,10 @@ const details = (uuid: string): DoelDetails | undefined =>
 const volgorde = (key: Parameters<typeof sorteerSubdoelen>[1]) => sorteerSubdoelen(SUBDOELEN, key, details).map(d => d.uuid);
 
 describe('sorteerSubdoelen', () => {
-  it('keeps the standard order and leaves the input alone', () => {
-    const resultaat = sorteerSubdoelen(SUBDOELEN, 'standaard', details);
-    expect(resultaat.map(d => d.uuid)).toEqual(['a', 'b', 'c', 'd']);
-    expect(resultaat).not.toBe(SUBDOELEN);
+  it('starts with the planned start, oldest first, and leaves the input alone', () => {
+    const resultaat = sorteerSubdoelen(SUBDOELEN, STANDAARD_VOLGORDE, details);
+    expect(resultaat.map(d => d.uuid)).toEqual(['b', 'd', 'a', 'c']);
+    expect(SUBDOELEN.map(d => d.uuid)).toEqual(['a', 'b', 'c', 'd']);
   });
 
   it('sorts on startdatum both ways, without a date last', () => {
@@ -41,7 +41,7 @@ describe('sorteerSubdoelen', () => {
     expect(volgorde('titel-af')).toEqual(['c', 'a', 'b', 'd']);
   });
 
-  it('keeps the standard order between equal keys', () => {
+  it('keeps the order they were added in between equal keys', () => {
     const gelijk = [doel('x', 'Zelfde', '2026-01-01'), doel('y', 'Zelfde', '2026-01-01')];
     expect(sorteerSubdoelen(gelijk, 'titel-af', () => undefined).map(d => d.uuid)).toEqual(['x', 'y']);
     expect(sorteerSubdoelen(gelijk, 'startdatum-af', () => undefined).map(d => d.uuid)).toEqual(['x', 'y']);

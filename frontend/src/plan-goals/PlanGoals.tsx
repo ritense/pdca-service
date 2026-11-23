@@ -15,7 +15,7 @@ import { formatUrn } from '../shared/urn';
 import { ActieContext, doelenActies } from './doelenActies';
 import { ActieModal, AfbreekModal, AfbreekTarget, DoelModal, VerwijderModal, VerwijderTarget } from './DoelenModals';
 import { DoelenHandlers, HoofddoelCard, SubdoelCard } from './SubdoelCard';
-import { sorteerSubdoelen, SUBDOEL_VOLGORDES, SubdoelVolgorde } from './subdoelVolgorde';
+import { sorteerSubdoelen, STANDAARD_VOLGORDE, SUBDOEL_VOLGORDES, SubdoelVolgorde } from './subdoelVolgorde';
 import { useDoelenData } from './useDoelenModel';
 
 /** The "Doelen" case tab. */
@@ -39,7 +39,7 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
   /** Key of the state action (starten, afronden, actiestatus) under way; one at a time. */
   const [busy, setBusy] = useState<string | null>(null);
   /** The order the subdoelen show in; the viewer's own, for as long as the tab is open. */
-  const [volgorde, setVolgorde] = useState<SubdoelVolgorde>('standaard');
+  const [volgorde, setVolgorde] = useState<SubdoelVolgorde>(STANDAARD_VOLGORDE);
 
   const fout = eersteFout(...data.vereist);
   const model = data.model;
