@@ -6,6 +6,9 @@ import { aantal, doelTypeNaam, subdoelTypen, subdoelTypenVoorHoofddoel } from '.
 import { useSubmit } from '../shared/useSubmit';
 import type { ActieContext, ActieInvoer, DoelInvoer } from './doelenActies';
 
+/** An actie's title is the name of its GZAC task, which holds at most 255 characters. */
+const ACTIE_TITEL_MAX = 255;
+
 /** Doel or instrument awaiting its abort reason; `lopendWerk` names what still runs under a doel and blocks it. */
 export type AfbreekTarget = { kind: 'doel' | 'instrument'; uuid: string; titel: string; lopendWerk?: string[] } | null;
 /** Subdoel awaiting confirmation of its removal, with what goes with it and what still runs under it and blocks it. */
@@ -15,7 +18,7 @@ export type VerwijderTarget = { uuid: string; titel: string; instrumenten: numbe
 function LopendWerk({ items }: { items: string[] }) {
   return (
     <InlineNotification kind="warning" title="Sluit eerst af wat nog loopt"
-      subtitle={`Onder dit subdoel loopt nog: ${items.join(', ')}. Rond een instrument af of breek het af (een instrumentdossier in het dossier zelf), wacht tot een aanvraag een instrument is geworden en rond een taak af in de takenlijst.`}
+      subtitle={`Onder dit subdoel loopt nog: ${items.join(', ')}. Rond een instrument af of breek het af (een instrumentdossier in het dossier zelf), wacht tot een aanvraag een instrument is geworden en rond een taak af in de takenlijst: uitgevoerd, of vervallen als ze niet meer nodig is.`}
       lowContrast hideCloseButton />
   );
 }
@@ -187,7 +190,8 @@ export function ActieModal({ open, ctx, onClose, onSave }: {
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
         <TextInput id="actie-title" labelText="Titel (verplicht)" value={title} onChange={e => setTitle(e.target.value)}
-          helperText="De actie wordt een taak met deze titel in de takenlijst van dit dossier; daar rond je haar af" />
+          maxLength={ACTIE_TITEL_MAX}
+          helperText="De actie wordt een taak in de takenlijst van dit dossier, met deze titel, beschrijving en deadline; daar rond je haar af. Die drie liggen daarna vast." />
         <TextArea id="actie-desc" labelText="Beschrijving" value={desc} onChange={e => setDesc(e.target.value)} />
         <TextInput id="actie-assignee" labelText="Naam uitvoerder" value={assigneeName} onChange={e => setAssigneeName(e.target.value)} />
         <Select id="actie-priority" labelText="Prioriteit" value={priority} onChange={e => setPriority(e.target.value)}>

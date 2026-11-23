@@ -35,7 +35,8 @@ import java.util.UUID
 /**
  * An actie as a GZAC task (ARCHITECTURE §6.8): every actie added to a plan
  * gets the building block [BOUWBLOK] on the plan dossier, whose one user
- * task carries the actie's title; completing that task completes the actie.
+ * task carries the actie's title, description and deadline; completing that
+ * task ends the actie, as uitgevoerd or vervallen.
  *
  * Starting ([start]) runs after the actie is saved and outside any
  * transaction. The plan case type's building-block link must map the PDCA
@@ -76,11 +77,14 @@ class ActieTaakService(
             val formulier = gzacClient.startformulier(link.processDefinitionId, dossierId)
             gzacClient.startformulierIndienen(
                 formulier, dossierId,
+                // Every field is sent, empty ones too: the dossier document
+                // keeps /bouwblokStart from the previous start.
                 mapOf(
                     "bouwblokStart" to linkedMapOf(
                         "actieId" to actie.id.toString(),
                         "titel" to actie.title,
                         "omschrijving" to (actie.description ?: ""),
+                        "deadline" to (actie.dueDate?.toString() ?: ""),
                         "planUuid" to planUuid.toString(),
                         "doelUuid" to actie.doelUuid.toString()
                     )
@@ -115,23 +119,29 @@ class ActieTaakService(
     }
 
     /**
-     * Plugin action actie-gereed: the task is done, so the actie is
-     * afgerond with the task's resultaat. An actie that is afgerond already
-     * stays as it is.
+     * Plugin action actie-gereed: the task is done, so the actie ends with
+     * the task's uitkomst — uitgevoerd (COMPLETED, also when none is given)
+     * or vervallen (CANCELLED) — and its resultaat. An actie that has ended
+     * already stays as it is.
      */
     fun gereed(properties: Map<String, Any?>, processInstanceId: String?) {
         val (actie, proces) = actieVanProces(properties, processInstanceId)
         if (actie.taakProcessInstanceId != null && actie.taakProcessInstanceId != proces) {
             throw PluginActionException("ACTIE_HOORT_NIET_BIJ_PROCES", "Actie ${actie.id} is de taak van een ander proces")
         }
-        if (actie.status == ActionStatus.COMPLETED) return
+        val status = when (val uitkomst = (properties["uitkomst"] as? String)?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }) {
+            null, UITGEVOERD -> ActionStatus.COMPLETED
+            VERVALLEN -> ActionStatus.CANCELLED
+            else -> throw PluginActionException("UITKOMST_ONGELDIG", "Uitkomst '$uitkomst' is geen $UITGEVOERD of $VERVALLEN")
+        }
+        if (actie.status.isAfgesloten) return
         actie.taakProcessInstanceId = proces
-        actie.status = ActionStatus.COMPLETED
+        actie.status = status
         actie.completedDate = LocalDate.now()
         actie.result = (properties["resultaat"] as? String)?.trim()?.takeIf { it.isNotEmpty() }?.take(RESULTAAT_MAX) ?: actie.result
         actie.updatedAt = LocalDateTime.now()
         actionRepository.save(actie)
-        log.info("Actie {} afgerond by its task process {}", actie.id, proces)
+        log.info("Actie {} ended as {} by its task process {}", actie.id, status, proces)
     }
 
     private fun actieVanProces(properties: Map<String, Any?>, processInstanceId: String?): Pair<Action, String> {
@@ -190,5 +200,9 @@ class ActieTaakService(
 
         /** The register limit the bundles also apply to texts. */
         private const val RESULTAAT_MAX = 1000
+
+        /** The uitkomsten of the task form (pdca-taak-afronden). */
+        private const val UITGEVOERD = "uitgevoerd"
+        private const val VERVALLEN = "vervallen"
     }
 }

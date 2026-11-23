@@ -4,7 +4,7 @@ import {
   ProductType, VoortgangStatusOptie, OpenVerzoek, Actie, DoelType,
 } from '../shared/api';
 import { CaseConfig, useCaseConfig } from '../shared/caseConfig';
-import { doelgroepVoorSubject, doelTypeNaam, isHoofddoelType, producttypenVoorDoel } from '../shared/labels';
+import { doelgroepVoorSubject, doelTypeNaam, heeftOpenTaak, isHoofddoelType, producttypenVoorDoel } from '../shared/labels';
 import { useOpenVerzoeken } from '../shared/useOpenVerzoeken';
 import { usePlanData } from '../shared/usePlanData';
 import { Bron, useResource } from '../shared/useResource';
@@ -123,7 +123,7 @@ function useDoelenModel(
           .filter(i => i.status === 'actief' && (voor === 'afbreken' || !!parseDossierUrn(i.zaak)))
           .map(i => `${i.titel} (${parseDossierUrn(i.zaak) ? 'instrumentdossier' : 'instrument'})`),
         ...verzoekenVan(verzoeken, doelUuid).map(v => `${v.productTitel || 'instrument'} (aanvraag)`),
-        ...acties.filter(a => a.doelUuid === doelUuid && !!a.taakProcessInstanceId && a.status !== 'COMPLETED')
+        ...acties.filter(a => a.doelUuid === doelUuid && heeftOpenTaak(a))
           .map(a => `${a.title} (taak)`),
       ],
     };

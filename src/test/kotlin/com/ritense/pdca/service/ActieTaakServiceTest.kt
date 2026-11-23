@@ -36,6 +36,7 @@ import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
+import java.time.LocalDate
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -80,15 +81,16 @@ class ActieTaakServiceTest {
     private fun linkMapt(configuratie: String?) {
         `when`(gzac.bouwblokLinkEigenschappen("inwonerplan", "1.7.0", "pdca-taak", "1.0.0")).thenReturn(
             mapOf(
-                "inputMappings" to listOf(mapOf("source" to "doc:/bouwblokStart/titel", "target" to "pv:taakTitel")),
+                "inputMappings" to listOf(mapOf("source" to "doc:/bouwblokStart/titel", "target" to "/titel")),
                 "outputMappings" to emptyList<Any>(),
                 "pluginConfigurationMappings" to (configuratie?.let { mapOf(ActieTaakService.CONFIGURATIE_SLEUTEL to it) } ?: emptyMap())
             )
         )
     }
 
-    private fun opgeslagen(titel: String = "Werkgever bellen") =
-        Action(doelUuid = doelUuid, title = titel, description = "Over de proefplaatsing").also { acties.rows[it.id] = it }
+    private fun opgeslagen(titel: String = "Werkgever bellen", deadline: LocalDate? = null) =
+        Action(doelUuid = doelUuid, title = titel, description = "Over de proefplaatsing", dueDate = deadline)
+            .also { acties.rows[it.id] = it }
 
     /** The building block calls back within the start, as its synchronous first service task does. */
     private fun startMeldtZich(proces: String) {
@@ -104,7 +106,7 @@ class ActieTaakServiceTest {
     fun `a new actie becomes the building block on the plan dossier, which records its process`() {
         linkMapt(configId)
         startMeldtZich("proces-1")
-        val actie = opgeslagen()
+        val actie = opgeslagen(deadline = LocalDate.of(2026, 12, 1))
 
         val gestart = service.start(actie)
 
@@ -114,11 +116,30 @@ class ActieTaakServiceTest {
             mapOf(
                 "bouwblokStart" to linkedMapOf(
                     "actieId" to actie.id.toString(), "titel" to "Werkgever bellen", "omschrijving" to "Over de proefplaatsing",
-                    "planUuid" to planUuid.toString(), "doelUuid" to doelUuid.toString()
+                    "deadline" to "2026-12-01", "planUuid" to planUuid.toString(), "doelUuid" to doelUuid.toString()
                 )
             )
         )
         verify(gzac, never()).bouwblokLinkBijwerken(anyString(), anyString(), anyString(), anyString(), anyValue())
+    }
+
+    @Test
+    fun `the start sends every field, also the empty ones, so nothing of a previous start stays behind`() {
+        linkMapt(configId)
+        startMeldtZich("proces-1")
+        val actie = Action(doelUuid = doelUuid, title = "Werkgever bellen").also { acties.rows[it.id] = it }
+
+        service.start(actie)
+
+        verify(gzac).startformulierIndienen(
+            "start-link", "plan-dossier",
+            mapOf(
+                "bouwblokStart" to linkedMapOf(
+                    "actieId" to actie.id.toString(), "titel" to "Werkgever bellen", "omschrijving" to "",
+                    "deadline" to "", "planUuid" to planUuid.toString(), "doelUuid" to doelUuid.toString()
+                )
+            )
+        )
     }
 
     @Test
@@ -131,7 +152,7 @@ class ActieTaakServiceTest {
         verify(gzac).bouwblokLinkBijwerken(
             "inwonerplan", "1.7.0", "pdca-taak", "1.0.0",
             mapOf(
-                "inputMappings" to listOf(mapOf("source" to "doc:/bouwblokStart/titel", "target" to "pv:taakTitel")),
+                "inputMappings" to listOf(mapOf("source" to "doc:/bouwblokStart/titel", "target" to "/titel")),
                 "outputMappings" to emptyList<Any>(),
                 "pluginConfigurationMappings" to mapOf(ActieTaakService.CONFIGURATIE_SLEUTEL to configId)
             )
@@ -219,6 +240,33 @@ class ActieTaakServiceTest {
         val afgerond = acties.rows[actie.id]!!
         assertEquals(ActionStatus.COMPLETED, afgerond.status)
         assertEquals("Gebeld, start maandag", afgerond.result)
+        assertEquals(LocalDate.now(), afgerond.completedDate)
+    }
+
+    @Test
+    fun `gereed follows the task's uitkomst, uitgevoerd completes the actie and vervallen cancels it`() {
+        val uitgevoerd = opgeslagen().also { it.taakProcessInstanceId = "proces-1" }
+        val vervallen = opgeslagen("Cursus zoeken").also { it.taakProcessInstanceId = "proces-2" }
+
+        service.gereed(mapOf("actieId" to uitgevoerd.id.toString(), "uitkomst" to "uitgevoerd", "resultaat" to "Gebeld"), "proces-1")
+        service.gereed(mapOf("actieId" to vervallen.id.toString(), "uitkomst" to "Vervallen", "resultaat" to "Doel afgebroken"), "proces-2")
+        service.gereed(mapOf("actieId" to vervallen.id.toString(), "uitkomst" to "uitgevoerd"), "proces-2")
+
+        assertEquals(ActionStatus.COMPLETED, acties.rows[uitgevoerd.id]!!.status)
+        assertEquals(ActionStatus.CANCELLED, acties.rows[vervallen.id]!!.status, "an ended actie stays as it is")
+        assertEquals("Doel afgebroken", acties.rows[vervallen.id]!!.result)
+    }
+
+    @Test
+    fun `gereed refuses an unknown uitkomst`() {
+        val actie = opgeslagen().also { it.taakProcessInstanceId = "proces-1" }
+
+        val fout = assertFailsWith<PluginActionException> {
+            service.gereed(mapOf("actieId" to actie.id.toString(), "uitkomst" to "half"), "proces-1")
+        }
+
+        assertEquals("UITKOMST_ONGELDIG", fout.errorCode)
+        assertEquals(ActionStatus.PLANNED, acties.rows[actie.id]!!.status)
     }
 
     @Test

@@ -81,12 +81,12 @@ class PlanLifecycleResource(
 
     // ---------------------------------------------------------------- doelen
 
-    /** Removes a doel with its own instruments, overlay row and acties; 409 while an instrument dossier or a verzoek of it is open. */
+    /** Removes a doel with its own instruments, overlay row and acties; 409 while an instrument dossier, a verzoek or an actie task of it is open. */
     @DeleteMapping("/doelen/{uuid}")
     fun deleteDoel(@PathVariable(name = "uuid") uuid: UUID): DoelLifecycleService.Resultaat =
         doelLifecycleService.verwijderen(uuid)
 
-    /** Aborts a doel with a reason; 409 while an instrument or verzoek of it still runs. */
+    /** Aborts a doel with a reason; 409 while an instrument, a verzoek or an actie task of it still runs. */
     @PostMapping("/doelen/{uuid}/afbreken")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun abortDoel(

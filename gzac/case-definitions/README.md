@@ -54,31 +54,37 @@ dev setup ([`../dev-setup/`](../dev-setup/README.md)) puts both in place.
 Every actie added to a plan — on the Doelen tab, or from an actiepunt of an
 evaluation — becomes a task in the plan dossier's task list (ARCHITECTURE
 §6.8). The task is the GZAC **building block**
-`../bouwblokken/pdca-taak.zip` (version 1.0.0, final), which the plan case
-types link:
+`../bouwblokken/pdca-taak.zip` (version 1.0.0, final), a generic task that
+the plan case types link:
 
-- **The building block** — its own document (`actieId`, `titel`,
-  `omschrijving`, `planUuid`, `doelUuid`, `resultaat`) and the process
-  `pdca-taak` (`BB:pdca-taak:1.0.0`): start form `pdca-taak-start` (hidden
-  fields `bouwblokStart.*`) → service task **actie-taak-gestart**
-  (synchronous: it tells the app which process carries the actie) → user
-  task named after the actie (`${taakTitel}`, form `pdca-taak-afronden`
-  with the required `resultaat`) → service task **actie-gereed**
-  (asynchronous, retried every minute five times; it completes the actie
-  with the resultaat) → end. Its PDCA process links name the plugin
-  (`pdca` 0.2.0) but no configuration: GZAC resolves that through the case
-  type's building-block link.
+- **The building block** — its own document (`titel`, `omschrijving`,
+  `deadline`, and for the task of an actie `actieId`, `planUuid`,
+  `doelUuid`; then `uitkomst` and `resultaat` from its form) and the
+  process `pdca-taak` (`BB:pdca-taak:1.0.0`): start form `pdca-taak-start`
+  (title, description and deadline, hidden fields for the actie, all under
+  `bouwblokStart.*`) → when the document names an actie, service task
+  **actie-taak-gestart** (synchronous: it tells the app which process
+  carries the actie) → one user task, named after `/titel` and due on
+  `/deadline` (form `pdca-taak-afronden`: uitkomst *uitgevoerd* or
+  *vervallen* and a required `resultaat`) → for an actie, service task
+  **actie-gereed** (asynchronous, retried every minute five times; it ends
+  the actie as afgerond or vervallen with the resultaat) → end. Without an
+  actie it is a task like any other, with a title given at its start. Its
+  PDCA process links name the plugin (`pdca` 0.2.0) but no configuration:
+  GZAC resolves that through the case type's building-block link.
 - **The link on the plan case types**
   (`building-block-link/<key>.case-building-block-links.json`) copies the
   start data from the plan dossier's `/bouwblokStart` into the building
-  block document and the title into the process variable `taakTitel`;
-  `startableByUser` is `false`, so the building block is not in the
-  dossier's start menu. The plan case types' schemas declare
-  `/bouwblokStart`, where the start form writes.
+  block document; `startableByUser` is `false`, so the building block is
+  not in the dossier's start menu and is always the task of an actie
+  there. The plan case types' schemas declare `/bouwblokStart`, where the
+  start form writes. Another case type can link the building block the
+  same way to offer a plain task, with `startableByUser` `true`.
 - **Starting** is up to the app: it submits the building block's start
-  form on the plan dossier, the way GZAC's own UI starts a building block.
-  GZAC's import does not map placeholder configuration ids inside a
-  building-block link, so the link ships with empty
+  form on the plan dossier, the way GZAC's own UI starts a building block,
+  with every start field (empty ones too, so nothing of the previous start
+  stays behind). GZAC's import does not map placeholder configuration ids
+  inside a building-block link, so the link ships with empty
   `pluginConfigurationMappings` and the app sets the mapping
   `external-plugin:pdca@0.2.0` → its configuration before a start when it
   is missing (also after a re-import, which resets it).
@@ -199,7 +205,7 @@ The app fills the dossier document on creation:
 | `onderwerp` | Subject line: name of the inwoner or the object (as entered in the intake, otherwise from the register, otherwise the plan titel) |
 | `bsn` + `naam` / `objectId` + `objectNaam` | Subject of the plan, from `plan.domeinregister` |
 | `planId`, `planTitel` | Reference to the plan in Open Plan |
-| `bouwblokStart` | Start data of the most recently started task building block (written by its start form, read by the building-block link) |
+| `bouwblokStart` | Start data of the most recently started task building block — actie, title, description, deadline — (written by its start form, read by the building-block link) |
 
 The case list shows **Onderwerp** (`doc:onderwerp`) as its first column,
 followed by BSN (`inwonerplan`) or Object-id (`binnenhof-renovatie`),

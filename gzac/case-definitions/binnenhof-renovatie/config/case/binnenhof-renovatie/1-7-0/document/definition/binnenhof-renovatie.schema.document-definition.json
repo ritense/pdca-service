@@ -44,6 +44,10 @@
                     "type": "string",
                     "description": "Omschrijving van de actie"
                 },
+                "deadline": {
+                    "type": "string",
+                    "description": "Deadline van de actie (jjjj-mm-dd), de deadline van de taak; leeg zonder deadline"
+                },
                 "planUuid": {
                     "type": "string",
                     "description": "UUID van het plan in Open Plan"

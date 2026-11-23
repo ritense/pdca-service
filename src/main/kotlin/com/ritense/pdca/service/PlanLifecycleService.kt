@@ -16,11 +16,10 @@
 
 package com.ritense.pdca.service
 
-import com.ritense.pdca.domain.ActionStatus
 import com.ritense.pdca.domain.DoelDetails
 import com.ritense.pdca.domain.PdcaUrn
 import com.ritense.pdca.domain.UitvoeringsStatus
-import com.ritense.pdca.domain.isTaakBeheerd
+import com.ritense.pdca.domain.heeftOpenTaak
 import com.ritense.pdca.registers.RegisterException
 import com.ritense.pdca.registers.openplan.Doel
 import com.ritense.pdca.registers.openplan.DoelStatusUpdate
@@ -153,7 +152,7 @@ class PlanLifecycleService(
             openInstrumenten = instrumenten.count { !it.isDossierManaged },
             openInstrumentdossiers = instrumenten.filter { it.isDossierManaged }.map { it.titel ?: it.uuid.toString() },
             openVerzoeken = verzoeken,
-            openTaken = actionRepository.findByDoelUuidIn(doelen.map { it.uuid }).count { it.isTaakBeheerd && it.status != ActionStatus.COMPLETED }
+            openTaken = actionRepository.findByDoelUuidIn(doelen.map { it.uuid }).count { it.heeftOpenTaak }
         )
     }
 

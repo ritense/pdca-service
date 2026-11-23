@@ -246,8 +246,9 @@ export interface Actie {
   result?: string;
   /**
    * The GZAC process whose task carries this actie (building block
-   * pdca-taak on the plan dossier): its task completes it. Absent for an
-   * actie from before acties became tasks.
+   * pdca-taak on the plan dossier): its task ends it, and its title,
+   * description and deadline are fixed. Absent for an actie from before
+   * acties became tasks.
    */
   taakProcessInstanceId?: string;
 }

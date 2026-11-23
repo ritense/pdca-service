@@ -150,6 +150,7 @@ class LifecycleServicesTest {
             listOf(
                 Action(doelUuid = doelUuid, title = "Werkgever bellen", taakProcessInstanceId = "p1"),
                 Action(doelUuid = doelUuid, title = "Klaar", taakProcessInstanceId = "p2", status = ActionStatus.COMPLETED),
+                Action(doelUuid = doelUuid, title = "Niet meer nodig", taakProcessInstanceId = "p3", status = ActionStatus.CANCELLED),
                 Action(doelUuid = doelUuid, title = "Zonder taak")
             ).forEach { acties.rows[it.id] = it }
 

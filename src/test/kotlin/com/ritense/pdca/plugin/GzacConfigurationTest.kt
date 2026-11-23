@@ -258,9 +258,18 @@ class GzacConfigurationTest {
     fun `every plan case type links the task building block with the start data the app submits`() {
         val bouwblok = buildingBlockVersions.single { it.parentFile.name == ActieTaakService.BOUWBLOK }
         val startFields = objectMapper.readTree(bouwblok.resolve("form/${ActieTaakService.BOUWBLOK}-start.form.json"))
-            .path("components").map { it.path("key").asText() }.toSet()
-        val startData = setOf("actieId", "titel", "omschrijving", "planUuid", "doelUuid")
+            .path("components").map { it.path("key").asText() }.filter { it.startsWith("bouwblokStart.") }.toSet()
+        val startData = setOf("actieId", "titel", "omschrijving", "deadline", "planUuid", "doelUuid")
         assertEquals(startData.map { "bouwblokStart.$it" }.toSet(), startFields, "start form fields")
+        val blockSchema = objectMapper.readTree(bouwblok.resolve("document/definition/${ActieTaakService.BOUWBLOK}.schema.document-definition.json"))
+        assertTrue(startData.all { blockSchema.path("properties").has(it) }, "the building block document holds the start data")
+
+        // The task takes its name and due date from the building block's own
+        // document, so a case type only maps the start data into it.
+        val userTask = Regex("""<bpmn:userTask\b[^>]*>""").find(bouwblok.resolve("bpmn/${ActieTaakService.BOUWBLOK}.bpmn").readText())?.value
+            ?: fail("the building block has a user task")
+        assertTrue(Regex("""name="[^"]*'/titel'""").containsMatchIn(userTask), "task name from /titel: $userTask")
+        assertTrue(Regex("""camunda:dueDate="[^"]*'/deadline'""").containsMatchIn(userTask), "due date from /deadline: $userTask")
 
         // A plan case type is one with the PDCA plan tabs.
         val planCaseTypes = caseVersions.filter { version ->
@@ -279,7 +288,6 @@ class GzacConfigurationTest {
             assertEquals(false, link.path("startableByUser").asBoolean(true), "$key: started by the app only")
             val mappings = link.path("inputMappings").toList().map { it.path("source").asText() to it.path("target").asText() }.toSet()
             assertTrue(startData.all { ("doc:/bouwblokStart/$it" to "/$it") in mappings }, "$key: start data into the building block document")
-            assertTrue(("doc:/bouwblokStart/titel" to "pv:taakTitel") in mappings, "$key: the task title")
         }
     }
 

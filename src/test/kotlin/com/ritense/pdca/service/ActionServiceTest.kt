@@ -18,6 +18,7 @@ package com.ritense.pdca.service
 
 import com.ritense.pdca.domain.Action
 import com.ritense.pdca.domain.ActionStatus
+import com.ritense.pdca.domain.Priority
 import com.ritense.pdca.registers.openplan.DoelRef
 import com.ritense.pdca.registers.openplan.Instrument
 import com.ritense.pdca.registers.openplan.OpenPlanGateway
@@ -29,6 +30,7 @@ import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
+import java.time.LocalDate
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -57,18 +59,25 @@ class ActionServiceTest {
     }
 
     @Test
-    fun `the status of an actie with a GZAC task follows the task only`() {
+    fun `an actie with a GZAC task keeps its status, result and what its task shows`() {
         val actie = Action(doelUuid = doelUuid, title = "Werkgever bellen", taakProcessInstanceId = "proces-1")
         acties.rows[actie.id] = actie
 
         listOf(
             { service.update(actie.id, actie.copy(status = ActionStatus.IN_PROGRESS)) },
+            { service.update(actie.id, actie.copy(title = "Andere titel")) },
+            { service.update(actie.id, actie.copy(description = "Andere omschrijving")) },
+            { service.update(actie.id, actie.copy(dueDate = LocalDate.of(2026, 12, 1))) },
+            { service.update(actie.id, actie.copy(result = "Gedaan", completedDate = LocalDate.now())) },
             { service.approve(actie.id) },
             { service.reject(actie.id) }
         ).forEach { poging ->
             assertEquals(HttpStatus.CONFLICT, assertFailsWith<ResponseStatusException> { poging() }.statusCode)
         }
-        assertEquals("Andere titel", service.update(actie.id, actie.copy(title = "Andere titel")).title)
+        assertEquals("Werkgever bellen", acties.rows[actie.id]!!.title)
+        val bijgewerkt = service.update(actie.id, actie.copy(assigneeName = "Sanne", priority = Priority.HIGH))
+        assertEquals("Sanne", bijgewerkt.assigneeName)
+        assertEquals(Priority.HIGH, bijgewerkt.priority)
     }
 
     @Test

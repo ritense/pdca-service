@@ -2,7 +2,7 @@
     "display": "form",
     "components": [
         {
-            "label": "Actie",
+            "label": "Taak",
             "key": "titel",
             "type": "textfield",
             "input": true,
@@ -18,12 +18,37 @@
             "disabled": true
         },
         {
+            "label": "Deadline",
+            "key": "deadline",
+            "type": "datetime",
+            "input": true,
+            "tableView": false,
+            "disabled": true,
+            "format": "dd-MM-yyyy",
+            "enableTime": false
+        },
+        {
+            "label": "Uitkomst",
+            "key": "uitkomst",
+            "type": "radio",
+            "input": true,
+            "tableView": false,
+            "inline": true,
+            "values": [
+                { "label": "Uitgevoerd", "value": "uitgevoerd" },
+                { "label": "Vervallen: niet meer nodig", "value": "vervallen" }
+            ],
+            "validate": {
+                "required": true
+            }
+        },
+        {
             "label": "Resultaat",
             "key": "resultaat",
             "type": "textarea",
             "input": true,
             "tableView": false,
-            "description": "Wat is er gedaan en wat is de uitkomst? Dit resultaat komt bij de actie in het plan te staan.",
+            "description": "Wat is er gedaan en wat is de uitkomst, of waarom is de taak niet meer nodig? Bij een taak van een actie komt dit bij de actie in het plan te staan.",
             "validate": {
                 "required": true,
                 "maxLength": 1000

@@ -192,7 +192,7 @@ class PluginHostController(
                 "action.aanvraagId.label" to "Document request",
                 "action.aanvraagId.help" to "Id of the document request, as returned by document-aanvraag-ophalen (typically pv:pdcaAanvraagId).",
                 "action.uitkomst.label" to "Outcome",
-                "action.uitkomst.help" to "GEREED when the document was made, MISLUKT when it was not.",
+                "action.uitkomst.help" to "document-gereed: GEREED when the document was made, MISLUKT when it was not; actie-gereed: uitgevoerd or vervallen (doc:/uitkomst).",
                 "action.inhoud.label" to "Content",
                 "action.inhoud.help" to "The PDF, base64 encoded (typically pv:pdcaDocumentInhoud); required for GEREED.",
                 "action.bestandsnaam.label" to "File name",
@@ -227,7 +227,7 @@ class PluginHostController(
                 "action.aanvraagId.label" to "Documentaanvraag",
                 "action.aanvraagId.help" to "Id van de documentaanvraag, zoals document-aanvraag-ophalen die teruggaf (doorgaans pv:pdcaAanvraagId).",
                 "action.uitkomst.label" to "Uitkomst",
-                "action.uitkomst.help" to "GEREED als het document is gemaakt, MISLUKT als dat niet lukte.",
+                "action.uitkomst.help" to "document-gereed: GEREED als het document is gemaakt, MISLUKT als dat niet lukte; actie-gereed: uitgevoerd of vervallen (doc:/uitkomst).",
                 "action.inhoud.label" to "Inhoud",
                 "action.inhoud.help" to "De PDF, base64-gecodeerd (doorgaans pv:pdcaDocumentInhoud); verplicht bij GEREED.",
                 "action.bestandsnaam.label" to "Bestandsnaam",
@@ -378,11 +378,12 @@ class PluginHostController(
             mapOf(
                 "key" to "actie-gereed",
                 "title" to "Actie gereed",
-                "description" to "Rondt de actie in het plan af met het resultaat van de taak. Een actie die al " +
-                    "is afgerond, blijft ongemoeid.",
+                "description" to "Beëindigt de actie in het plan met de uitkomst van de taak: uitgevoerd (ook " +
+                    "zonder uitkomst) of vervallen, en het resultaat. Een actie die al is beëindigd, blijft ongemoeid.",
                 "activityTypes" to listOf("SERVICE_TASK_START"),
                 "properties" to listOf(
                     mapOf("key" to "actieId", "type" to "string", "required" to true),
+                    mapOf("key" to "uitkomst", "type" to "string", "required" to false),
                     mapOf("key" to "resultaat", "type" to "string", "required" to false)
                 )
             )

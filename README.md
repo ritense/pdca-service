@@ -42,6 +42,8 @@ This file covers setup, configuration, operation and development.
   `feature/epistola-dev-app` provides both (the plugin, the Suite on
   <http://localhost:4000> and its plugin configuration); without them
   evaluations still complete, but their verslag fails (ARCHITECTURE §8).
+  Epistola plugin 0.21.0 also stops the task of an actie from being
+  completed, as it does any building block task (ARCHITECTURE §8).
 
 ## Getting started
 

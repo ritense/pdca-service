@@ -16,8 +16,7 @@
 
 package com.ritense.pdca.service
 
-import com.ritense.pdca.domain.ActionStatus
-import com.ritense.pdca.domain.isTaakBeheerd
+import com.ritense.pdca.domain.heeftOpenTaak
 import com.ritense.pdca.registers.openplan.DoelStatusUpdate
 import com.ritense.pdca.registers.openplan.Instrument
 import com.ritense.pdca.registers.openplan.OpenPlanGateway
@@ -124,7 +123,7 @@ class DoelLifecycleService(
                 add("${inst.titel ?: inst.uuid} (${if (inst.isDossierManaged) "instrumentdossier" else "instrument"})")
             }
             instrumentAanvraagService.openVerzoekenVoor(doelUuid).forEach { add("${it.productTitel ?: "instrument"} (aanvraag)") }
-            actionRepository.findByDoelUuid(doelUuid).filter { it.isTaakBeheerd && it.status != ActionStatus.COMPLETED }
+            actionRepository.findByDoelUuid(doelUuid).filter { it.heeftOpenTaak }
                 .forEach { add("${it.title} (taak)") }
         }
         if (lopend.isNotEmpty()) {

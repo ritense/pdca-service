@@ -4,7 +4,7 @@ import { Checkmark, ChevronDown, Close, Launch } from '@carbon/react/icons';
 import { navigateHost } from '../shared/bridge';
 import { Actie, Doel, Instrument, OpenVerzoek, ProductType, productTypeByUrn } from '../shared/api';
 import { formatDate } from '../shared/dates';
-import { actieStatus, instrumentStatus, priorityLabel } from '../shared/labels';
+import { actieAfgesloten, actieStatus, heeftOpenTaak, instrumentStatus, priorityLabel } from '../shared/labels';
 import { parseDossierUrn } from '../shared/urn';
 import type { DoelenHandlers } from './SubdoelCard';
 import type { DoelenModel } from './useDoelenModel';
@@ -109,11 +109,11 @@ export function VerzoekRij({ verzoek, producttypen }: { verzoek: OpenVerzoek; pr
   );
 }
 
-/** One actie/taak row with the local status flow. Used under a doel and under an instrument. */
 /**
- * One actie. An actie with a GZAC task is completed by completing that task
- * in the dossier's task list, so it shows no status buttons; an older actie
- * without task keeps the plan page's status steps.
+ * One actie, under a doel or under an instrument. An actie with a GZAC task
+ * is ended by completing that task in the dossier's task list, so it shows
+ * no status buttons; an older actie without task keeps the plan page's
+ * status steps.
  */
 export function ActieRow({ actie, busy, onStatus }: { actie: Actie; busy: boolean; onStatus: (id: string, action: string) => void }) {
   const status = actieStatus(actie.status);
@@ -124,14 +124,14 @@ export function ActieRow({ actie, busy, onStatus }: { actie: Actie; busy: boolea
         <span className="pdca-text-wrap">{actie.title}</span>
         {actie.assigneeName && <span className="pdca-meta-text">— {actie.assigneeName}</span>}
         {actie.dueDate && <span className="pdca-meta-text">({formatDate(actie.dueDate)})</span>}
-        {actie.result && (actie.status === 'COMPLETED' || actie.status === 'REJECTED') && (
+        {actie.result && actieAfgesloten(actie) && (
           <span className="pdca-text-ellipsis pdca-meta-text pdca-meta-text--italic">— {actie.result}</span>
         )}
       </div>
       <div className="pdca-row-actions">
         {actie.priority && <Tag size="sm" type={actie.priority === 'HIGH' ? 'red' : 'gray'}>{priorityLabel(actie.priority)}</Tag>}
         <Tag size="sm" type={status.tag}>{status.label}</Tag>
-        {taak && actie.status !== 'COMPLETED' && (
+        {heeftOpenTaak(actie) && (
           <Tag size="sm" type="cool-gray" title="Rond de taak af in de takenlijst van dit dossier">Taak in GZAC</Tag>
         )}
         {!taak && actie.status === 'PLANNED' && <Button size="sm" kind="ghost" disabled={busy} onClick={() => onStatus(actie.id, 'IN_PROGRESS')}>Starten</Button>}

@@ -86,11 +86,26 @@ const ACTIE_STATUSSEN: Record<string, StatusWeergave> = {
   PENDING_REVIEW: { label: 'Ter beoordeling', tag: 'warm-gray' },
   COMPLETED: AFGEROND,
   REJECTED: { label: 'Afgekeurd', tag: 'red' },
+  CANCELLED: { label: 'Vervallen', tag: 'gray' },
 };
 
-/** Status of an actie in the local workflow (PLANNED -> IN_PROGRESS -> PENDING_REVIEW -> COMPLETED/REJECTED). */
+/**
+ * Status of an actie: without task the local workflow (PLANNED -> IN_PROGRESS
+ * -> PENDING_REVIEW -> COMPLETED/REJECTED), with a GZAC task PLANNED until
+ * the task ends it as COMPLETED (uitgevoerd) or CANCELLED (vervallen).
+ */
 export function actieStatus(status: string): StatusWeergave {
   return ACTIE_STATUSSEN[status] ?? { label: status, tag: 'gray' };
+}
+
+/** Whether an actie has ended: its status no longer changes. */
+export function actieAfgesloten(actie: { status: string }): boolean {
+  return actie.status === 'COMPLETED' || actie.status === 'REJECTED' || actie.status === 'CANCELLED';
+}
+
+/** Whether an actie's GZAC task is still open (the task, not the plan page, ends it). */
+export function heeftOpenTaak(actie: { status: string; taakProcessInstanceId?: string }): boolean {
+  return !!actie.taakProcessInstanceId && !actieAfgesloten(actie);
 }
 
 /**

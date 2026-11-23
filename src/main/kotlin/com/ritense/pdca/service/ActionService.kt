@@ -33,9 +33,10 @@ import java.util.UUID
 
 /**
  * The acties of a plan (ARCHITECTURE §6.8). A new actie becomes a GZAC task
- * ([ActieTaakService]); from then on that task completes it, and its status
- * no longer changes here. Acties from before that have no task keep the
- * status steps of the plan page.
+ * ([ActieTaakService]); from then on that task ends it, and its status and
+ * what the task shows (title, description, deadline) no longer change here.
+ * Acties from before that have no task keep the status steps of the plan
+ * page.
  */
 @Service
 @Transactional
@@ -81,18 +82,21 @@ class ActionService(
      * Saves the edited fields of an actie. A status change through an edit
      * only moves the work forward (PLANNED → IN_PROGRESS → PENDING_REVIEW);
      * leaving PENDING_REVIEW is [approve] or [reject], and a completed or
-     * rejected actie keeps its status. The status of an actie with a GZAC
-     * task follows its task only (409).
+     * rejected actie keeps its status. An actie with a GZAC task keeps its
+     * status, result and what its task shows (409): GZAC cannot rename a
+     * task or follow such an edit.
      */
     fun update(id: UUID, updated: Action): Action {
         val existing = getById(id)
-        if (updated.status != existing.status) weigerBijTaak(existing)
+        if (existing.isTaakBeheerd && taakVelden(existing) != taakVelden(updated)) {
+            throw ResponseStatusException(HttpStatus.CONFLICT, TAAK_VELDEN_VAST)
+        }
         if (updated.status != existing.status && existing.status to updated.status !in EDIT_TRANSITIONS) {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
                 when (existing.status) {
                     ActionStatus.PENDING_REVIEW -> "Een actie ter beoordeling wordt goedgekeurd of afgekeurd"
-                    ActionStatus.COMPLETED, ActionStatus.REJECTED -> "Een afgeronde of afgekeurde actie verandert niet meer van status"
+                    ActionStatus.COMPLETED, ActionStatus.REJECTED, ActionStatus.CANCELLED -> "Een afgeronde, afgekeurde of vervallen actie verandert niet meer van status"
                     else -> "Een actie gaat van gepland naar gestart naar ter beoordeling"
                 }
             )
@@ -139,7 +143,14 @@ class ActionService(
         }
     }
 
+    /** What the GZAC task of an actie shows or decides. */
+    private fun taakVelden(action: Action) =
+        listOf(action.title, action.description, action.dueDate, action.status, action.completedDate, action.result)
+
     private companion object {
+        const val TAAK_VELDEN_VAST =
+            "Deze actie is een taak in GZAC: titel, beschrijving, deadline, status en resultaat liggen vast in die taak"
+
         /** The status moves an edit may make; the review outcome has its own endpoints. */
         val EDIT_TRANSITIONS = setOf(
             ActionStatus.PLANNED to ActionStatus.IN_PROGRESS,

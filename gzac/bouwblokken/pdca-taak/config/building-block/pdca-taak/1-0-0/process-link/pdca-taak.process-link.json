@@ -32,6 +32,7 @@
         "pluginVersion": "0.2.0",
         "actionProperties": {
             "actieId": "doc:/actieId",
+            "uitkomst": "doc:/uitkomst",
             "resultaat": "doc:/resultaat"
         },
         "actionResultMappings": []

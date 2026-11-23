@@ -1,32 +1,41 @@
 {
     "$id": "pdca-taak.schema",
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "title": "PDCA-taak",
+    "title": "Taak",
     "type": "object",
     "properties": {
-        "actieId": {
-            "type": "string",
-            "description": "UUID van de actie in de PDCA-app (via de bouwbloklink uit /bouwblokStart van het plandossier)"
-        },
         "titel": {
             "type": "string",
-            "description": "Titel van de actie: de naam van de taak"
+            "description": "Titel van de taak: de naam van de gebruikerstaak (via de bouwbloklink uit /bouwblokStart)"
         },
         "omschrijving": {
             "type": "string",
-            "description": "Omschrijving van de actie"
+            "description": "Omschrijving van de taak"
+        },
+        "deadline": {
+            "type": "string",
+            "description": "Deadline van de taak: een datum (jjjj-mm-dd) of datum-tijd; leeg voor een taak zonder deadline"
+        },
+        "actieId": {
+            "type": "string",
+            "description": "UUID van de actie in de PDCA-app wanneer de taak bij een actie hoort; leeg voor een losse taak"
         },
         "planUuid": {
             "type": "string",
-            "description": "UUID van het plan in Open Plan"
+            "description": "UUID van het plan in Open Plan (taak van een actie)"
         },
         "doelUuid": {
             "type": "string",
-            "description": "UUID van het doel waaronder de actie hangt"
+            "description": "UUID van het doel waaronder de actie hangt (taak van een actie)"
+        },
+        "uitkomst": {
+            "type": "string",
+            "enum": ["uitgevoerd", "vervallen"],
+            "description": "Uitkomst, vastgelegd met het formulier pdca-taak-afronden"
         },
         "resultaat": {
             "type": "string",
-            "description": "Resultaat van de actie, vastgelegd met het formulier pdca-taak-afronden; actie-gereed geeft het door aan het plan"
+            "description": "Resultaat van de taak, of waarom ze is vervallen; actie-gereed geeft het door aan het plan"
         }
     }
 }

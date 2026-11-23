@@ -515,7 +515,7 @@ signature or GZAC's answers about a user.
 | Uitvoeringsstatus, hours, effectiveness, notes, abort reason of an instrument | overlay `InstrumentDetails` | |
 | Evaluation type, planned date, deelnemers, actiepunten, originating evaluation of a contactmoment | overlay `ContactmomentDetails` | keyed by klantcontact uuid |
 | Betrokkenen and which one is procesbegeleider | overlay `InvolvedParty` | procesbegeleider mirrored to Open Plan `plan.medewerker` |
-| Acties | overlay `Action` | each one a task of the building block `pdca-taak` on the plan dossier, which completes it (§6.8) |
+| Acties | overlay `Action` | each one a task of the building block `pdca-taak` on the plan dossier, which ends it (§6.8) |
 | Evaluation sessions and the plan changes recorded in them | overlay `EvaluationSession`, `EvaluationChange` | |
 | Generated documents (the evaluatieverslag PDF) and their requests | overlay `DocumentAanvraag` | the data snapshot only while the request is open (§6.6) |
 | Document templates (catalog `pdca-documenten`, template `evaluatieverslag`) | Epistola Suite | authored in `gzac/epistola/` (§12) |
@@ -536,7 +536,7 @@ the same words everywhere (`frontend/src/shared/labels.ts`):
 | Subdoel | register `actief` + overlay GEPLAND | `actief` + GESTART | `afgerond` (resultaat `gefaald`: *Niet behaald*) | `geannuleerd` |
 | Hoofddoel | `actief` + overlay GEPLAND | `actief` otherwise | `afgerond` | `geannuleerd` |
 | Instrument | `actief` + overlay GEPLAND | `actief` otherwise (also without overlay row) | `afgerond` | `geannuleerd` |
-| Actie | PLANNED | IN_PROGRESS | COMPLETED | — (plus *Ter beoordeling* PENDING_REVIEW, *Afgekeurd* REJECTED) |
+| Actie | PLANNED | IN_PROGRESS | COMPLETED | — (plus *Ter beoordeling* PENDING_REVIEW, *Afgekeurd* REJECTED, and *Vervallen* CANCELLED for a task ended as not needed) |
 | Plan | — (the configured display status while `actief`) | — | `afgerond` | `geannuleerd` |
 
 A contactmoment is *Afgerond* when `indicatieContactGelukt` is true,
@@ -1051,9 +1051,10 @@ reason (§6.5). While the plan is still in concept anything goes.
 Every actie added to a plan — on the Doelen tab or from an actiepunt of an
 evaluation, both `POST /acties` — becomes a task in GZAC: the building block
 `pdca-taak` (§12) on the plan dossier, whose one user task carries the
-actie's title. It shows in the dossier's task list and GZAC's task sidebar
-and lists, and GZAC's task functions apply to it. The task owns the actie's
-completion (`ActieTaakService`, `ActionService`):
+actie's title, description and deadline. It shows in the dossier's task
+list and GZAC's task sidebar and lists, with the deadline as its due date,
+and GZAC's task functions apply to it. The task owns the actie's status
+(`ActieTaakService`, `ActionService`):
 
 ```mermaid
 sequenceDiagram
@@ -1069,11 +1070,20 @@ sequenceDiagram
     G->>APP: actie-taak-gestart (synchronous, records the process on the actie)
     G-->>APP: submission answered
     APP-->>UI: 201 actie (taakProcessInstanceId)
-    Note over G: user task "<actie titel>", form pdca-taak-afronden
-    G->>APP: actie-gereed {actieId, resultaat} (async, retried)
-    APP->>APP: actie COMPLETED with the resultaat
+    Note over G: user task "<titel>", due <deadline>, form pdca-taak-afronden
+    G->>APP: actie-gereed {actieId, uitkomst, resultaat} (async, retried)
+    APP->>APP: actie COMPLETED (uitgevoerd) or CANCELLED (vervallen)
 ```
 
+- **The building block is a task of its own.** Its start data — `titel`,
+  `omschrijving`, `deadline` — lands in its document, and the user task
+  takes its name and due date from there (a deadline is a date or a
+  date-time; an empty one sets none). Only when the start data names an
+  actie (`actieId`) does it report to the plan: a gateway runs
+  `actie-taak-gestart` before the task and `actie-gereed` after it.
+  Without one it is an ordinary task with a title given at its start; the
+  plan case types do not offer it to users (`startableByUser` false), so
+  there it is always the task of an actie.
 - **Starting.** After saving the actie, outside any transaction, the app
   looks up the task building block among the plan case type's startable
   items (also those not startable by users) and its main process
@@ -1085,10 +1095,12 @@ sequenceDiagram
   building block's start form on the plan dossier — the only way to start a
   building block on a dossier; GZAC's start-by-key endpoints cannot find a
   building block's process — with `bouwblokStart` = `actieId`, `titel`,
-  `omschrijving`, `planUuid`, `doelUuid`. The form writes them to the plan
-  dossier document, and the case type's building-block link copies them
-  into the building block's own document and the title into the process
-  variable `taakTitel` (the task's name).
+  `omschrijving`, `deadline` (`yyyy-MM-dd`), `planUuid`, `doelUuid`, every
+  field also when empty: the form writes them to the plan dossier document,
+  which keeps what the previous start left there. The case type's
+  building-block link copies them into the building block's own document.
+  The title holds at most 255 characters, the length of a GZAC task name
+  (400 otherwise).
 - **No actie without its task.** The submission answers no process
   instance, so the building block's first service task,
   `actie-taak-gestart`, runs synchronously within it and records its
@@ -1098,20 +1110,23 @@ sequenceDiagram
   unreachable: 502/503), the actie is removed again and the failure stands.
   When the start's answer is lost, the actie is kept if its process
   reported itself and removed otherwise.
-- **Completing.** The user completes the task with its form
-  (`pdca-taak-afronden`, a required resultaat); the asynchronous
-  `actie-gereed` (retried like the instrument dossier's actions, §7.4)
-  sets the actie COMPLETED with that resultaat and today as completion
-  date. It is taken only from the process recorded on the actie; an actie
-  that is completed already stays as it is.
-- **One owner.** The status of an actie with a task changes only through
-  its task: `PATCH /acties/{id}` with another status and
-  `…/approve|reject` are refused (409); its texts stay editable. The
-  Doelen tab shows such an actie's status with *Taak in GZAC* and no status
-  buttons (§13.3). An actie from before has no task and keeps the plan
-  page's status steps.
+- **Ending.** The user completes the task with its form
+  (`pdca-taak-afronden`): an uitkomst — *uitgevoerd*, or *vervallen* when
+  the task is no longer needed — and a required resultaat or reason. The
+  asynchronous `actie-gereed` (retried like the instrument dossier's
+  actions, §7.4) sets the actie COMPLETED or CANCELLED with that resultaat
+  and today as end date. It is taken only from the process recorded on the
+  actie; an actie that has ended already stays as it is.
+- **One owner.** An actie with a task keeps its status, result and what
+  its task shows: `PATCH /acties/{id}` changing its title, description,
+  deadline, status, end date or result, and `…/approve|reject`, are refused
+  (409) — GZAC cannot rename a task. Its uitvoerder and priority stay
+  editable. The Doelen tab shows such an actie's status with *Taak in
+  GZAC* while the task is open and no status buttons (§13.3). An actie from
+  before has no task and keeps the plan page's status steps.
 - **No loose tasks.** A subdoel with an open actie task cannot be aborted or
-  removed (§6.3); the close-plan check warns about open tasks.
+  removed (§6.3); ending the task as *vervallen* clears the way. The
+  close-plan check warns about open tasks.
 
 ## 7. Failure and idempotency model
 
@@ -1182,7 +1197,7 @@ sequenceDiagram
   |---|---|
   | Plan from intake (§6.1) | validate-then-write, reservation with lease, resume per step, GEREED only when complete |
   | Doel removal (§6.3) | instruments first, doel last, each step skips what is done |
-  | Actie as GZAC task (§6.8) | the actie is saved first; a refused or failed start removes it again, a start whose answer is lost keeps it when its process reported itself; `actie-taak-gestart` and `actie-gereed` take only the actie's own process and leave done work alone |
+  | Actie as GZAC task (§6.8) | the actie is saved first; a refused or failed start removes it again, a start whose answer is lost keeps it when its process reported itself; `actie-taak-gestart` and `actie-gereed` take only the actie's own process and leave an actie that has ended alone |
   | Hoofddoel switch (§6.3) | reuse the new hoofddoel of an interrupted switch, then close the old ones and re-point |
   | Instrument request (§6.2) | 409 while a verzoek for that doel and product is open |
   | `aanmaak-instrument` | returns the instrument this dossier already created |
@@ -1197,7 +1212,7 @@ non-2xx answer into a failed job carrying `errorCode` and `errorMessage`.
 | Answer | When | What GZAC does |
 |---|---|---|
 | 200 `{status: "completed", result?, variables?}` | done, also a retry that finds the work done | continues; `result` (declared outputs, `aanmaak-instrument`) goes through the result mapping, `variables` (`document-aanvraag-ophalen`) become process variables |
-| 422 `{status: "error", errorCode, errorMessage}` | a refusal a retry does not change: `DOEL_NIET_ACTIEF`, `PLAN_NIET_ACTIEF`, `INSTRUMENT_NIET_ACTIEF`, `DOEL_ONBEKEND`, `INSTRUMENT_ONBEKEND`, invalid properties, `REGISTER_WEIGERT`, `GEWEIGERD`, `CONFIGURATIE_NIET_ACTIEF`; for the document actions `GEEN_AANVRAAG` (no request for this process, or it already ended), `AANVRAAG_HOORT_NIET_BIJ_PROCES` (the request belongs to another process or dossier), `AANVRAAGID_ONTBREEKT`, `AANVRAAG_ONBEKEND`, `UITKOMST_ONGELDIG`, `INHOUD_ONTBREEKT`, `INHOUD_ONGELDIG` (not base64 or not a PDF); for the actie actions `GEEN_PROCES`, `ACTIEID_ONTBREEKT`, `ACTIE_ONBEKEND` (the actie is gone), `ACTIE_HEEFT_AL_EEN_TAAK` (another process carries it), `ACTIE_HOORT_NIET_BIJ_PROCES` | the job fails; after its retries an incident |
+| 422 `{status: "error", errorCode, errorMessage}` | a refusal a retry does not change: `DOEL_NIET_ACTIEF`, `PLAN_NIET_ACTIEF`, `INSTRUMENT_NIET_ACTIEF`, `DOEL_ONBEKEND`, `INSTRUMENT_ONBEKEND`, invalid properties, `REGISTER_WEIGERT`, `GEWEIGERD`, `CONFIGURATIE_NIET_ACTIEF`; for the document actions `GEEN_AANVRAAG` (no request for this process, or it already ended), `AANVRAAG_HOORT_NIET_BIJ_PROCES` (the request belongs to another process or dossier), `AANVRAAGID_ONTBREEKT`, `AANVRAAG_ONBEKEND`, `UITKOMST_ONGELDIG`, `INHOUD_ONTBREEKT`, `INHOUD_ONGELDIG` (not base64 or not a PDF); for the actie actions `GEEN_PROCES`, `ACTIEID_ONTBREEKT`, `ACTIE_ONBEKEND` (the actie is gone), `ACTIE_HEEFT_AL_EEN_TAAK` (another process carries it), `ACTIE_HOORT_NIET_BIJ_PROCES`, `UITKOMST_ONGELDIG` (neither uitgevoerd nor vervallen) | the job fails; after its retries an incident |
 | 503 `{status: "error", errorCode, errorMessage}` | temporary: `REGISTER_ONBEREIKBAAR`, `DOSSIER_ONBEREIKBAAR`, `TIJDELIJK_NIET_BESCHIKBAAR` (also while no configuration is active) | the job is retried; after its retries an incident an administrator retries |
 
 The instrument dossier runs every plugin action — `aanmaak-instrument` and
@@ -1231,6 +1246,15 @@ state; a failure is never turned into an empty list (§13.2).
   exist on Valtimo's `feature/external-plugin-contracts` branch and are not
   in a released Valtimo version yet. Without them the app starts, but every
   register call and every `/data` call fails (503).
+- **Building block tasks and GZAC's Epistola plugin (pending upstream).**
+  Completing the task of an actie (§6.8) — like any building block's user
+  task — fails (500, the task stays open) while GZAC runs an Epistola
+  plugin whose letter-composer write-back looks up the active case
+  definition of the task's document on every task completion: a building
+  block document has none, and the failed lookup inside a transactional
+  service rolls the task submission back although the plugin catches it.
+  Seen with Epistola plugin 0.21.0; it needs a plugin version that skips
+  documents without case definition. Starting the task is not affected.
 - **Iframe navigation (optional, pending upstream).** Navigating GZAC from a
   bundle (the instrument's Dossier button, the jump after plan creation)
   needs a `navigate` handler in GZAC's frontend that is not part of Valtimo
@@ -1318,8 +1342,8 @@ path, query parameters) is a 403. *Caller*: **user** = any verified user;
 | GET | `…/documenten/{id}/inhoud` | a finished document, base64 (404 until GEREED) | plan (of the request) |
 | POST | `…/documenten` | make an evaluatieverslag (again) from the current data, or the request still being made; 422 when document generation is off | plan (of the evaluation session in body `bronUuid`) |
 | GET | `…/acties?planUuid` | acties of the plan | plan |
-| POST | `…/acties` | create an actie under a doel and start its GZAC task (§6.8); an `instrumentUuid` it supports must be an instrument of that doel (400 otherwise) | plan (of body `doelUuid`) |
-| PATCH | `…/acties/{id}` | edit an actie; status only forward up to PENDING_REVIEW, never for an actie with a GZAC task (409 otherwise) | plan |
+| POST | `…/acties` | create an actie under a doel and start its GZAC task (§6.8); an `instrumentUuid` it supports must be an instrument of that doel, the title at most 255 characters (400 otherwise) | plan (of body `doelUuid`) |
+| PATCH | `…/acties/{id}` | edit an actie; status only forward up to PENDING_REVIEW; for an actie with a GZAC task only uitvoerder, priority and start date (409 otherwise) | plan |
 | POST | `…/acties/{id}/approve`, `…/acties/{id}/reject` | leave PENDING_REVIEW; 409 for an actie with a GZAC task | plan |
 | GET | `…/betrokkenen?planUuid` | betrokkenen of the plan | plan |
 | POST | `…/betrokkenen` | add a betrokkene (primary = procesbegeleider) | plan (body `planUuid`) |
@@ -1406,7 +1430,7 @@ the demo case types.
 | `InstrumentDetails` (`instrument_details`) | `instrumentUuid` | `planUuid`, `uitvoeringsStatus` (default GESTART), `urenBesteed`, `effectiviteitScore` (1–5) and `effectiviteitToelichting`, `afbreekReden`, `interneNotitie`, `externeNotitie` |
 | `ContactmomentDetails` (`contactmoment_details`) | `contactmomentUuid` (= klantcontact uuid) | `planUuid`, `evaluatieType`, `geplandeDatum`, `deelnemers`, `actiepunten`, `evaluationSessionId` |
 | `InvolvedParty` (`involved_party`) | id | `planUuid`, name, role, contact details, `isPrimary` (the procesbegeleider; at most one per plan, partial unique index) |
-| `Action` (`action`) | id | `doelUuid`, optional `instrumentUuid` and `contactmomentUuid`, title, description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED; with a task only → COMPLETED by the task), assignee name, priority, dates, result, `taakProcessInstanceId` (the GZAC process of its task, §6.8; unique) |
+| `Action` (`action`) | id | `doelUuid`, optional `instrumentUuid` and `contactmomentUuid`, title, description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED; with a task only → COMPLETED or CANCELLED by the task), assignee name, priority, dates, result, `taakProcessInstanceId` (the GZAC process of its task, §6.8; unique) |
 | `EvaluationSession` (`evaluation_session`) | id | `dossierId`, `planUuid`, `caseDefinitionKey`, `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED/CANCELLED; at most one RUNNING per user), start/end, `evaluatieType`, `deelnemers`, `verslag`, `geplandContactmomentUuid`, `contactmomentUuid` |
 | `EvaluationChange` (`evaluation_change`) | id | `sessionId`, `subjectType` (PLAN, HOOFDDOEL, SUBDOEL, INSTRUMENT, ACTIE), `subjectUuid`, `subjectTitel`, `soort`, `vanWaarde`, `naarWaarde`, `toelichting` |
 | `DocumentAanvraag` (`document_aanvraag`) | id | a document made by the document process (§6.6): `planUuid`, `dossierId` (the plan dossier the process runs on), `soort` (EVALUATIEVERSLAG), `bronUuid` (the evaluation session), `status` (AANGEVRAAGD → BEZIG → GEREED/MISLUKT), `processInstanceId` (its GZAC process; unique), `gegevens` (JSON data snapshot, cleared when the request ends), `bestandsnaam`, `mediatype`, `inhoud` (the PDF, GEREED only), `foutmelding` (MISLUKT only), `aangevraagdDoor`, `aangevraagdOp`, `bijgewerktOp`; at most one open request per (`soort`, `bronUuid`) |
@@ -1488,13 +1512,16 @@ Epistola settings.
   link the task building block (below) with input mappings from
   `/bouwblokStart`, which their schemas declare.
 - **`gzac/bouwblokken/`** — building blocks as importable zips, built by
-  `./gradlew buildGzacZips` like the case zips: `pdca-taak.zip`, the task
-  of an actie (§6.8; `config/building-block/pdca-taak/1-0-0/`, final): its
-  document, the process `pdca-taak` (`BB:pdca-taak:1.0.0`), the start form
-  and the task's form, and its two PDCA links, which name the plugin but no
-  configuration (GZAC resolves it through the case type's building-block
-  link, which the app maps). It is imported before the case types that
-  link it.
+  `./gradlew buildGzacZips` like the case zips: `pdca-taak.zip`, one task
+  with a title, description and deadline given at its start, the task of
+  an actie when its start data names one (§6.8;
+  `config/building-block/pdca-taak/1-0-0/`, final): its document, the
+  process `pdca-taak` (`BB:pdca-taak:1.0.0`), the start form and the task's
+  form (uitkomst and resultaat), and its two PDCA links, which name the
+  plugin but no configuration (GZAC resolves it through the case type's
+  building-block link, which the app maps). A case type that links it maps
+  the start data from `/bouwblokStart` into its document. It is imported
+  before the case types that link it.
 - **The PDCA couplings ship in the zips** (the plan case tabs, the
   `create-plan` task-form link, the instrument dossier's three
   plugin-action links) with the fixed placeholder configuration id
@@ -1634,9 +1661,11 @@ bundles, so nothing is loaded from third parties.
   aanvragen", with a *Plan vastgesteld* notice; on the Planoverzicht the
   toelichting bij het hoofddoel and the status menu's way back to concept.
 - **Acties** (§6.8) — the actie modal says the actie becomes a task in the
-  dossier's task list. An actie with a task shows its status and *Taak in
-  GZAC* until it is completed, never the status buttons; an older actie
-  keeps Starten, Ter beoordeling and Goedkeuren/Afkeuren.
+  dossier's task list with its title, description and deadline, which are
+  fixed from then on. An actie with a task shows its status and *Taak in
+  GZAC* while the task is open, never the status buttons, and once ended
+  *Afgerond* or *Vervallen* with its resultaat; an older actie keeps
+  Starten, Ter beoordeling and Goedkeuren/Afkeuren.
 - **Instruments enter only through "Instrument aanvragen"**, which appears
   only when the subdoel has requestable producttypen; the empty list says
   which of the two applies.

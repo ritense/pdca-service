@@ -5,8 +5,8 @@
         "inputMappings": [
             { "source": "doc:/bouwblokStart/actieId", "target": "/actieId" },
             { "source": "doc:/bouwblokStart/titel", "target": "/titel" },
-            { "source": "doc:/bouwblokStart/titel", "target": "pv:taakTitel" },
             { "source": "doc:/bouwblokStart/omschrijving", "target": "/omschrijving" },
+            { "source": "doc:/bouwblokStart/deadline", "target": "/deadline" },
             { "source": "doc:/bouwblokStart/planUuid", "target": "/planUuid" },
             { "source": "doc:/bouwblokStart/doelUuid", "target": "/doelUuid" }
         ],
