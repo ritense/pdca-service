@@ -22,8 +22,11 @@ import com.ritense.pdca.domain.PlanDetails
 import com.ritense.pdca.repository.EvaluationSessionRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
 import com.ritense.pdca.service.PhaseConfigService
+import com.ritense.pdca.service.anyValue
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
+import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
@@ -51,11 +54,12 @@ class PlanSlotTest {
         )
     }
 
-    private fun evalueert(login: String, plan: UUID) {
-        `when`(sessions.findByUserLoginAndStatus(login, EvaluationSessionStatus.RUNNING)).thenReturn(
-            EvaluationSession(dossierId = "d", planUuid = plan, userLogin = login, status = EvaluationSessionStatus.RUNNING)
-        )
-    }
+    /** [login] runs an evaluation of [plan], which records the locked changes it lets through. */
+    private fun evalueert(login: String, plan: UUID): EvaluationSession =
+        EvaluationSession(dossierId = "d", planUuid = plan, userLogin = login, status = EvaluationSessionStatus.RUNNING).also {
+            `when`(sessions.findByUserLoginAndStatus(login, EvaluationSessionStatus.RUNNING)).thenReturn(it)
+            `when`(sessions.markeerVastgesteldGewijzigd(it.id)).thenReturn(1)
+        }
 
     private fun geweigerd(login: String, wijzigingen: List<SlotWijziging>) {
         val fout = assertFailsWith<ResponseStatusException> { slot.controleer(login, wijzigingen) }
@@ -104,6 +108,37 @@ class PlanSlotTest {
 
         evalueert("jan", planUuid)
         slot.controleer("jan", listOf(SlotWijziging(planUuid, weergaveStatus = "Ontwerp")))
+    }
+
+    @Test
+    fun `a locked change the evaluation lets through is recorded on it, a free one is not`() {
+        plan("Vastgesteld")
+        val sessie = evalueert("jan", planUuid)
+
+        slot.controleer("jan", listOf(SlotWijziging(planUuid, weergaveStatus = "In uitvoering")))
+        verify(sessions, never()).markeerVastgesteldGewijzigd(sessie.id)
+
+        slot.controleer("jan", wijziging)
+        verify(sessions).markeerVastgesteldGewijzigd(sessie.id)
+    }
+
+    @Test
+    fun `a change in concept is not recorded on the evaluation`() {
+        plan("Ontwerp")
+        evalueert("jan", planUuid)
+
+        slot.controleer("jan", wijziging)
+
+        verify(sessions, never()).markeerVastgesteldGewijzigd(anyValue())
+    }
+
+    @Test
+    fun `a locked change is refused when its evaluation ended just before`() {
+        plan("Vastgesteld")
+        val sessie = evalueert("jan", planUuid)
+        `when`(sessions.markeerVastgesteldGewijzigd(sessie.id)).thenReturn(0)
+
+        geweigerd("jan", wijziging)
     }
 
     @Test

@@ -20,6 +20,8 @@ export interface EvaluationSession {
   contactmomentUuid: string | null;
   /** The planned contactmoment this evaluation carries out; completing turns it into the afgerond one. */
   geplandContactmomentUuid: string | null;
+  /** A locked part of the plan was changed in this evaluation: it can only be completed, not cancelled. */
+  vastgesteldGewijzigd: boolean;
 }
 
 export type EvaluationSubjectType = 'PLAN' | 'HOOFDDOEL' | 'SUBDOEL' | 'INSTRUMENT' | 'ACTIE';

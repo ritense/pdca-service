@@ -46,6 +46,10 @@ data class SlotWijziging(val planUuid: UUID, val weergaveStatus: String? = null)
  * (the status a new plan gets), "Concept" when the case type has none; a
  * plan without display status is in concept. [DataAccessPolicy] marks the
  * routes that make such changes; `/data` checks them after authorization.
+ *
+ * An evaluation that lets such a change through records that it did; it
+ * can then only be completed, so the change is not left without the
+ * conversation that informs the inwoner.
  */
 @Component
 class PlanSlot(
@@ -54,17 +58,27 @@ class PlanSlot(
     private val phaseConfigService: PhaseConfigService
 ) {
 
-    /** Throws 409 unless [login] may make every one of [wijzigingen] now. */
+    /**
+     * Throws 409 unless [login] may make every one of [wijzigingen] now. A
+     * change the user's evaluation unlocks is recorded on that evaluation
+     * first; when it has just ended, the change is refused after all.
+     */
     fun controleer(login: String, wijzigingen: List<SlotWijziging>) {
         if (wijzigingen.isEmpty()) return
-        val evaluatiePlan by lazy {
-            evaluationSessionRepository.findByUserLoginAndStatus(login, EvaluationSessionStatus.RUNNING)?.planUuid
-        }
+        val evaluatie by lazy { evaluationSessionRepository.findByUserLoginAndStatus(login, EvaluationSessionStatus.RUNNING) }
+        var ontgrendeldDoor: UUID? = null
         wijzigingen.forEach { wijziging ->
             val concept = conceptStatus(wijziging.planUuid) ?: return@forEach
             if (wijziging.weergaveStatus != null && !wijziging.weergaveStatus.equals(concept.status, ignoreCase = true)) return@forEach
-            if (concept.inConcept || evaluatiePlan == wijziging.planUuid) return@forEach
-            throw ResponseStatusException(HttpStatus.CONFLICT, VERGRENDELD)
+            if (concept.inConcept) return@forEach
+            val sessie = evaluatie?.takeIf { it.planUuid == wijziging.planUuid }
+                ?: throw ResponseStatusException(HttpStatus.CONFLICT, VERGRENDELD)
+            ontgrendeldDoor = sessie.id
+        }
+        ontgrendeldDoor?.let { sessieId ->
+            if (evaluationSessionRepository.markeerVastgesteldGewijzigd(sessieId) == 0) {
+                throw ResponseStatusException(HttpStatus.CONFLICT, VERGRENDELD)
+            }
         }
     }
 

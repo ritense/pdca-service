@@ -899,7 +899,11 @@ navigation; closing the panel only hides it.
   being made. Document generation never fails the completion.
   **Cancel** (`…/current/cancel`) writes nothing to Open Klant; the recorded
   changes stay with the cancelled session, which is never shown, and the
-  plan changes themselves stay.
+  plan changes themselves stay. A session that changed a locked part of the
+  plan (`vastgesteldGewijzigd`, §6.7) is not cancelled (409 *"In deze
+  evaluatie zijn vastgestelde delen van het plan gewijzigd; rond de
+  evaluatie af, …"*); the panel then offers only completing it and says
+  why, following the flag with its poll.
 - **History** — `GET /evaluaties?planUuid=` lists completed evaluations with
   their changes and reasons; running ones never appear there. The Evaluaties
   tab shows each one's evaluatieverslag with it.
@@ -1043,6 +1047,15 @@ reason (§6.5). While the plan is still in concept anything goes.
   covers the use cases and the register proxy alike. Plan creation and the
   plugin actions do not pass `/data` and are not locked: an instrument
   dossier still ends its instrument.
+- **Such an evaluation is completed.** When `PlanSlot` lets a locked
+  change through for an evaluation, it first records that on the session
+  (`vastgesteldGewijzigd`, set only by a conditional update while the
+  session runs); a session that has just ended refuses the change after
+  all. That evaluation can no longer be cancelled (§6.5): completing it
+  records the change with the conversation and the inwoner, cancelling
+  would leave it without either. Cancelling is a conditional update as
+  well, so a locked change let through at the same moment either keeps the
+  session running or is refused.
 - **The tabs** apply the same rule (`shared/planSlot.tsx`) and disable the
   locked actions with the hint *"Wijzig je tijdens een evaluatie"* (§13.3).
 
@@ -1431,7 +1444,7 @@ the demo case types.
 | `ContactmomentDetails` (`contactmoment_details`) | `contactmomentUuid` (= klantcontact uuid) | `planUuid`, `evaluatieType`, `geplandeDatum`, `deelnemers`, `actiepunten`, `evaluationSessionId` |
 | `InvolvedParty` (`involved_party`) | id | `planUuid`, name, role, contact details, `isPrimary` (the procesbegeleider; at most one per plan, partial unique index) |
 | `Action` (`action`) | id | `doelUuid`, optional `instrumentUuid` and `contactmomentUuid`, title, description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED; with a task only → COMPLETED or CANCELLED by the task), assignee name, priority, dates, result, `taakProcessInstanceId` (the GZAC process of its task, §6.8; unique) |
-| `EvaluationSession` (`evaluation_session`) | id | `dossierId`, `planUuid`, `caseDefinitionKey`, `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED/CANCELLED; at most one RUNNING per user), start/end, `evaluatieType`, `deelnemers`, `verslag`, `geplandContactmomentUuid`, `contactmomentUuid` |
+| `EvaluationSession` (`evaluation_session`) | id | `dossierId`, `planUuid`, `caseDefinitionKey`, `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED/CANCELLED; at most one RUNNING per user), start/end, `evaluatieType`, `deelnemers`, `verslag`, `geplandContactmomentUuid`, `contactmomentUuid`, `vastgesteldGewijzigd` (a locked part of the plan was changed in it, §6.7; never written by a save) |
 | `EvaluationChange` (`evaluation_change`) | id | `sessionId`, `subjectType` (PLAN, HOOFDDOEL, SUBDOEL, INSTRUMENT, ACTIE), `subjectUuid`, `subjectTitel`, `soort`, `vanWaarde`, `naarWaarde`, `toelichting` |
 | `DocumentAanvraag` (`document_aanvraag`) | id | a document made by the document process (§6.6): `planUuid`, `dossierId` (the plan dossier the process runs on), `soort` (EVALUATIEVERSLAG), `bronUuid` (the evaluation session), `status` (AANGEVRAAGD → BEZIG → GEREED/MISLUKT), `processInstanceId` (its GZAC process; unique), `gegevens` (JSON data snapshot, cleared when the request ends), `bestandsnaam`, `mediatype`, `inhoud` (the PDF, GEREED only), `foutmelding` (MISLUKT only), `aangevraagdDoor`, `aangevraagdOp`, `bijgewerktOp`; at most one open request per (`soort`, `bronUuid`) |
 | `PhaseConfig` (`phase_config`) | id, unique `caseDefinitionKey` | the case configuration (§10.2) |
