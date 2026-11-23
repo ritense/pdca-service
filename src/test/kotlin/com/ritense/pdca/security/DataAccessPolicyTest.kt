@@ -167,6 +167,35 @@ class DataAccessPolicyTest {
     }
 
     @Test
+    fun `changes to locked plan parts name their plan for the lock, other changes do not`() {
+        val vast = listOf(SlotWijziging(planUuid))
+        fun slot(call: DataCall) = policy.resolve(call).slot
+
+        assertEquals(vast, slot(call("PATCH", "/openplan/plannen/api/v0/plan/$planUuid", body = """{"notitie":"n"}""")))
+        assertEquals(
+            vast,
+            slot(call("POST", "/openplan/plannen/api/v0/doel", body = """{"plannenUuids":["$planUuid"],"persoonUuid":"$persoonUuid","titel":"Werk"}"""))
+        )
+        assertEquals(vast, slot(call("PATCH", "/openplan/plannen/api/v0/doel/$doelUuid", body = """{"beschrijving":"b"}""")))
+        assertEquals(vast, slot(call("DELETE", "/api/v1/pdca/doelen/$doelUuid")))
+        assertEquals(vast, slot(call("POST", "/api/v1/pdca/doelen/$doelUuid/afbreken", body = """{"reden":"r"}""")))
+        assertEquals(vast, slot(call("POST", "/api/v1/pdca/instrumenten/start", body = """{"doelUuid":"$doelUuid","producttypeUuid":"x"}""")))
+        assertEquals(vast, slot(call("PUT", "/api/v1/pdca/plannen/$planUuid/hoofddoel", body = """{"doeltypeUuid":"x"}""")))
+        assertEquals(vast, slot(call("PUT", "/api/v1/pdca/doeldetails/$doelUuid", body = """{"streefEinddatum":null}""")))
+        assertEquals(vast, slot(call("PUT", "/api/v1/pdca/plandetails/$planUuid", body = """{"streefEinddatum":"2027-01-01"}""")))
+        assertEquals(
+            listOf(SlotWijziging(planUuid, weergaveStatus = "Concept")),
+            slot(call("PUT", "/api/v1/pdca/plandetails/$planUuid", body = """{"weergaveStatus":"Concept"}"""))
+        )
+
+        assertEquals(emptyList(), slot(call("PUT", "/api/v1/pdca/doeldetails/$doelUuid", body = """{"voortgangStatus":"OP_KOERS"}""")))
+        assertEquals(emptyList(), slot(call("PUT", "/api/v1/pdca/doeldetails/$doelUuid", body = """{"uitvoeringsStatus":"GESTART"}""")))
+        assertEquals(emptyList(), slot(call("POST", "/api/v1/pdca/acties", body = """{"doelUuid":"$doelUuid","title":"Bellen"}""")))
+        assertEquals(emptyList(), slot(call("POST", "/api/v1/pdca/plannen/$planUuid/afbreken", body = """{"reden":"r"}""")))
+        assertEquals(emptyList(), slot(call("GET", "/openplan/plannen/api/v0/plan/$planUuid")))
+    }
+
+    @Test
     fun `listings must carry their scoping filter and nothing else`() {
         denied(call("GET", "/openplan/plannen/api/v0/doel"))
         denied(call("GET", "/openplan/plannen/api/v0/instrument"))

@@ -36,6 +36,7 @@ class SetupCheck(private val repoDir: File, private val settings: Settings) {
             VerzoekRoute(api, values).missing() +
             EpistolaCatalogs(values, repoDir).missing() +
             PdcaApp(api, values).missing(registerConfigurations) +
+            BuildingBlocks(api, values, repoDir).missing() +
             CaseDefinitions(api, values, repoDir).missing() +
             SystemProcesses(api, values, repoDir).missing()
     }

@@ -11,6 +11,7 @@ function openOnderdelen(check: AfsluitCheck): string {
     check.openSubdoelen > 0 ? `${check.openSubdoelen} ${check.openSubdoelen === 1 ? 'lopend subdoel' : 'lopende subdoelen'}` : null,
     check.openInstrumenten > 0 ? `${check.openInstrumenten} ${check.openInstrumenten === 1 ? 'lopend instrument' : 'lopende instrumenten'}` : null,
     check.openVerzoeken ? `${check.openVerzoeken} ${check.openVerzoeken === 1 ? 'aanvraag zonder instrument' : 'aanvragen zonder instrument'}` : null,
+    check.openTaken > 0 ? `${check.openTaken} ${check.openTaken === 1 ? 'open taak' : 'open taken'}` : null,
   ].filter(Boolean) as string[];
   return delen.length <= 1 ? delen.join('') : `${delen.slice(0, -1).join(', ')} en ${delen[delen.length - 1]}`;
 }

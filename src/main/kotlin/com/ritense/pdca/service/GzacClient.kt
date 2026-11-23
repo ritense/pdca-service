@@ -23,6 +23,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Service
 import org.springframework.web.client.HttpClientErrorException
+import org.springframework.web.client.HttpStatusCodeException
 import org.springframework.web.client.RestClient
 import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
@@ -132,6 +133,138 @@ class GzacClient(
             throw failure
         }
         return result?.get("processInstanceId")?.toString()
+    }
+
+    // ------------------------------------------- building blocks on a dossier
+
+    /** A building block linked to a case definition version: its version and main process definition. */
+    data class BouwblokLink(val versionTag: String, val processDefinitionId: String)
+
+    /** GZAC answered a start with a refusal: nothing was started. */
+    class StartGeweigerdException(reason: String) : ResponseStatusException(HttpStatus.BAD_GATEWAY, reason)
+
+    /** Version tag of the case definition behind [caseDefinitionKey] (see the private variant). */
+    fun caseDefinitionVersionTag(caseDefinitionKey: String): String {
+        val (baseUrl, token) = resolveAccess()
+        return caseDefinitionVersionTag(baseUrl, token, caseDefinitionKey)
+    }
+
+    /**
+     * The building block [buildingBlockKey] as case definition version
+     * [caseDefinitionKey]/[caseVersionTag] links it (its startable items,
+     * also those not startable by users); null when it does not link it.
+     */
+    fun bouwblokLink(caseDefinitionKey: String, caseVersionTag: String, buildingBlockKey: String): BouwblokLink? {
+        val (baseUrl, token) = resolveAccess()
+        val items = try {
+            gzac.get()
+                .uri("$baseUrl$STARTABLE_ITEMS", caseDefinitionKey, caseVersionTag)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                .retrieve()
+                .body(List::class.java)
+        } catch (e: Exception) {
+            log.warn("Listing the startable items of GZAC case definition {} {} failed", caseDefinitionKey, caseVersionTag, e)
+            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC bouwblokken van dossiertype '$caseDefinitionKey' ophalen mislukt")
+        }
+        return items.orEmpty().filterIsInstance<Map<*, *>>()
+            .firstOrNull { it["type"] == "BUILDING_BLOCK" && it["key"] == buildingBlockKey }
+            ?.let { item ->
+                val versionTag = item["versionTag"] as? String
+                val processDefinitionId = item["processDefinitionId"] as? String
+                if (versionTag == null || processDefinitionId == null) null else BouwblokLink(versionTag, processDefinitionId)
+            }
+    }
+
+    /** The properties of a case definition's building-block link: input and output mappings, plugin configuration mappings. */
+    fun bouwblokLinkEigenschappen(caseDefinitionKey: String, caseVersionTag: String, buildingBlockKey: String, buildingBlockVersionTag: String): Map<*, *> {
+        val (baseUrl, token) = resolveAccess()
+        return try {
+            gzac.get()
+                .uri(
+                    "$baseUrl$STARTABLE_ITEMS/{item}/version/{itemVersion}/properties?type=BUILDING_BLOCK",
+                    caseDefinitionKey, caseVersionTag, buildingBlockKey, buildingBlockVersionTag
+                )
+                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                .retrieve()
+                .body(Map::class.java)
+        } catch (e: Exception) {
+            log.warn("Reading the building-block link {} of GZAC case definition {} {} failed", buildingBlockKey, caseDefinitionKey, caseVersionTag, e)
+            null
+        } ?: throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC bouwbloklink '$buildingBlockKey' van dossiertype '$caseDefinitionKey' ophalen mislukt")
+    }
+
+    /**
+     * Replaces the properties of a case definition's building-block link.
+     * GZAC replaces the mappings as a whole, so [properties] carries all of
+     * them (read them first with [bouwblokLinkEigenschappen]).
+     */
+    fun bouwblokLinkBijwerken(
+        caseDefinitionKey: String, caseVersionTag: String, buildingBlockKey: String, buildingBlockVersionTag: String,
+        properties: Map<String, Any?>
+    ) {
+        val (baseUrl, token) = resolveAccess()
+        try {
+            gzac.put()
+                .uri("$baseUrl$STARTABLE_ITEMS/{item}/version/{itemVersion}", caseDefinitionKey, caseVersionTag, buildingBlockKey, buildingBlockVersionTag)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(mapOf("type" to "BUILDING_BLOCK", "properties" to properties))
+                .retrieve()
+                .toBodilessEntity()
+        } catch (e: Exception) {
+            log.warn("Updating the building-block link {} of GZAC case definition {} {} failed", buildingBlockKey, caseDefinitionKey, caseVersionTag, e)
+            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC bouwbloklink '$buildingBlockKey' van dossiertype '$caseDefinitionKey' bijwerken mislukt")
+        }
+    }
+
+    /** The id of the start-form link of process definition [processDefinitionId], for a start on dossier [documentId]. */
+    fun startformulier(processDefinitionId: String, documentId: String): String {
+        val (baseUrl, token) = resolveAccess()
+        val result = try {
+            gzac.get()
+                .uri("$baseUrl/api/v1/process-definition/{id}/start-form?documentId={documentId}", processDefinitionId, documentId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                .retrieve()
+                .body(Map::class.java)
+        } catch (e: Exception) {
+            log.warn("Reading the start form of GZAC process definition {} failed", processDefinitionId, e)
+            null
+        }
+        return result?.get("processLinkId")?.toString()
+            ?: throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC kent geen startformulier voor proces $processDefinitionId")
+    }
+
+    /**
+     * Submits the start form [processLinkId] on dossier [documentId], the
+     * way GZAC's own UI starts a building block on a dossier: the form data
+     * goes into the dossier document, then the process starts. GZAC answers
+     * no process instance. A refusal (an error answer, or errors in the
+     * answer) means nothing started ([StartGeweigerdException]); any other
+     * failure leaves that unknown (502).
+     */
+    fun startformulierIndienen(processLinkId: String, documentId: String, data: Map<String, Any?>) {
+        val (baseUrl, token) = resolveAccess()
+        val result = try {
+            gzac.post()
+                .uri("$baseUrl/api/v1/process-link/{id}/form/submission?documentId={documentId}", processLinkId, documentId)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer $token")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(data)
+                .retrieve()
+                .body(Map::class.java)
+        } catch (e: HttpStatusCodeException) {
+            val errors = runCatching { e.getResponseBodyAs(Map::class.java)?.get("errors") }.getOrNull()
+            log.warn("GZAC refused the start form {} on dossier {} ({}): {}", processLinkId, documentId, e.statusCode.value(), errors ?: "(no reasons)")
+            throw StartGeweigerdException("GZAC weigerde de taak op dossier $documentId te starten")
+        } catch (e: Exception) {
+            log.warn("Submitting start form {} on GZAC dossier {} failed", processLinkId, documentId, e)
+            throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC gaf geen antwoord op de start van de taak")
+        }
+        val errors = (result?.get("errors") as? List<*>)?.filterNotNull() ?: emptyList<Any>()
+        if (errors.isNotEmpty()) {
+            log.warn("GZAC did not start the start form {} on dossier {}: {}", processLinkId, documentId, errors)
+            throw StartGeweigerdException("GZAC weigerde de taak op dossier $documentId te starten")
+        }
     }
 
     /**
@@ -462,6 +595,9 @@ class GzacClient(
 
     private companion object {
         const val GEBRUIKER_NIET_TE_CONTROLEREN = "GZAC is niet bereikbaar om de gebruiker te controleren"
+
+        /** The startable items (building blocks among them) of a case definition version. */
+        const val STARTABLE_ITEMS = "/api/management/v1/case-definition/{key}/version/{versionTag}/startable-item"
 
         /** Matches a dossier search reads; more than a few means duplicates, and the oldest is what counts. */
         const val DOSSIER_SEARCH_SIZE = 10

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  An actie added to a plan becomes a GZAC task: the building block pdca-taak
+  on the plan dossier. The actie records the process that carries its task
+  (one process per actie); acties from before have none and keep their
+  status buttons in the plan.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="021-01-action-taak-process-instance" author="pdca">
+        <addColumn tableName="action">
+            <column name="taak_process_instance_id" type="VARCHAR(64)"/>
+        </addColumn>
+        <createIndex tableName="action" indexName="ux_action_taak_process_instance" unique="true">
+            <column name="taak_process_instance_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

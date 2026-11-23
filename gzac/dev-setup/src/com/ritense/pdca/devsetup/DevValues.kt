@@ -16,6 +16,7 @@ data class DevValues(
     val pluginHost: PluginHostValues,
     val app: AppValues,
     val caseDefinitions: CaseDefinitionValues,
+    val buildingBlocks: BuildingBlockValues,
     val epistola: EpistolaValues,
     val systemProcesses: SystemProcessValues,
     val verzoek: VerzoekValues,
@@ -73,6 +74,9 @@ data class GrantedEndpoint(val method: String, val pattern: String)
 data class ContractBinding(val contract: String, val pluginId: String)
 
 data class CaseDefinitionValues(val placeholderConfigurationId: String, val zips: List<String>)
+
+/** The building block zips of `gzac/bouwblokken`, imported before the case definitions that link them. */
+data class BuildingBlockValues(val zips: List<String>)
 
 /** The Epistola Suite tenant the document templates go into, and the catalogs of `gzac/epistola/catalogs`. */
 data class EpistolaValues(val baseUrl: String, val tenantId: String, val apiKey: String, val catalogs: List<String>)

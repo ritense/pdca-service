@@ -7,6 +7,7 @@ import { CenterCircle, Document, Edit, Group, Milestone, UserFollow, type Carbon
 import type { Betrokkene, ContactmomentDetails, Klantcontact, Plan, PlanDetails } from '../shared/api';
 import { formatDate } from '../shared/dates';
 import { doelTypeNaam, evalTypeLabel } from '../shared/labels';
+import { VERGRENDELD_HINT } from '../shared/planSlot';
 import { useSubmit } from '../shared/useSubmit';
 import type { PlanVeld } from './overzichtActies';
 import type { OverzichtModel } from './useOverzicht';
@@ -34,15 +35,18 @@ interface VeldDefinitie {
 
 /**
  * The plan fields. Only the procesbegeleider (one of the plan's betrokkenen)
- * and the explanation for the inwoner are edited here; hoofddoel,
+ * and the explanation for the inwoner are edited here — the explanation,
+ * once the plan is locked, only during an evaluation; hoofddoel,
  * subdoelgroep and positie are set when the plan is created from the intake
  * and shown read-only.
  */
-export function PlanGegevens({ plan, details, model, procesbegeleider, onSave }: {
+export function PlanGegevens({ plan, details, model, procesbegeleider, vergrendeld, onSave }: {
   plan: Plan;
   details: PlanDetails;
   model: OverzichtModel;
   procesbegeleider: Betrokkene | null;
+  /** The plan's locked parts cannot change now (see isVergrendeld). */
+  vergrendeld: boolean;
   /** Saves one field; throws on failure so the field stays in edit mode with the error. */
   onSave: (veld: PlanVeld, waarde: string) => Promise<void>;
 }) {
@@ -58,7 +62,7 @@ export function PlanGegevens({ plan, details, model, procesbegeleider, onSave }:
     },
     {
       key: 'notitie', label: 'Toelichting bij hoofddoel', emptyText: 'Geen toelichting', icon: Document, tint: 'green',
-      value: plan.notitie,
+      value: plan.notitie, hint: vergrendeld ? VERGRENDELD_HINT : undefined,
     },
     {
       key: 'procesbegeleider', label: 'Procesbegeleider', emptyText: 'Nog geen procesbegeleider', icon: UserFollow,

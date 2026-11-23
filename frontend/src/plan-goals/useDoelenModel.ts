@@ -34,8 +34,13 @@ export interface DoelenModel {
   alleActiesVan: (doelUuid: string) => Actie[];
   actiesVanInstrument: (instrumentUuid: string) => Actie[];
   instrumentenVan: (doelUuid: string) => Instrument[];
-  /** Running instruments of a doel that their instrument dossier manages: they block aborting or removing it. */
-  openDossiersVan: (doelUuid: string) => string[];
+  /**
+   * What still runs under a doel and keeps it from being aborted (any actief
+   * instrument) or removed (an instrument its dossier manages), plus its open
+   * verzoeken and the acties whose GZAC task is open — the same rule as the
+   * backend, named for the modal.
+   */
+  lopendWerkVan: (doelUuid: string, verzoeken: OpenVerzoek[] | undefined, voor: 'afbreken' | 'verwijderen') => string[];
 }
 
 /**
@@ -113,8 +118,14 @@ function useDoelenModel(
       alleActiesVan: doelUuid => acties.filter(a => a.doelUuid === doelUuid),
       actiesVanInstrument: instrumentUuid => acties.filter(a => a.instrumentUuid === instrumentUuid),
       instrumentenVan,
-      openDossiersVan: doelUuid =>
-        instrumentenVan(doelUuid).filter(i => i.status === 'actief' && !!parseDossierUrn(i.zaak)).map(i => i.titel),
+      lopendWerkVan: (doelUuid, verzoeken, voor) => [
+        ...instrumentenVan(doelUuid)
+          .filter(i => i.status === 'actief' && (voor === 'afbreken' || !!parseDossierUrn(i.zaak)))
+          .map(i => `${i.titel} (${parseDossierUrn(i.zaak) ? 'instrumentdossier' : 'instrument'})`),
+        ...verzoekenVan(verzoeken, doelUuid).map(v => `${v.productTitel || 'instrument'} (aanvraag)`),
+        ...acties.filter(a => a.doelUuid === doelUuid && !!a.taakProcessInstanceId && a.status !== 'COMPLETED')
+          .map(a => `${a.title} (taak)`),
+      ],
     };
   }, [plan, details, data, doeltypen, voortgangOpties, caseConfig]);
 }

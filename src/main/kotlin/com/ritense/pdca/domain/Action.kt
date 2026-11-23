@@ -27,9 +27,11 @@ import java.time.LocalDateTime
 import java.util.UUID
 
 /**
- * Local PDCA workflow item under a doel in Open Plan. Open Plan does not model
+ * PDCA workflow item under a doel in Open Plan. Open Plan does not model
  * actions; they exist only in this app. [doelUuid] references an Open Plan
  * doel, [contactmomentUuid] the contactmoment (evaluation) it originated from.
+ * A new actie becomes a task in GZAC ([taakProcessInstanceId], ARCHITECTURE
+ * §6.8), which then owns its completion.
  */
 @Entity
 @Table(name = "action")
@@ -76,6 +78,14 @@ data class Action(
     @Column(columnDefinition = "TEXT")
     var result: String? = null,
 
+    /**
+     * The GZAC process (building block pdca-taak on the plan dossier) whose
+     * task carries this actie; null for an actie from before acties became
+     * tasks. Recorded by that process itself (actie-taak-gestart).
+     */
+    @Column(name = "taak_process_instance_id", unique = true)
+    var taakProcessInstanceId: String? = null,
+
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
 
@@ -84,4 +94,7 @@ data class Action(
 )
 
 enum class ActionStatus { PLANNED, IN_PROGRESS, PENDING_REVIEW, COMPLETED, REJECTED }
+
+/** Whether this actie's completion belongs to its GZAC task. */
+val Action.isTaakBeheerd: Boolean get() = taakProcessInstanceId != null
 enum class Priority { HIGH, NORMAL, LOW }

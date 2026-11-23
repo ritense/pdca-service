@@ -25,5 +25,6 @@
     <include file="config/liquibase/018-document-aanvraag-proces.xml"/>
     <include file="config/liquibase/019-doel-streef-einddatum.xml"/>
     <include file="config/liquibase/020-drop-action-assignee-type.xml"/>
+    <include file="config/liquibase/021-action-taak.xml"/>
 
 </databaseChangeLog>

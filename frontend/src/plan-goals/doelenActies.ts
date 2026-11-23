@@ -121,7 +121,7 @@ export function doelenActies(model: DoelenModel) {
       subdoel(doel, 'SUBDOEL_AFGEROND');
     },
 
-    /** Aborting requires a reason; a doel takes its running instruments along (refused while a dossier manages one). */
+    /** Aborting requires a reason; a doel is refused while an instrument or aanvraag under it still runs. */
     async breekAf(target: { kind: 'doel' | 'instrument'; uuid: string; titel: string }, reden: string) {
       if (target.kind === 'doel') {
         await pdca.doelen.afbreken(target.uuid, reden);

@@ -6,28 +6,28 @@ import { aantal, doelTypeNaam, subdoelTypen, subdoelTypenVoorHoofddoel } from '.
 import { useSubmit } from '../shared/useSubmit';
 import type { ActieContext, ActieInvoer, DoelInvoer } from './doelenActies';
 
-/** Doel or instrument awaiting its abort reason; `openDossiers` names the instrument dossiers that block a doel. */
-export type AfbreekTarget = { kind: 'doel' | 'instrument'; uuid: string; titel: string; openDossiers?: string[] } | null;
-/** Subdoel awaiting confirmation of its removal, with what goes with it and the instrument dossiers that block it. */
-export type VerwijderTarget = { uuid: string; titel: string; instrumenten: number; acties: number; openDossiers: string[] } | null;
+/** Doel or instrument awaiting its abort reason; `lopendWerk` names what still runs under a doel and blocks it. */
+export type AfbreekTarget = { kind: 'doel' | 'instrument'; uuid: string; titel: string; lopendWerk?: string[] } | null;
+/** Subdoel awaiting confirmation of its removal, with what goes with it and what still runs under it and blocks it. */
+export type VerwijderTarget = { uuid: string; titel: string; instrumenten: number; acties: number; lopendWerk: string[] } | null;
 
-/** "X wordt beheerd door een eigen instrumentdossier; …": why a doel cannot be aborted or removed yet. */
-function OpenDossiers({ titels }: { titels: string[] }) {
+/** Why a subdoel cannot be aborted or removed yet: what still runs under it, and how to end each kind. */
+function LopendWerk({ items }: { items: string[] }) {
   return (
-    <InlineNotification kind="warning" title="Sluit eerst de instrumentdossiers af"
-      subtitle={`${titels.join(', ')} ${titels.length === 1 ? 'wordt' : 'worden'} beheerd door een eigen instrumentdossier; rond ze daar af of annuleer ze daar.`}
+    <InlineNotification kind="warning" title="Sluit eerst af wat nog loopt"
+      subtitle={`Onder dit subdoel loopt nog: ${items.join(', ')}. Rond een instrument af of breek het af (een instrumentdossier in het dossier zelf), wacht tot een aanvraag een instrument is geworden en rond een taak af in de takenlijst.`}
       lowContrast hideCloseButton />
   );
 }
 
-/** Aborting always requires a reason (doel: cascades to linked instruments). */
+/** Aborting always requires a reason; a subdoel only once nothing runs under it any more. */
 export function AfbreekModal({ target, onClose, onSubmit }: {
   target: AfbreekTarget; onClose: () => void; onSubmit: (reden: string) => Promise<void>;
 }) {
   const [reden, setReden] = useState('');
   const { saving, fout, submit, reset } = useSubmit();
   useEffect(() => { if (target) { setReden(''); reset(); } }, [target, reset]);
-  const geblokkeerd = (target?.openDossiers?.length ?? 0) > 0;
+  const geblokkeerd = (target?.lopendWerk?.length ?? 0) > 0;
   return (
     <Modal open={!!target} danger modalHeading={`${target?.kind === 'doel' ? 'Subdoel' : 'Instrument'} afbreken`}
       primaryButtonText={saving ? 'Afbreken…' : 'Afbreken'} secondaryButtonText="Annuleren"
@@ -35,11 +35,8 @@ export function AfbreekModal({ target, onClose, onSubmit }: {
       onRequestClose={onClose} onRequestSubmit={() => reden.trim() && !geblokkeerd && submit(() => onSubmit(reden.trim()))}>
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Afbreken mislukt" subtitle={fout} lowContrast hideCloseButton />}
-        {geblokkeerd && <OpenDossiers titels={target!.openDossiers!} />}
-        <p>
-          Je staat op het punt <strong>{target?.titel}</strong> af te breken.
-          {target?.kind === 'doel' && ' Gekoppelde actieve instrumenten worden ook afgebroken.'}
-        </p>
+        {geblokkeerd && <LopendWerk items={target!.lopendWerk!} />}
+        <p>Je staat op het punt <strong>{target?.titel}</strong> af te breken.</p>
         <TextArea id="afbreek-reden" labelText="Reden (verplicht)" value={reden}
           onChange={e => setReden(e.target.value)} placeholder="Waarom wordt dit afgebroken?" />
       </div>
@@ -53,7 +50,7 @@ export function VerwijderModal({ target, onClose, onSubmit }: {
 }) {
   const { saving, fout, submit, reset } = useSubmit();
   useEffect(() => { if (target) reset(); }, [target, reset]);
-  const geblokkeerd = (target?.openDossiers.length ?? 0) > 0;
+  const geblokkeerd = (target?.lopendWerk.length ?? 0) > 0;
   const mee = target
     ? [
         target.instrumenten > 0 ? aantal(target.instrumenten, 'instrument', 'instrumenten') : null,
@@ -67,7 +64,7 @@ export function VerwijderModal({ target, onClose, onSubmit }: {
       onRequestClose={onClose} onRequestSubmit={() => !geblokkeerd && submit(onSubmit)}>
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Verwijderen mislukt" subtitle={fout} lowContrast hideCloseButton />}
-        {geblokkeerd && <OpenDossiers titels={target!.openDossiers} />}
+        {geblokkeerd && <LopendWerk items={target!.lopendWerk} />}
         <p>
           <strong>{target?.titel}</strong> wordt verwijderd{mee ? `, inclusief ${mee}` : ''}. Dit kan niet ongedaan worden gemaakt.
         </p>
@@ -189,7 +186,8 @@ export function ActieModal({ open, ctx, onClose, onSave }: {
       onRequestClose={onClose} onRequestSubmit={opslaan}>
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
-        <TextInput id="actie-title" labelText="Titel (verplicht)" value={title} onChange={e => setTitle(e.target.value)} />
+        <TextInput id="actie-title" labelText="Titel (verplicht)" value={title} onChange={e => setTitle(e.target.value)}
+          helperText="De actie wordt een taak met deze titel in de takenlijst van dit dossier; daar rond je haar af" />
         <TextArea id="actie-desc" labelText="Beschrijving" value={desc} onChange={e => setDesc(e.target.value)} />
         <TextInput id="actie-assignee" labelText="Naam uitvoerder" value={assigneeName} onChange={e => setAssigneeName(e.target.value)} />
         <Select id="actie-priority" labelText="Prioriteit" value={priority} onChange={e => setPriority(e.target.value)}>

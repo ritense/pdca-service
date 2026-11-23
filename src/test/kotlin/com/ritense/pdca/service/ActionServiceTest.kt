@@ -17,6 +17,7 @@
 package com.ritense.pdca.service
 
 import com.ritense.pdca.domain.Action
+import com.ritense.pdca.domain.ActionStatus
 import com.ritense.pdca.registers.openplan.DoelRef
 import com.ritense.pdca.registers.openplan.Instrument
 import com.ritense.pdca.registers.openplan.OpenPlanGateway
@@ -24,6 +25,7 @@ import com.ritense.pdca.repository.ActionRepository
 import com.ritense.pdca.repository.DoelDetailsRepository
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
@@ -36,13 +38,37 @@ class ActionServiceTest {
 
     private val openPlan = mock(OpenPlanGateway::class.java)
     private val acties = InMemoryRepository(Action::class, "id")
-    private val service = ActionService(acties.proxy(ActionRepository::class), mock(DoelDetailsRepository::class.java), openPlan)
+    private val taken = mock(ActieTaakService::class.java)
+    private val service = ActionService(acties.proxy(ActionRepository::class), mock(DoelDetailsRepository::class.java), openPlan, taken)
 
     private val doelUuid = UUID.randomUUID()
     private val instrument = Instrument(uuid = UUID.randomUUID(), titel = "Jobcoaching", status = "actief", doelen = listOf(DoelRef(doelUuid, "actief")))
 
     init {
         `when`(openPlan.findInstrument(instrument.uuid)).thenReturn(instrument)
+        `when`(taken.start(anyValue())).thenAnswer { it.arguments[0] }
+    }
+
+    @Test
+    fun `a new actie is saved, then its GZAC task is started`() {
+        val actie = service.create(Action(doelUuid = doelUuid, title = "Werkgever bellen"))
+
+        verify(taken).start(acties.rows[actie.id]!!)
+    }
+
+    @Test
+    fun `the status of an actie with a GZAC task follows the task only`() {
+        val actie = Action(doelUuid = doelUuid, title = "Werkgever bellen", taakProcessInstanceId = "proces-1")
+        acties.rows[actie.id] = actie
+
+        listOf(
+            { service.update(actie.id, actie.copy(status = ActionStatus.IN_PROGRESS)) },
+            { service.approve(actie.id) },
+            { service.reject(actie.id) }
+        ).forEach { poging ->
+            assertEquals(HttpStatus.CONFLICT, assertFailsWith<ResponseStatusException> { poging() }.statusCode)
+        }
+        assertEquals("Andere titel", service.update(actie.id, actie.copy(title = "Andere titel")).title)
     }
 
     @Test

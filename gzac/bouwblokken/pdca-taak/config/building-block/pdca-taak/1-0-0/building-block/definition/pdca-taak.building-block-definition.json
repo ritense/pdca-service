@@ -1,0 +1,7 @@
+{
+    "key": "pdca-taak",
+    "name": "PDCA-taak",
+    "description": "Maakt van een actie in een PDCA-plan een taak in de takenlijst van het plandossier. De titel van de taak is de titel van de actie; met het afronden van de taak is de actie in het plan afgerond.",
+    "versionTag": "1.0.0",
+    "final": true
+}

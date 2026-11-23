@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_pdca_taak"
+                  targetNamespace="http://bpmn.io/schema/bpmn"
+                  exporter="pdca-app" exporterVersion="0.2.0">
+    <!--
+      Building block "pdca-taak": every actie added to a PDCA plan becomes a
+      task in the plan dossier's task list. The PDCA app starts it through its
+      start form on the plan dossier; the start data lands on the dossier
+      document under /bouwblokStart and the plan case type's building-block
+      link copies it into this building block's document (actieId, titel,
+      omschrijving, planUuid, doelUuid) and the task title into the process
+      variable taakTitel. The task is the actie: completing it with a
+      resultaat completes the actie in the plan (actie-gereed).
+    -->
+    <bpmn:process camunda:versionTag="BB:pdca-taak:1.0.0" id="pdca-taak" isExecutable="true" name="PDCA-taak">
+        <bpmn:startEvent id="start-event" name="Actie toegevoegd aan het plan">
+            <bpmn:outgoing>flow-start-gestart</bpmn:outgoing>
+        </bpmn:startEvent>
+        <!-- Synchronous on purpose: it runs within the PDCA app's start call
+             and tells the app which process carries the actie, so the app
+             knows the task exists even when the start's own answer is lost
+             (the start form submission returns no process instance). -->
+        <bpmn:serviceTask camunda:expression="${true}" id="taak-gestart" name="Taak melden bij het plan">
+            <bpmn:documentation>Plugin action actie-taak-gestart: records this process on the actie
+                (doc:/actieId) in the PDCA app.
+            </bpmn:documentation>
+            <bpmn:incoming>flow-start-gestart</bpmn:incoming>
+            <bpmn:outgoing>flow-gestart-uitvoeren</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <!-- The task name is the actie's title, set by the building-block
+             link's input mapping pv:taakTitel. -->
+        <bpmn:userTask camunda:candidateGroups="ROLE_USER" id="taak-uitvoeren" name="${taakTitel}">
+            <bpmn:documentation>Voer de actie uit en leg het resultaat vast met het formulier
+                "pdca-taak-afronden" (documentveld resultaat).
+            </bpmn:documentation>
+            <bpmn:incoming>flow-gestart-uitvoeren</bpmn:incoming>
+            <bpmn:outgoing>flow-uitvoeren-gereed</bpmn:outgoing>
+        </bpmn:userTask>
+        <!-- Asynchronous with retries, like the instrument dossier's actions:
+             completing the task always succeeds for the user, and the actie
+             follows once the job has run. actie-gereed is safe to repeat. -->
+        <bpmn:serviceTask camunda:asyncBefore="true" camunda:expression="${true}" id="taak-gereed"
+                          name="Actie afronden in het plan">
+            <bpmn:documentation>Plugin action actie-gereed: completes the actie (doc:/actieId) in the
+                PDCA app with the resultaat from doc:/resultaat.
+            </bpmn:documentation>
+            <bpmn:extensionElements>
+                <camunda:failedJobRetryTimeCycle>R5/PT1M</camunda:failedJobRetryTimeCycle>
+            </bpmn:extensionElements>
+            <bpmn:incoming>flow-uitvoeren-gereed</bpmn:incoming>
+            <bpmn:outgoing>flow-gereed-einde</bpmn:outgoing>
+        </bpmn:serviceTask>
+        <bpmn:endEvent id="einde" name="Actie afgerond">
+            <bpmn:incoming>flow-gereed-einde</bpmn:incoming>
+        </bpmn:endEvent>
+        <bpmn:sequenceFlow id="flow-start-gestart" sourceRef="start-event" targetRef="taak-gestart"/>
+        <bpmn:sequenceFlow id="flow-gestart-uitvoeren" sourceRef="taak-gestart" targetRef="taak-uitvoeren"/>
+        <bpmn:sequenceFlow id="flow-uitvoeren-gereed" sourceRef="taak-uitvoeren" targetRef="taak-gereed"/>
+        <bpmn:sequenceFlow id="flow-gereed-einde" sourceRef="taak-gereed" targetRef="einde"/>
+    </bpmn:process>
+    <bpmndi:BPMNDiagram id="BPMNDiagram_pdca_taak">
+        <bpmndi:BPMNPlane bpmnElement="pdca-taak" id="BPMNPlane_pdca_taak">
+            <bpmndi:BPMNShape bpmnElement="start-event" id="Shape_start-event">
+                <dc:Bounds height="36" width="36" x="152" y="152"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="taak-gestart" id="Shape_taak-gestart">
+                <dc:Bounds height="80" width="100" x="250" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="taak-uitvoeren" id="Shape_taak-uitvoeren">
+                <dc:Bounds height="80" width="100" x="410" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="taak-gereed" id="Shape_taak-gereed">
+                <dc:Bounds height="80" width="100" x="570" y="130"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNShape bpmnElement="einde" id="Shape_einde">
+                <dc:Bounds height="36" width="36" x="732" y="152"/>
+            </bpmndi:BPMNShape>
+            <bpmndi:BPMNEdge bpmnElement="flow-start-gestart" id="Edge_flow-start-gestart">
+                <di:waypoint x="188" y="170"/>
+                <di:waypoint x="250" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-gestart-uitvoeren" id="Edge_flow-gestart-uitvoeren">
+                <di:waypoint x="350" y="170"/>
+                <di:waypoint x="410" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-uitvoeren-gereed" id="Edge_flow-uitvoeren-gereed">
+                <di:waypoint x="510" y="170"/>
+                <di:waypoint x="570" y="170"/>
+            </bpmndi:BPMNEdge>
+            <bpmndi:BPMNEdge bpmnElement="flow-gereed-einde" id="Edge_flow-gereed-einde">
+                <di:waypoint x="670" y="170"/>
+                <di:waypoint x="732" y="170"/>
+            </bpmndi:BPMNEdge>
+        </bpmndi:BPMNPlane>
+    </bpmndi:BPMNDiagram>
+</bpmn:definitions>

@@ -64,7 +64,7 @@ class PluginHostController(
          * and only applies this allowlist. Capability frontend_data declares
          * the `/data` route ([PluginDataController]); the user tokens GZAC
          * forwards there are bounded by the same allowlist intersected with
-         * the user's PBAC. Two grants are management endpoints, which the
+         * the user's PBAC. Some grants are management endpoints, which the
          * token reaches with ADMIN authority (only GZAC's hard denylist stays
          * closed): each is the only way to its data, see its comment.
          */
@@ -119,6 +119,35 @@ class PluginHostController(
                 "method" to "POST",
                 "pattern" to "/api/v1/process-document/operation/modify-document-and-start-process"
             ),
+            // An actie becomes a task: the building block pdca-taak, started
+            // on the plan dossier through its start form like GZAC's own UI
+            // does (a building block cannot be started by process key). The
+            // plan case type's startable items name the building block's
+            // process definition; its link is read and, when it does not map
+            // the PDCA plugin to the active configuration (a case import
+            // leaves it empty), updated: both are management endpoints, the
+            // only way to a link. Then the start form is looked up and
+            // submitted on the dossier.
+            mapOf(
+                "method" to "GET",
+                "pattern" to "/api/management/v1/case-definition/*/version/*/startable-item"
+            ),
+            mapOf(
+                "method" to "GET",
+                "pattern" to "/api/management/v1/case-definition/*/version/*/startable-item/*/version/*/properties"
+            ),
+            mapOf(
+                "method" to "PUT",
+                "pattern" to "/api/management/v1/case-definition/*/version/*/startable-item/*/version/*"
+            ),
+            mapOf(
+                "method" to "GET",
+                "pattern" to "/api/v1/process-definition/*/start-form"
+            ),
+            mapOf(
+                "method" to "POST",
+                "pattern" to "/api/v1/process-link/*/form/submission"
+            ),
             // GZAC's accent colours (the --vcds-color-* ramp an administrator
             // sets under Appearance). The bundles render in sandboxed iframes
             // and cannot read the host's inline styles, so they fetch the ramp
@@ -155,7 +184,9 @@ class PluginHostController(
                 "action.instrumentUuid.label" to "Instrument",
                 "action.instrumentUuid.help" to "UUID of the instrument in Open Plan, as returned by aanmaak-instrument (typically doc:/instrumentUuid).",
                 "action.resultaat.label" to "Result",
-                "action.resultaat.help" to "behaald or gefaald when the instrument is completed (e.g. doc:/productResultaat).",
+                "action.resultaat.help" to "update-instrument: behaald or gefaald (e.g. doc:/productResultaat); actie-gereed: the result of the task (doc:/resultaat).",
+                "action.actieId.label" to "Actie",
+                "action.actieId.help" to "Id of the actie in the PDCA plan (typically doc:/actieId).",
                 "action.toelichting.label" to "Explanation",
                 "action.toelichting.help" to "Optional explanation, stored in the PDCA overlay of the instrument.",
                 "action.aanvraagId.label" to "Document request",
@@ -188,7 +219,9 @@ class PluginHostController(
                 "action.instrumentUuid.label" to "Instrument",
                 "action.instrumentUuid.help" to "UUID van het instrument in Open Plan, zoals aanmaak-instrument die teruggaf (doorgaans doc:/instrumentUuid).",
                 "action.resultaat.label" to "Resultaat",
-                "action.resultaat.help" to "behaald of gefaald bij het afronden van het instrument (bv. doc:/productResultaat).",
+                "action.resultaat.help" to "update-instrument: behaald of gefaald (bv. doc:/productResultaat); actie-gereed: het resultaat van de taak (doc:/resultaat).",
+                "action.actieId.label" to "Actie",
+                "action.actieId.help" to "Id van de actie in het PDCA-plan (doorgaans doc:/actieId).",
                 "action.toelichting.label" to "Toelichting",
                 "action.toelichting.help" to "Optionele toelichting; komt in de PDCA-overlay van het instrument.",
                 "action.aanvraagId.label" to "Documentaanvraag",
@@ -268,9 +301,11 @@ class PluginHostController(
         // BPMN-bindable action handlers, executed by PluginActionController.
         // The instrument dossier (gzac/case-definitions/instrument-verzoek,
         // ARCHITECTURE §6.2) uses the first two to manage the instrument in
-        // Open Plan itself; the document process (documentProces) the last
-        // two to fetch a document's data and hand the document back. Those
-        // answer with process variables (the `variables` channel), not outputs.
+        // Open Plan itself; the document process (documentProces) the next
+        // two to fetch a document's data and hand the document back (those
+        // answer with process variables, the `variables` channel, not
+        // outputs); the building block pdca-taak (gzac/bouwblokken, §6.8)
+        // the last two to report the task of an actie.
         "actions" to listOf(
             mapOf(
                 "key" to "aanmaak-instrument",
@@ -328,6 +363,27 @@ class PluginHostController(
                     mapOf("key" to "inhoud", "type" to "string", "required" to false),
                     mapOf("key" to "bestandsnaam", "type" to "string", "required" to false),
                     mapOf("key" to "foutmelding", "type" to "string", "required" to false)
+                )
+            ),
+            mapOf(
+                "key" to "actie-taak-gestart",
+                "title" to "Taak van actie gestart",
+                "description" to "Meldt aan PDCA dat dit proces de taak van een actie in het plan is. Hoort als " +
+                    "eerste stap in het taakbouwblok, vóór de gebruikerstaak. Veilig om te herhalen.",
+                "activityTypes" to listOf("SERVICE_TASK_START"),
+                "properties" to listOf(
+                    mapOf("key" to "actieId", "type" to "string", "required" to true)
+                )
+            ),
+            mapOf(
+                "key" to "actie-gereed",
+                "title" to "Actie gereed",
+                "description" to "Rondt de actie in het plan af met het resultaat van de taak. Een actie die al " +
+                    "is afgerond, blijft ongemoeid.",
+                "activityTypes" to listOf("SERVICE_TASK_START"),
+                "properties" to listOf(
+                    mapOf("key" to "actieId", "type" to "string", "required" to true),
+                    mapOf("key" to "resultaat", "type" to "string", "required" to false)
                 )
             )
         )

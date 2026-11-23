@@ -110,8 +110,14 @@ export function VerzoekRij({ verzoek, producttypen }: { verzoek: OpenVerzoek; pr
 }
 
 /** One actie/taak row with the local status flow. Used under a doel and under an instrument. */
+/**
+ * One actie. An actie with a GZAC task is completed by completing that task
+ * in the dossier's task list, so it shows no status buttons; an older actie
+ * without task keeps the plan page's status steps.
+ */
 export function ActieRow({ actie, busy, onStatus }: { actie: Actie; busy: boolean; onStatus: (id: string, action: string) => void }) {
   const status = actieStatus(actie.status);
+  const taak = !!actie.taakProcessInstanceId;
   return (
     <div className="pdca-action-row">
       <div className="pdca-row-main">
@@ -125,9 +131,12 @@ export function ActieRow({ actie, busy, onStatus }: { actie: Actie; busy: boolea
       <div className="pdca-row-actions">
         {actie.priority && <Tag size="sm" type={actie.priority === 'HIGH' ? 'red' : 'gray'}>{priorityLabel(actie.priority)}</Tag>}
         <Tag size="sm" type={status.tag}>{status.label}</Tag>
-        {actie.status === 'PLANNED' && <Button size="sm" kind="ghost" disabled={busy} onClick={() => onStatus(actie.id, 'IN_PROGRESS')}>Starten</Button>}
-        {actie.status === 'IN_PROGRESS' && <Button size="sm" kind="ghost" disabled={busy} onClick={() => onStatus(actie.id, 'PENDING_REVIEW')}>Ter beoordeling</Button>}
-        {actie.status === 'PENDING_REVIEW' && <>
+        {taak && actie.status !== 'COMPLETED' && (
+          <Tag size="sm" type="cool-gray" title="Rond de taak af in de takenlijst van dit dossier">Taak in GZAC</Tag>
+        )}
+        {!taak && actie.status === 'PLANNED' && <Button size="sm" kind="ghost" disabled={busy} onClick={() => onStatus(actie.id, 'IN_PROGRESS')}>Starten</Button>}
+        {!taak && actie.status === 'IN_PROGRESS' && <Button size="sm" kind="ghost" disabled={busy} onClick={() => onStatus(actie.id, 'PENDING_REVIEW')}>Ter beoordeling</Button>}
+        {!taak && actie.status === 'PENDING_REVIEW' && <>
           <Button size="sm" kind="primary" renderIcon={Checkmark} disabled={busy} onClick={() => onStatus(actie.id, 'approve')}>Goedkeuren</Button>
           <Button size="sm" kind="danger" renderIcon={Close} disabled={busy} onClick={() => onStatus(actie.id, 'reject')}>Afkeuren</Button>
         </>}
@@ -138,7 +147,9 @@ export function ActieRow({ actie, busy, onStatus }: { actie: Actie; busy: boolea
 
 /** "Instrument aanvragen": a dropdown of the producttypen that can be requested under a doel. */
 export function ProductMenu({ producttypen, disabled, bezigMet, onKies }: {
-  producttypen: ProductType[]; disabled: boolean;
+  producttypen: ProductType[];
+  /** Why nothing can be requested now, shown on the button; null when it can. */
+  disabled: string | null;
   /** The producttype whose request is under way. */
   bezigMet: string | null;
   onKies: (producttype: ProductType) => void;
@@ -146,8 +157,8 @@ export function ProductMenu({ producttypen, disabled, bezigMet, onKies }: {
   const [open, setOpen] = useState(false);
   return (
     <div className="pdca-menu-anker">
-      <Button size="sm" kind="tertiary" renderIcon={ChevronDown} disabled={disabled}
-        title={disabled ? 'Alleen bij een actief doel' : undefined} onClick={() => setOpen(o => !o)}>
+      <Button size="sm" kind="tertiary" renderIcon={ChevronDown} disabled={!!disabled}
+        title={disabled ?? undefined} onClick={() => setOpen(o => !o)}>
         Instrument aanvragen
       </Button>
       {open && !disabled && (
