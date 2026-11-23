@@ -323,6 +323,11 @@ Rerunning the Open Product seed with the variable updates the existing
 - **Instrument dossier 1.2.0** — import `instrument-verzoek.zip` 1.2.0 (all
   three plugin actions asynchronous with retries). Dossiers already running
   keep the process version they started with; new dossiers start on 1.2.0.
+- **Intakes 1.3.0 and 1.5.0** — import `intake-werk-participatie.zip`
+  1.3.0 and `renovatie-intake.zip` 1.5.0: a startdatum per subdoel, which
+  plan creation takes over, and demo defaults with every subdoel's dates in
+  the second half of 2027. Running intakes keep the version they started
+  with.
 - **Acties as GZAC tasks** — import `gzac/bouwblokken/pdca-taak.zip`, then
   `inwonerplan.zip` and `binnenhof-renovatie.zip` 1.7.0 (they link the
   building block), and accept the changed footprint of the manifest: five

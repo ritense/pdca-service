@@ -6,7 +6,7 @@ import { formatDate, vandaag } from '../shared/dates';
 import { doelgroepVoorSubject, evalTypeLabel, producttypenVoorDoel, subdoelTypenVoorHoofddoel } from '../shared/labels';
 import { subjectUrn } from '../shared/urn';
 import type { DoelStatus, EvaluatieStatus } from './createPlanApi';
-import { subdoelEinddatumFout } from './createPlanForm';
+import { subdoelEinddatumFout, subdoelStartdatumFout } from './createPlanForm';
 import type { FormActie, FormState, InstrumentRij, Registers, Sectie } from './createPlanForm';
 
 const DOEL_STATUSSEN: { value: DoelStatus; text: string }[] = [
@@ -75,7 +75,8 @@ export function SubdoelenSectie(props: SectieProps) {
     <LijstSectie {...props} sectie="subdoelen" titel={`Subdoelen (${state.subdoelen.length})`} toevoegen="Subdoel toevoegen"
       samenvatting={state.subdoelen.map(d => d.doelType || 'Nog geen doel').join(', ') || 'Nog geen subdoelen'}
       waarschuwing={state.poging && state.subdoelen.some(d => !d.doelType) ? 'Doel ontbreekt'
-        : state.subdoelen.some(d => datumFout(d)) ? 'Beoogde einddatum ongeldig' : undefined}>
+        : state.subdoelen.some(d => datumFout(d)) ? 'Beoogde einddatum ongeldig'
+        : state.subdoelen.some(d => subdoelStartdatumFout(d)) ? 'Startdatum ongeldig' : undefined}>
       {state.subdoelen.length === 0 && <p className="cp-leeg">Nog geen subdoelen.</p>}
       {state.subdoelen.map((d, i) => (
         <Rij key={d.key} label="Subdoel verwijderen" onVerwijder={() => dispatch({ type: 'verwijderRij', sectie: 'subdoelen', key: d.key })}>
@@ -96,6 +97,12 @@ export function SubdoelenSectie(props: SectieProps) {
               onChange={e => wijzig(d.key, { status: e.target.value as DoelStatus })}>
               {DOEL_STATUSSEN.map(s => <SelectItem key={s.value} value={s.value} text={s.text} />)}
             </Select>
+          </div>
+          <div className="cp-veld cp-veld--smal">
+            <TextInput id={`cp-subdoel-${d.key}-startdatum`} size="sm" type="date" labelText="Startdatum"
+              value={d.startdatum} max={d.streefEinddatum || undefined}
+              invalid={!!subdoelStartdatumFout(d)} invalidText={subdoelStartdatumFout(d) || undefined}
+              onChange={e => wijzig(d.key, { startdatum: e.target.value })} />
           </div>
           <div className="cp-veld cp-veld--smal">
             <TextInput id={`cp-subdoel-${d.key}-einddatum`} size="sm" type="date" labelText="Beoogde einddatum"

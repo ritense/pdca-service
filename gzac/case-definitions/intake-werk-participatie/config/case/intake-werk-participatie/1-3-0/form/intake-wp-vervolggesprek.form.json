@@ -279,37 +279,51 @@
         {
           "doelType": "Financiele situatie in kaart brengen",
           "beschrijving": "Volledig overzicht van inkomsten, schulden, toeslagen en lopende financiele verplichtingen.",
-          "status": "gestart"
+          "status": "gepland",
+          "startdatum": "2027-07-01",
+          "streefEinddatum": "2027-08-15"
         },
         {
           "doelType": "Competenties en werkervaring beoordelen",
           "beschrijving": "Beroepsprofielanalyse, overdraagbare vaardigheden en scholingsbehoefte vaststellen.",
-          "status": "gestart"
+          "status": "gepland",
+          "startdatum": "2027-07-15",
+          "streefEinddatum": "2027-09-01"
         },
         {
           "doelType": "Werkfit vaardigheden ontwikkelen",
           "beschrijving": "Sollicitatievaardigheden, presentatie en werkritme opbouwen via het Werkfit-traject.",
-          "status": "gepland"
+          "status": "gepland",
+          "startdatum": "2027-08-02",
+          "streefEinddatum": "2027-10-29"
         },
         {
           "doelType": "Kinderopvang regelen",
           "beschrijving": "Structurele kinderopvang voor Daan en Lisa zodat werken mogelijk wordt.",
-          "status": "gepland"
+          "status": "gepland",
+          "startdatum": "2027-07-08",
+          "streefEinddatum": "2027-08-31"
         },
         {
           "doelType": "Orientatie op passende functies",
           "beschrijving": "Administratieve functies verkennen die aansluiten op MBO-4 en zes jaar ervaring.",
-          "status": "gepland"
+          "status": "gepland",
+          "startdatum": "2027-09-01",
+          "streefEinddatum": "2027-11-12"
         },
         {
           "doelType": "Duurzame plaatsing realiseren",
           "beschrijving": "Plaatsing op een passende werkplek met jobcoaching.",
-          "status": "gepland"
+          "status": "gepland",
+          "startdatum": "2027-10-04",
+          "streefEinddatum": "2027-12-10"
         },
         {
           "doelType": "Nazorg en borging",
           "beschrijving": "Monitoring na plaatsing; terugval voorkomen.",
-          "status": "gepland"
+          "status": "gepland",
+          "startdatum": "2027-11-15",
+          "streefEinddatum": "2027-12-31"
         }
       ],
       "components": [
@@ -360,6 +374,31 @@
             ]
           },
           "defaultValue": "gepland"
+        },
+        {
+          "label": "Startdatum",
+          "key": "startdatum",
+          "type": "datetime",
+          "input": true,
+          "tableView": true,
+          "format": "dd-MM-yyyy",
+          "enableDate": true,
+          "enableTime": false,
+          "datePicker": {
+            "disableWeekends": false,
+            "disableWeekdays": false
+          },
+          "widget": {
+            "type": "calendar",
+            "enableTime": false,
+            "format": "dd-MM-yyyy",
+            "allowInput": true,
+            "mode": "single"
+          },
+          "validate": {
+            "custom": "// A subdoel starts on or before its beoogde einddatum (the PDCA app\n// checks the same).\nvar d = input ? String(input).substring(0, 10) : '';\nvar eind = row.streefEinddatum ? String(row.streefEinddatum).substring(0, 10) : '';\nvalid = !d || !eind || d <= eind || 'De startdatum ligt na de beoogde einddatum';"
+          },
+          "description": "Optioneel; wanneer het werken aan dit subdoel begint."
         },
         {
           "label": "Beoogde einddatum",

@@ -50,7 +50,7 @@
         },
         "doelen": {
             "type": "array",
-            "description": "Intake-doelen: doelType (registernaam), beschrijving, status (gepland/gestart/afgerond)",
+            "description": "Intake-doelen: doelType (registernaam), beschrijving, status (gepland/gestart/afgerond), startdatum en beoogde einddatum (streefEinddatum, jjjj-mm-dd)",
             "items": {
                 "type": "object"
             }

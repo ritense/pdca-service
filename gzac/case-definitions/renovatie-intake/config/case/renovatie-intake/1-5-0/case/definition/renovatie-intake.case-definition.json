@@ -1,7 +1,7 @@
 {
     "key": "renovatie-intake",
     "name": "Intake renovatie (PDCA)",
-    "versionTag": "1.4.0",
+    "versionTag": "1.5.0",
     "final": true,
     "canHaveAssignee": true,
     "autoAssignTasks": false

@@ -358,6 +358,43 @@ class PlanIntakeServiceTest {
     }
 
     @Test
+    fun `a subdoel starts on its own startdatum, or on the plan's without one`() {
+        val gemaakt = mutableListOf<NewDoel>()
+        doAnswer {
+            val nieuw = (it.arguments[0] as NewDoel).also { n -> gemaakt += n }
+            Doel(uuid = UUID.randomUUID(), doeltype = DoelType(nieuw.doeltypeUuid, nieuw.titel), status = nieuw.status ?: "actief",
+                titel = nieuw.titel, hoofdDoel = nieuw.hoofdDoel).also { doel -> doelen += doel }
+        }.`when`(openPlan).createDoel(anyValue())
+
+        service.createPlanFromIntake(
+            request().copy(
+                startdatum = "2027-06-01",
+                doelen = listOf(
+                    IntakeDoel(doelType = "Werk", startdatum = "2027-07-15T00:00:00+02:00", streefEinddatum = "2027-09-01"),
+                    IntakeDoel(doelType = "Taal")
+                )
+            )
+        )
+
+        assertEquals(
+            mapOf("Werken" to "2027-06-01T00:00:00Z", "Werk" to "2027-07-15T00:00:00Z", "Taal" to "2027-06-01T00:00:00Z"),
+            gemaakt.associate { it.titel to it.startdatum }
+        )
+    }
+
+    @Test
+    fun `a subdoel cannot start after its beoogde einddatum`() {
+        val fout = assertFailsWith<ResponseStatusException> {
+            service.createPlanFromIntake(
+                request().copy(doelen = listOf(IntakeDoel(doelType = "Werk", startdatum = "2027-10-01", streefEinddatum = "2027-09-01")))
+            )
+        }
+
+        assertTrue(fout.reason!!.contains("de startdatum ligt na de beoogde einddatum (subdoel 'Werk')"), fout.reason)
+        verify(openPlan, never()).createPlan(anyValue())
+    }
+
+    @Test
     fun `an instrument row with an ambiguous or unknown subdoel becomes a warning`() {
         val response = service.createPlanFromIntake(
             request(IntakeInstrument("JOBCOACH", "Werk"), IntakeInstrument("TAALCOACH", "Rekenen")).copy(

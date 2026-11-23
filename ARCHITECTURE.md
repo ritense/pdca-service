@@ -590,8 +590,9 @@ as done**:
 1. **Validate first.** Everything that can be checked is checked before the
    first write, and every problem is reported in one 400: doeltypen,
    statuses and resultaten, dates (a subdoel's beoogde einddatum against
-   the rules of §6.3, except for an afgerond subdoel; form.io date values
-   are read by their date part), lengths (titel ≤ 255, toelichtingen and
+   the rules of §6.3, except for an afgerond subdoel, and its own
+   startdatum not after it — without one a subdoel starts on the plan's
+   startdatum; form.io date values are read by their date part), lengths (titel ≤ 255, toelichtingen and
    evaluation notes ≤ 1000, the registers' limits), evaluation types,
    positie and display status against the plan case type, betrokkenen, the
    subject and the one-active-plan rule (plans of this intake excepted).

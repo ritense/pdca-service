@@ -149,7 +149,7 @@
       "type": "textfield",
       "input": true,
       "tableView": true,
-      "defaultValue": "2026-02-01"
+      "defaultValue": "2027-07-01"
     },
     {
       "label": "Streefeinddatum (jjjj-mm-dd)",
@@ -157,7 +157,7 @@
       "type": "textfield",
       "input": true,
       "tableView": true,
-      "defaultValue": "2027-06-30"
+      "defaultValue": "2027-12-31"
     },
     {
       "label": "Doelen (uit het doeltype-register)",
@@ -171,22 +171,30 @@
         {
           "doelType": "Brandveiligheidsrisico's inventariseren",
           "beschrijving": "Volledig brandveiligheidsonderzoek van het complex, inclusief monumentale delen.",
-          "status": "afgerond"
+          "status": "gepland",
+          "startdatum": "2027-07-01",
+          "streefEinddatum": "2027-08-31"
         },
         {
           "doelType": "Geconstateerde gebreken verhelpen",
           "beschrijving": "Brandcompartimentering en detectie-installaties op orde brengen.",
-          "status": "gestart"
+          "status": "gepland",
+          "startdatum": "2027-09-01",
+          "streefEinddatum": "2027-11-15"
         },
         {
           "doelType": "Herinspectie uitvoeren",
           "beschrijving": "Onafhankelijke herinspectie van alle herstelde onderdelen.",
-          "status": "gepland"
+          "status": "gepland",
+          "startdatum": "2027-11-16",
+          "streefEinddatum": "2027-12-10"
         },
         {
           "doelType": "Borging in beheerorganisatie",
           "beschrijving": "BHV-organisatie en periodieke controles structureel beleggen.",
-          "status": "gepland"
+          "status": "gepland",
+          "startdatum": "2027-08-16",
+          "streefEinddatum": "2027-12-31"
         }
       ],
       "components": [
@@ -249,6 +257,31 @@
             ]
           },
           "defaultValue": "gepland"
+        },
+        {
+          "label": "Startdatum",
+          "key": "startdatum",
+          "type": "datetime",
+          "input": true,
+          "tableView": true,
+          "format": "dd-MM-yyyy",
+          "enableDate": true,
+          "enableTime": false,
+          "datePicker": {
+            "disableWeekends": false,
+            "disableWeekdays": false
+          },
+          "widget": {
+            "type": "calendar",
+            "enableTime": false,
+            "format": "dd-MM-yyyy",
+            "allowInput": true,
+            "mode": "single"
+          },
+          "validate": {
+            "custom": "// A subdoel starts on or before its beoogde einddatum (the PDCA app\n// checks the same).\nvar d = input ? String(input).substring(0, 10) : '';\nvar eind = row.streefEinddatum ? String(row.streefEinddatum).substring(0, 10) : '';\nvalid = !d || !eind || d <= eind || 'De startdatum ligt na de beoogde einddatum';"
+          },
+          "description": "Optioneel; wanneer het werken aan dit subdoel begint."
         },
         {
           "label": "Beoogde einddatum",
@@ -370,7 +403,7 @@
           "deelnemers": "P. Bakker, K. Visser"
         },
         {
-          "datum": "2026-10-01",
+          "datum": "2027-10-01",
           "evaluatieType": "INSPECTION",
           "status": "gepland",
           "notitie": "Geplande inspectie-evaluatie na herstelwerkzaamheden.",

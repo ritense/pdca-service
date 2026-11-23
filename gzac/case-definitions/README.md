@@ -8,8 +8,8 @@ tabs show the dossier's plan as soon as the app has created the dossier.
 |---|---|---|---|---|
 | `inwonerplan.zip` | 1.7.0 | Inwonerplan (PDCA) | Persoon (bsn) | Plan case type |
 | `binnenhof-renovatie.zip` | 1.7.0 | Binnenhof-renovatie (PDCA) | Object | Plan case type |
-| `intake-werk-participatie.zip` | 1.2.0 | Intake werk en participatie | Persoon (bsn) | Realistic W&P intake incl. DVKM decision table (see below) |
-| `renovatie-intake.zip` | 1.4.0 | Intake renovatie (PDCA) | Object | Minimal intake (start form → plan task) |
+| `intake-werk-participatie.zip` | 1.3.0 | Intake werk en participatie | Persoon (bsn) | Realistic W&P intake incl. DVKM decision table (see below) |
+| `renovatie-intake.zip` | 1.5.0 | Intake renovatie (PDCA) | Object | Minimal intake (start form → plan task) |
 | `instrument-verzoek.zip` | 1.2.0 | Instrumentaanvraag | — | Instrument dossier for every product requested for a plan, started by GZAC's Verzoek plugin (see below) |
 
 Each zip contains everything the case needs: document definition (JSON
@@ -213,7 +213,7 @@ followed by BSN (`inwonerplan`) or Object-id (`binnenhof-renovatie`),
 
 ## The realistic intake: `intake-werk-participatie` with the DVKM decision table
 
-`intake-werk-participatie.zip` (1.2.0, "Intake werk en participatie")
+`intake-werk-participatie.zip` (1.3.0, "Intake werk en participatie")
 demonstrates a realistic W&P intake: a small start form and a user task per
 conversation instead of one big start form, and a first mock of the DVKM
 'algorithm' as a **DMN decision requirements graph** — inwonergegevens in,
@@ -308,7 +308,7 @@ intake gives them no status. The row shapes are the input of the
 
 | Grid | Row fields |
 |---|---|
-| `doelen` | `doelType`, `beschrijving`, `status`, `streefEinddatum` |
+| `doelen` | `doelType`, `beschrijving`, `status`, `startdatum`, `streefEinddatum` |
 | `instrumenten` | `product` (producttype code; the select shows the product name), `doel` (the subdoel it is requested under) |
 | `betrokkenen` | `naam`, `rol`, `organisatie`, `email`, `procesbegeleider` |
 | `contactmomenten` (renovatie-intake only) | `datum`, `evaluatieType`, `status`, `notitie`, `deelnemers` |
@@ -320,8 +320,14 @@ intake gives them no status. The row shapes are the input of the
   the app reads the date part). Custom validation on the field applies the
   app's rules for a subdoel: not in the past and, in `renovatie-intake`,
   not after the plan's `streefEinddatum`; an afgerond doel is not checked.
-  The intake-werk-participatie Samenvatting tab shows it as a column in the
-  Doelen table.
+- **Startdatum** (`startdatum`) of a doel: an optional date picker per row
+  like the beoogde einddatum, not after it; without one the subdoel starts
+  on the plan's startdatum. The intake-werk-participatie Samenvatting tab
+  shows both dates as columns in the Doelen table.
+- **Demo defaults**: every subdoel gepland, with a startdatum and beoogde
+  einddatum in the second half of 2027 that follow the order the subdoelen
+  come up in, so sorting them on the Doelen tab shows a difference;
+  `renovatie-intake` runs its plan from 1 July to 31 December 2027.
 - **Products** in the selects are producttypen seeded in Open Product, all
   with a `StartInstrument` actie (`renovatie-intake` offers only the
   objectdomein ones); the demo defaults put each under a subdoel with a

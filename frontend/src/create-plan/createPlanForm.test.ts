@@ -167,6 +167,15 @@ describe('ontbreekt', () => {
     expect(ontbreekt(doe(state, { type: 'subject', subjectType: 'OBJECT' }))[0]).toBe('object-ID');
   });
 
+  it('names a subdoel that starts after its beoogde einddatum', () => {
+    const { state } = vulVoor({
+      subjectId: '999993653', titel: 'Plan', hoofddoel: 'Werk vinden',
+      doelen: [{ doelType: 'Cv maken', startdatum: '2027-10-01', streefEinddatum: '2027-09-01' }],
+    }, REGISTERS, CONFIG);
+    expect(ontbreekt(state)).toEqual(['startdatum vóór de beoogde einddatum bij 1 subdoel']);
+    expect(state.open.subdoelen).toBe(true);
+  });
+
   it('is empty for a complete form', () => {
     const state = doe(beginState(),
       { type: 'subject', subjectId: ' 999993653 ' },
@@ -235,6 +244,15 @@ describe('vulVoor', () => {
       'Let op: positie "Trede 9", dienstverlening "Onbekend", hoofddoel "Cv maken", subdoel "Vliegen", instrument "ONBEKEND" uit de intake staat niet in het register.');
   });
 
+  it('takes over the startdatum and beoogde einddatum of a subdoel by their date part', () => {
+    const { state } = vulVoor({
+      doelen: [{ doelType: 'Cv maken', startdatum: '2027-07-01T00:00:00+02:00', streefEinddatum: '2027-08-15' }, { doelType: 'Taalcursus' }],
+    }, REGISTERS, CONFIG);
+    expect(state.subdoelen.map(d => [d.startdatum, d.streefEinddatum, d.extra])).toEqual([
+      ['2027-07-01', '2027-08-15', {}], ['', '', {}],
+    ]);
+  });
+
   it('names the plan after the subject without a titel', () => {
     expect(vulVoor({ naam: 'Jan' }, REGISTERS, CONFIG).state.titel).toBe('Plan – Jan');
     expect(vulVoor({}, REGISTERS, CONFIG).state.titel).toBe('');
@@ -267,7 +285,7 @@ describe('maakRequest', () => {
   it('builds the intake request, trimming text and leaving out empty rows', () => {
     const { state } = vulVoor({
       subjectId: '999993653', titel: ' Plan ', hoofddoel: 'Werk vinden',
-      doelen: [{ doelType: 'Cv maken', beschrijving: 'Cv', toelichting: 'blijft' }],
+      doelen: [{ doelType: 'Cv maken', beschrijving: 'Cv', toelichting: 'blijft', startdatum: '2027-07-01' }],
       betrokkenen: [{ naam: ' Piet ', email: ' p@example.org ' }, { naam: '  ' }],
     }, REGISTERS, CONFIG);
     const zonderDatum = doe(state, { type: 'toevoegen', sectie: 'evaluaties', evaluatieTypen: CONFIG.evaluatieTypen });
@@ -277,7 +295,9 @@ describe('maakRequest', () => {
       documentId: 'doc-1', subjectType: 'PERSON', subjectId: '999993653', subjectNaam: 'Jan', titel: 'Plan',
       notitie: '', dienstverlening: 'Participatie', hoofddoel: 'Werk vinden', subdoelgroep: null, weergaveStatus: 'Actief',
       beginPositie: null, startdatum: '2026-01-15', streefEinddatum: null,
-      doelen: [{ toelichting: 'blijft', doelType: 'Cv maken', beschrijving: 'Cv', status: 'gepland' }],
+      doelen: [{
+        toelichting: 'blijft', doelType: 'Cv maken', beschrijving: 'Cv', status: 'gepland', startdatum: '2027-07-01', streefEinddatum: null,
+      }],
       instrumenten: [],
     });
     expect(request.contactmomenten).toEqual([{ datum: '2026-02-26', evaluatieType: 'EVALUATION', status: 'gepland', notitie: '' }]);
