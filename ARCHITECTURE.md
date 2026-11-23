@@ -800,6 +800,12 @@ registers itself.
   stands (fail closed). Completing a subdoel and editing its toelichting
   are single-object proxy edits; its doeltype (and so its title) is fixed
   once it exists.
+- **Startdatum of a subdoel** (Open Plan's `doel.startdatum`, required):
+  when work on the subdoel is planned to start — today unless chosen
+  otherwise when it is added, the date the intake gives it, and editable
+  with the subdoel (proxy `PATCH doel`) — not after its beoogde einddatum
+  (checked by the forms and the intake). Starting the subdoel leaves it as
+  it is; the overlay's uitvoeringsstatus records that it started.
 - **Beoogde einddatum of a subdoel** (`DoelDetails.streefEinddatum`,
   optional): the order in which the subdoelen come up. Open Plan's
   `doel.einddatum` is the actual end date, so the target lives in the
@@ -1028,8 +1034,9 @@ reason (§6.5). While the plan is still in concept anything goes.
   display status is in concept.
 - **Locked parts**: adding, removing, aborting and completing a subdoel
   (proxy `POST`/`PATCH doel`, `DELETE /doelen/{uuid}`,
-  `POST /doelen/{uuid}/afbreken`), a subdoel's toelichting and beoogde
-  einddatum (`PATCH doel`, `streefEinddatum` in `PUT /doeldetails`), the
+  `POST /doelen/{uuid}/afbreken`), a subdoel's toelichting, startdatum and
+  beoogde einddatum (`PATCH doel`, `streefEinddatum` in
+  `PUT /doeldetails`), the
   plan's toelichting bij het hoofddoel and beoogde einddatum (proxy
   `PATCH plan`, `streefEinddatum` in `PUT /plandetails`), the hoofddoel
   (`PUT /plannen/{uuid}/hoofddoel`) and instrument requests
@@ -1413,7 +1420,7 @@ through; `page` and `pageSize` are accepted on every listing)
 | PATCH | `/openplan/plannen/api/v0/plan/{uuid}` | — | plan; only `notitie`; locked (§6.7) |
 | GET | `/openplan/plannen/api/v0/doel` | `plannen__uuid` (required) | plan |
 | POST | `/openplan/plannen/api/v0/doel` | — | plan; `plannenUuids` names exactly one plan, `persoonUuid` is that plan's persoon, `hoofdDoel` (if any) a doel of the same plan; only `plannenUuids`, `persoonUuid`, `doeltypeUuid`, `titel`, `beschrijving`, `startdatum`, `hoofdDoel`; locked (§6.7) |
-| PATCH | `/openplan/plannen/api/v0/doel/{uuid}` | — | plan; only `titel`, `beschrijving`, `doeltypeUuid`, `resultaat`, `einddatum`, `toelichtingResultaat` and `status: afgerond`; locked (§6.7) |
+| PATCH | `/openplan/plannen/api/v0/doel/{uuid}` | — | plan; only `titel`, `beschrijving`, `doeltypeUuid`, `startdatum`, `resultaat`, `einddatum`, `toelichtingResultaat` and `status: afgerond`; locked (§6.7) |
 | GET | `/openplan/plannen/api/v0/instrument` | `doelen__uuid__in` (required) | the plans of those doelen |
 | GET | `/openklant/klantinteracties/api/v1/klantcontacten` | the plan's onderwerpobject (`…ObjectId`, `…CodeObjecttype=plan`, `…CodeRegister=open-plan`) | plan |
 
@@ -1667,7 +1674,8 @@ bundles, so nothing is loaded from third parties.
   ascending or descending; a subdoel without the date goes last, ties keep
   the standard order (`plan-goals/subdoelVolgorde.ts`). The choice is the
   viewer's own and lasts while the tab is open: the sandboxed iframe has no
-  storage of its own.
+  storage of its own. Each subdoel card shows both dates (*Start* and
+  *Beoogd*), and adding or editing a subdoel sets both.
 - **Plan lock** (§6.7) — past concept and outside the user's evaluation of
   the plan, the tabs disable what is locked, with the hint *"Wijzig je
   tijdens een evaluatie"*: on the Doelen tab "Subdoel toevoegen", a

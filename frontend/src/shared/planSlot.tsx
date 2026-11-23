@@ -1,7 +1,7 @@
 /**
  * The plan lock as the tabs see it (the backend enforces it, ARCHITECTURE
  * §6.7): once a plan has left its concept status, its subdoelen, their
- * toelichting and beoogde einddatum, the plan's toelichting bij het
+ * toelichting, startdatum and beoogde einddatum, the plan's toelichting bij het
  * hoofddoel and its instrument requests change only in the user's own
  * evaluation of the plan. The tabs disable those actions and say why, so
  * nobody runs into the backend's refusal.

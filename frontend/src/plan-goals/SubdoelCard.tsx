@@ -118,6 +118,7 @@ export function SubdoelCard({ doel, model, producttypen, verzoeken, handlers }: 
             </span>
           )}
           {openVerzoeken.length > 0 && <Tag size="sm" type="blue">{aantal(openVerzoeken.length, 'aanvraag', 'aanvragen')} loopt</Tag>}
+          {doel.startdatum && <span className="pdca-muted-count">Start: {formatDate(doel.startdatum)}</span>}
           <BeoogdDatum datum={details?.streefEinddatum} lopend={model.plan.status === 'actief' && actief} />
           {actief && details?.voortgangStatus && <VoortgangTag code={details.voortgangStatus} opties={model.voortgangOpties} />}
           <Tag size="sm" type={status.tag}>{status.label}</Tag>

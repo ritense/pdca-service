@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { InlineNotification, Modal, Select, SelectItem, TextArea, TextInput } from '@carbon/react';
 import type { Doel, DoelType } from '../shared/api';
-import { formatDate, vandaag } from '../shared/dates';
+import { datumDeel, formatDate, vandaag } from '../shared/dates';
 import { aantal, doelTypeNaam, subdoelTypen, subdoelTypenVoorHoofddoel } from '../shared/labels';
 import { useSubmit } from '../shared/useSubmit';
 import type { ActieContext, ActieInvoer, DoelInvoer } from './doelenActies';
@@ -109,30 +109,34 @@ export function DoelModal({ open, doel, doeltypen, hoofddoelNaam, subdoelMapping
 }) {
   const [toelichting, setToelichting] = useState('');
   const [doeltypeUuid, setDoeltypeUuid] = useState('');
+  const [startdatum, setStartdatum] = useState('');
   const [streefEinddatum, setStreefEinddatum] = useState('');
   const { saving, fout, submit, reset } = useSubmit();
   useEffect(() => {
     if (open) {
       setToelichting(doel?.beschrijving || '');
       setDoeltypeUuid(doel?.doeltype?.uuid || '');
+      setStartdatum(doel?.startdatum ? datumDeel(doel.startdatum) : vandaag());
       setStreefEinddatum(huidigeEinddatum?.slice(0, 10) || '');
       reset();
     }
   }, [open, doel, huidigeEinddatum, reset]);
   const datumFout = einddatumFout(streefEinddatum, huidigeEinddatum?.slice(0, 10) || '', planEinddatum);
+  const startFout = !startdatum ? 'Vul een startdatum in'
+    : streefEinddatum && startdatum > streefEinddatum ? 'Na de beoogde einddatum' : null;
 
   const opties = subdoelTypenVoorHoofddoel(doeltypen, hoofddoelNaam, subdoelMapping);
   const gescoped = opties.length < subdoelTypen(doeltypen).length;
   const gekozen = opties.find(t => t.uuid === doeltypeUuid);
   const titel = doel ? doel.titel : gekozen ? doelTypeNaam(gekozen) : '';
-  const kanOpslaan = !!titel && (!!doel || !!doeltypeUuid) && !datumFout;
+  const kanOpslaan = !!titel && (!!doel || !!doeltypeUuid) && !datumFout && !startFout;
 
   return (
     <Modal open={open} modalHeading={doel ? 'Subdoel bewerken' : 'Subdoel toevoegen'}
       primaryButtonText={saving ? 'Opslaan…' : 'Opslaan'} secondaryButtonText="Annuleren"
       primaryButtonDisabled={saving || !kanOpslaan}
       onRequestClose={onClose}
-      onRequestSubmit={() => kanOpslaan && submit(() => onSave({ titel, toelichting, doeltypeUuid, streefEinddatum }))}>
+      onRequestSubmit={() => kanOpslaan && submit(() => onSave({ titel, toelichting, doeltypeUuid, startdatum, streefEinddatum }))}>
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
         {doel ? (
@@ -151,6 +155,11 @@ export function DoelModal({ open, doel, doeltypen, hoofddoelNaam, subdoelMapping
         )}
         <TextArea id="doel-toelichting" labelText="Toelichting" helperText="Uitleg voor de inwoner" value={toelichting}
           onChange={e => setToelichting(e.target.value)} />
+        <TextInput id="doel-startdatum" type="date" labelText="Startdatum"
+          helperText="Wanneer het werken aan dit subdoel begint"
+          max={streefEinddatum || planEinddatum?.slice(0, 10) || undefined}
+          value={startdatum} onChange={e => setStartdatum(e.target.value)}
+          invalid={!!startFout} invalidText={startFout || undefined} />
         <TextInput id="doel-einddatum" type="date" labelText="Beoogde einddatum (optioneel)"
           helperText={planEinddatum
             ? `Uiterlijk de beoogde einddatum van het plan (${formatDate(planEinddatum)})`

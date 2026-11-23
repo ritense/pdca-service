@@ -286,8 +286,12 @@ class DataAccessPolicy(private val scope: PlanScope) {
         /** The fields of a doel the bundles create (a subdoel under the plan's hoofddoel). */
         val NEW_DOEL_FIELDS = setOf("plannenUuids", "persoonUuid", "doeltypeUuid", "titel", "beschrijving", "startdatum", "hoofdDoel")
 
-        /** The doel fields the bundles edit directly: its texts, its doeltype and completing it; never its plan, persoon or hoofddoel. */
-        val DOEL_FIELDS = setOf("titel", "beschrijving", "doeltypeUuid", "status", "resultaat", "einddatum", "toelichtingResultaat")
+        /**
+         * The doel fields the bundles edit directly: its texts, its doeltype,
+         * its planned startdatum and completing it; never its plan, persoon
+         * or hoofddoel.
+         */
+        val DOEL_FIELDS = setOf("titel", "beschrijving", "doeltypeUuid", "startdatum", "status", "resultaat", "einddatum", "toelichtingResultaat")
         val DOEL_STATUSES = setOf("afgerond")
 
         private fun onlyFields(body: JsonNode?, allowed: Set<String>) {

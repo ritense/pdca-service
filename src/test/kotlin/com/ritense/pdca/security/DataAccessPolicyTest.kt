@@ -140,6 +140,7 @@ class DataAccessPolicyTest {
     @Test
     fun `register writes are limited to the fields the bundles edit`() {
         assertEquals(planDossier, policy.resolve(call("PATCH", "/openplan/plannen/api/v0/doel/$doelUuid", body = """{"status":"afgerond","resultaat":"behaald"}""")).requirement)
+        assertEquals(planDossier, policy.resolve(call("PATCH", "/openplan/plannen/api/v0/doel/$doelUuid", body = """{"startdatum":"2027-07-01T00:00:00Z"}""")).requirement)
         denied(call("PATCH", "/openplan/plannen/api/v0/doel/$doelUuid", body = """{"status":"geannuleerd"}"""))
         denied(call("PATCH", "/openplan/plannen/api/v0/doel/$doelUuid", body = """{"plannenUuids":["$planUuid"]}"""))
         denied(call("PATCH", "/openplan/plannen/api/v0/plan/$planUuid", body = """{"notitie":"n","status":"afgerond"}"""))
@@ -177,6 +178,7 @@ class DataAccessPolicyTest {
             slot(call("POST", "/openplan/plannen/api/v0/doel", body = """{"plannenUuids":["$planUuid"],"persoonUuid":"$persoonUuid","titel":"Werk"}"""))
         )
         assertEquals(vast, slot(call("PATCH", "/openplan/plannen/api/v0/doel/$doelUuid", body = """{"beschrijving":"b"}""")))
+        assertEquals(vast, slot(call("PATCH", "/openplan/plannen/api/v0/doel/$doelUuid", body = """{"startdatum":"2027-07-01T00:00:00Z"}""")))
         assertEquals(vast, slot(call("DELETE", "/api/v1/pdca/doelen/$doelUuid")))
         assertEquals(vast, slot(call("POST", "/api/v1/pdca/doelen/$doelUuid/afbreken", body = """{"reden":"r"}""")))
         assertEquals(vast, slot(call("POST", "/api/v1/pdca/instrumenten/start", body = """{"doelUuid":"$doelUuid","producttypeUuid":"x"}""")))

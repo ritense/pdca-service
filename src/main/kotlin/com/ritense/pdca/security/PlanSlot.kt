@@ -35,8 +35,8 @@ data class SlotWijziging(val planUuid: UUID, val weergaveStatus: String? = null)
 
 /**
  * The plan lock (ARCHITECTURE §6.7): once a plan has left its concept status,
- * its subdoelen (adding, removing, aborting, completing, their toelichting
- * and beoogde einddatum), the plan's toelichting bij het hoofddoel and
+ * its subdoelen (adding, removing, aborting, completing, their toelichting,
+ * startdatum and beoogde einddatum), the plan's toelichting bij het hoofddoel and
  * beoogde einddatum, its hoofddoel and its instrument requests change only
  * in an evaluation the user runs on that plan, so the inwoner is informed
  * and the change is recorded with its reason. Moving the display status

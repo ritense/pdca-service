@@ -294,6 +294,7 @@ const WIJZIGING_LABELS: Record<string, string> = {
   SUBDOEL_AFGEROND: 'Subdoel afgerond',
   SUBDOEL_AFGEBROKEN: 'Subdoel afgebroken',
   SUBDOEL_VERWIJDERD: 'Subdoel verwijderd',
+  STARTDATUM: 'Startdatum',
   BEOOGDE_EINDDATUM: 'Beoogde einddatum',
   VOORTGANG: 'Voortgang',
   INTERNE_NOTITIE: 'Interne notitie',

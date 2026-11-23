@@ -7,7 +7,7 @@
 
 import { Actie, Doel, Instrument, InstrumentDetails, LevenscyclusResultaat, openplan, pdca, ProductType } from '../shared/api';
 import { EvaluationChangeInput, recordEvaluationChange } from '../shared/evaluationSession';
-import { formatDate } from '../shared/dates';
+import { datumDeel, formatDate } from '../shared/dates';
 import { actieStatus, voortgangStatus } from '../shared/labels';
 import type { DoelenModel } from './useDoelenModel';
 
@@ -15,7 +15,8 @@ export type Notities = { interneNotitie: string; externeNotitie: string };
 export type VoortgangInvoer = { status: string; toelichting: string };
 export type RegistratieInvoer = { uren: number | null; score: number | null; toelichting: string };
 /** What the subdoel modal saves; streefEinddatum is yyyy-mm-dd, empty for none. */
-export type DoelInvoer = { titel: string; toelichting: string; doeltypeUuid: string; streefEinddatum: string };
+/** `startdatum`: when work on the subdoel is planned to start (yyyy-mm-dd), on or before the beoogde einddatum. */
+export type DoelInvoer = { titel: string; toelichting: string; doeltypeUuid: string; startdatum: string; streefEinddatum: string };
 export type ActieInvoer = Partial<Actie> & { title: string };
 /** The doel (and optionally the instrument) a new actie belongs to. */
 export type ActieContext = { doelUuid: string; instrumentUuid?: string };
@@ -28,6 +29,11 @@ export function registratieSamenvatting(d: InstrumentDetails | undefined): strin
     d.effectiviteitScore != null ? `effectiviteit ${d.effectiviteitScore}/5` : null,
   ].filter(Boolean);
   return delen.length > 0 ? delen.join(' · ') : null;
+}
+
+/** A planned date (yyyy-mm-dd) as Open Plan stores a doel's startdatum, the way plan creation writes it. */
+function registerDatum(datum: string): string {
+  return `${datum}T00:00:00Z`;
 }
 
 export function doelenActies(model: DoelenModel) {
@@ -83,6 +89,13 @@ export function doelenActies(model: DoelenModel) {
             samenvoegen: true, vanWaarde: formatDate(oudeEinddatum) || null, naarWaarde: formatDate(data.streefEinddatum) || null,
           });
         }
+        const oudeStartdatum = bestaand.startdatum ? datumDeel(bestaand.startdatum) : '';
+        if (data.startdatum && oudeStartdatum !== data.startdatum) {
+          await openplan.doelen.update(bestaand.uuid, { startdatum: registerDatum(data.startdatum) });
+          subdoel(bestaand, 'STARTDATUM', {
+            samenvoegen: true, vanWaarde: formatDate(oudeStartdatum) || null, naarWaarde: formatDate(data.startdatum),
+          });
+        }
         // The doeltype (and with it the title) is fixed once the subdoel exists.
         if ((bestaand.beschrijving || '') !== data.toelichting) {
           await openplan.doelen.update(bestaand.uuid, { beschrijving: data.toelichting });
@@ -96,7 +109,7 @@ export function doelenActies(model: DoelenModel) {
         doeltypeUuid: data.doeltypeUuid,
         titel: data.titel,
         beschrijving: data.toelichting,
-        startdatum: new Date().toISOString(),
+        startdatum: registerDatum(data.startdatum),
         // New subdoelen hang under the plan's active hoofddoel (W&P hierarchy).
         ...(model.actiefHoofddoel ? { hoofdDoel: model.actiefHoofddoel.uuid } : {}),
       });

@@ -178,6 +178,8 @@ class DocumentGegevensService(
             "SUBDOEL_AFGEROND" to "Subdoel afgerond",
             "SUBDOEL_AFGEBROKEN" to "Subdoel afgebroken",
             "SUBDOEL_VERWIJDERD" to "Subdoel verwijderd",
+            "STARTDATUM" to "Startdatum",
+            "BEOOGDE_EINDDATUM" to "Beoogde einddatum",
             "VOORTGANG" to "Voortgang",
             "INTERNE_NOTITIE" to "Interne notitie",
             "EXTERNE_NOTITIE" to "Externe notitie",
