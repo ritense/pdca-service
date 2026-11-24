@@ -513,7 +513,7 @@ signature or GZAC's answers about a user.
 | Progress of plan creation from an intake | overlay `PlanIntake` | reservation and lease (§6.1) |
 | Uitvoeringsstatus Gepland/Gestart, voortgangsstatus and toelichting, notes, sort order of a doel | overlay `DoelDetails` | refinement of register `actief` |
 | Uitvoeringsstatus, hours, effectiveness, notes, abort reason of an instrument | overlay `InstrumentDetails` | |
-| Evaluation type, planned date, deelnemers, actiepunten, originating evaluation of a contactmoment | overlay `ContactmomentDetails` | keyed by klantcontact uuid |
+| Planned date, deelnemers, actiepunten, originating evaluation of a contactmoment | overlay `ContactmomentDetails` | keyed by klantcontact uuid |
 | Betrokkenen and which one is procesbegeleider | overlay `InvolvedParty` | procesbegeleider mirrored to Open Plan `plan.medewerker` |
 | Acties | overlay `Action` | each one a task of the building block `pdca-taak` on the plan dossier, which ends it (§6.8) |
 | Evaluation sessions and the plan changes recorded in them | overlay `EvaluationSession`, `EvaluationChange` | |
@@ -593,8 +593,8 @@ as done**:
    the rules of §6.3, except for an afgerond subdoel, and its own
    startdatum not after it — without one a subdoel starts on the plan's
    startdatum; form.io date values are read by their date part), lengths (titel ≤ 255, toelichtingen and
-   evaluation notes ≤ 1000, the registers' limits), evaluation types,
-   positie and display status against the plan case type, betrokkenen, the
+   evaluation notes ≤ 1000, the registers' limits), the status of each
+   evaluation, positie and display status against the plan case type, betrokkenen, the
    subject and the one-active-plan rule (plans of this intake excepted).
 2. **Reserve.** A `PlanIntake` row keyed by the intake dossier is inserted
    (`ON CONFLICT DO NOTHING`) and claimed in one atomic update with a random
@@ -613,8 +613,7 @@ as done**:
    lost — is adopted); the overlay row; the hoofddoel as the actief doel of
    its type (with a GESTART overlay row) and the subdoelen per doeltype,
    each pointing at the hoofddoel through `doel.hoofdDoel`; the
-   contactmomenten per date, type (from their overlay row, else from the
-   klantcontact's onderwerp) and state (§6.4); the betrokkenen and the
+   contactmomenten per date and state (§6.4); the betrokkenen and the
    procesbegeleider; the plan dossier through
    `DossierLinkService.ensurePlanDossier` (with subject line `onderwerp`,
    the first column of the plan case lists; before creating one it searches
@@ -843,10 +842,8 @@ of the inwoner's klantbeeld; the overlay row `ContactmomentDetails` keeps
 the PDCA side. `KlantcontactService` writes one in a single
 `POST /maak-klantcontact`:
 
-- the klantcontact — kanaal `gesprek`, onderwerp `<type>: <plan titel>`
-  (the type's Dutch label for the built-in types — Intake, Voortgang,
-  Evaluatie, Inspectie, Crisis — and its own key for a configured type, so
-  the type reads back from the onderwerp losslessly), the
+- the klantcontact — kanaal `gesprek`, onderwerp `Evaluatie: <plan titel>`
+  (every contactmoment of a plan is an evaluation), the
   verslag as `inhoud` (at most 1000 characters, Open Klant's limit; longer
   is a 400), `vertrouwelijk` true, `taal` `nld`, `plaatsgevondenOp` the
   moment of the conversation;
@@ -870,7 +867,7 @@ filtered on the plan's onderwerpobject.
 ### 6.5 Evaluation
 
 An evaluation is the set of changes made to the plan while it runs, plus the
-contactmoment information (type, deelnemers, gespreksverslag). Changes are
+contactmoment information (deelnemers, gespreksverslag). Changes are
 made in the plan tabs as always and take effect immediately: an evaluation
 is no transaction and cannot be rolled back. Once the plan has left its
 concept status, its substance (subdoelen, their texts and dates,
@@ -900,7 +897,7 @@ navigation; closing the panel only hides it.
 - **Complete** (`…/current/complete`, needs a gespreksverslag ≤ 1000
   characters) records the contactmoment as taken place at the session's
   start — the planned klantcontact it carries out, or a new one (§6.4) —
-  with type, deelnemers and `evaluationSessionId` in its overlay row. Once
+  with deelnemers and `evaluationSessionId` in its overlay row. Once
   the session is completed — the evaluation is final then — the app
   requests its **evaluatieverslag** (§6.6); the panel shows it as it is
   being made. Document generation never fails the completion.
@@ -977,8 +974,8 @@ sequenceDiagram
   channel of the action answer, §7.4); a retry gets the same request.
 - **The data snapshot** (`DocumentGegevensService`, `pdcaGegevens`) is the
   template's data model: `schemaVersie`, `titel`, `gemaaktOp`, `plan`
-  (titel, inwoner, procesbegeleider), `evaluatie` (datum, type,
-  uitgevoerdDoor, deelnemers, verslag), `wijzigingen` (onderdeel,
+  (titel, inwoner, procesbegeleider), `evaluatie` (datum, uitgevoerdDoor,
+  deelnemers, verslag), `wijzigingen` (onderdeel,
   omschrijving, toelichting, grouped per onderdeel, worded as the panel
   words them) and `actiepunten`. Every key is always present and every text
   a string; a register lookup that fails leaves its field empty. The
@@ -1449,10 +1446,10 @@ the demo case types.
 | `PlanIntake` (`plan_intake`) | `intakeDossierId` | plan creation from an intake: `status` IN_AANMAAK → GEREED, `planUuid` once created, `claimToken` + `claimedUntil` (the owned claim and its lease; every write is a conditional update on the token) |
 | `DoelDetails` (`doel_details`) | `doelUuid` | `planUuid`, `uitvoeringsStatus` (GEPLAND, GESTART), `voortgangStatus` (a code of the plan's list) and `voortgangToelichting`, `interneNotitie`, `externeNotitie`, `streefEinddatum` (beoogde einddatum of a subdoel, §6.3), `sortering` (the hoofddoel −1) |
 | `InstrumentDetails` (`instrument_details`) | `instrumentUuid` | `planUuid`, `uitvoeringsStatus` (default GESTART), `urenBesteed`, `effectiviteitScore` (1–5) and `effectiviteitToelichting`, `afbreekReden`, `interneNotitie`, `externeNotitie` |
-| `ContactmomentDetails` (`contactmoment_details`) | `contactmomentUuid` (= klantcontact uuid) | `planUuid`, `evaluatieType`, `geplandeDatum`, `deelnemers`, `actiepunten`, `evaluationSessionId` |
+| `ContactmomentDetails` (`contactmoment_details`) | `contactmomentUuid` (= klantcontact uuid) | `planUuid`, `geplandeDatum`, `deelnemers`, `actiepunten`, `evaluationSessionId` |
 | `InvolvedParty` (`involved_party`) | id | `planUuid`, name, role, contact details, `isPrimary` (the procesbegeleider; at most one per plan, partial unique index) |
 | `Action` (`action`) | id | `doelUuid`, optional `instrumentUuid` and `contactmomentUuid`, title, description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED; with a task only → COMPLETED or CANCELLED by the task), assignee name, priority, dates, result, `taakProcessInstanceId` (the GZAC process of its task, §6.8; unique) |
-| `EvaluationSession` (`evaluation_session`) | id | `dossierId`, `planUuid`, `caseDefinitionKey`, `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED/CANCELLED; at most one RUNNING per user), start/end, `evaluatieType`, `deelnemers`, `verslag`, `geplandContactmomentUuid`, `contactmomentUuid`, `vastgesteldGewijzigd` (a locked part of the plan was changed in it, §6.7; never written by a save) |
+| `EvaluationSession` (`evaluation_session`) | id | `dossierId`, `planUuid`, `caseDefinitionKey`, `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED/CANCELLED; at most one RUNNING per user), start/end, `deelnemers`, `verslag`, `geplandContactmomentUuid`, `contactmomentUuid`, `vastgesteldGewijzigd` (a locked part of the plan was changed in it, §6.7; never written by a save) |
 | `EvaluationChange` (`evaluation_change`) | id | `sessionId`, `subjectType` (PLAN, HOOFDDOEL, SUBDOEL, INSTRUMENT, ACTIE), `subjectUuid`, `subjectTitel`, `soort`, `vanWaarde`, `naarWaarde`, `toelichting` |
 | `DocumentAanvraag` (`document_aanvraag`) | id | a document made by the document process (§6.6): `planUuid`, `dossierId` (the plan dossier the process runs on), `soort` (EVALUATIEVERSLAG), `bronUuid` (the evaluation session), `status` (AANGEVRAAGD → BEZIG → GEREED/MISLUKT), `processInstanceId` (its GZAC process; unique), `gegevens` (JSON data snapshot, cleared when the request ends), `bestandsnaam`, `mediatype`, `inhoud` (the PDF, GEREED only), `foutmelding` (MISLUKT only), `aangevraagdDoor`, `aangevraagdOp`, `bijgewerktOp`; at most one open request per (`soort`, `bronUuid`) |
 | `PhaseConfig` (`phase_config`) | id, unique `caseDefinitionKey` | the case configuration (§10.2) |
@@ -1475,7 +1472,6 @@ they go with their register object through the lifecycle use cases.
 Beheer; the name is historical and it holds no phases. Its fields (JSON
 text columns):
 
-- `evaluationTypes` — the evaluation types of a plan case type;
 - `planStatussen` — the plan display statuses in order (e.g. Concept,
   Vastgesteld); the first is the concept status a new plan gets and under
   which the plan lock does not apply (§6.7);
@@ -1499,10 +1495,9 @@ text columns):
   of the plans it creates (§6.1).
 
 An update (`PUT …/phase-configs/{caseDefKey}`) is a partial update like the
-overlay's: an absent field keeps its value, an explicit `null` clears it
-(`evaluationTypes` is required and is kept when absent or null). PDCA
-Beheer sends `null` for what a form leaves empty, so clearing the plan case
-type turns an intake case type back into a plan case type.
+overlay's: an absent field keeps its value, an explicit `null` clears it.
+PDCA Beheer sends `null` for what a form leaves empty, so clearing the plan
+case type turns an intake case type back into a plan case type.
 
 ## 11. Configuration
 

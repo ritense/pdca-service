@@ -59,7 +59,7 @@ class DocumentGegevensServiceTest {
     private val contactmomentUuid = UUID.randomUUID()
     private val session = EvaluationSession(
         dossierId = "plan-dossier", planUuid = planUuid, userLogin = "jan", status = EvaluationSessionStatus.COMPLETED,
-        startedAt = LocalDateTime.of(2026, 11, 11, 10, 30), evaluatieType = "PROGRESS", deelnemers = "Erika, Jan",
+        startedAt = LocalDateTime.of(2026, 11, 11, 10, 30), deelnemers = "Erika, Jan",
         verslag = "Het gaat goed.", contactmomentUuid = contactmomentUuid
     )
 
@@ -80,7 +80,7 @@ class DocumentGegevensServiceTest {
         betrokkenen.rows[UUID.randomUUID()] = InvolvedParty(planUuid = planUuid, name = "Collega", role = "Werkcoach")
         InvolvedParty(planUuid = planUuid, name = "Mila de Boer", role = "Procesbegeleider", isPrimary = true).let { betrokkenen.rows[it.id] = it }
         contactmomenten.rows[contactmomentUuid] = ContactmomentDetails(
-            contactmomentUuid = contactmomentUuid, planUuid = planUuid, evaluatieType = "PROGRESS", actiepunten = """["Cv opsturen", ""]"""
+            contactmomentUuid = contactmomentUuid, planUuid = planUuid, actiepunten = """["Cv opsturen", ""]"""
         )
         val subdoel = UUID.randomUUID()
         val instrument = UUID.randomUUID()
@@ -101,7 +101,7 @@ class DocumentGegevensServiceTest {
         assertEquals(mapOf("titel" to "Plan Erika", "inwoner" to "Erika de Goede", "procesbegeleider" to "Mila de Boer"), gegevens["plan"])
         assertEquals(
             mapOf(
-                "datum" to "11 november 2026", "type" to "Voortgang", "uitgevoerdDoor" to "jan",
+                "datum" to "11 november 2026", "uitgevoerdDoor" to "jan",
                 "deelnemers" to "Erika, Jan", "verslag" to "Het gaat goed."
             ),
             gegevens["evaluatie"]
@@ -148,7 +148,7 @@ class DocumentGegevensServiceTest {
 
         assertEquals(mapOf("titel" to "", "inwoner" to "", "procesbegeleider" to ""), gegevens["plan"])
         assertEquals(
-            mapOf("datum" to "5 januari 2026", "type" to "", "uitgevoerdDoor" to "jan", "deelnemers" to "", "verslag" to ""),
+            mapOf("datum" to "5 januari 2026", "uitgevoerdDoor" to "jan", "deelnemers" to "", "verslag" to ""),
             gegevens["evaluatie"]
         )
         assertEquals(emptyList<Any>(), gegevens["wijzigingen"])

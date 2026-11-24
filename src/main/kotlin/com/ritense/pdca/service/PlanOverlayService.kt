@@ -241,17 +241,6 @@ class PlanOverlayService(
     fun caseDefinitionKeyVan(planUuid: UUID): String? =
         planDetailsRepository.findById(planUuid).orElse(null)?.caseDefinitionKey
 
-    /** The evaluation type must be one of the plan's case type; a plan without case type accepts any. */
-    fun validateEvaluatieType(planUuid: UUID, evaluatieType: String) {
-        val caseDefinitionKey = caseDefinitionKeyVan(planUuid) ?: return
-        val validTypes = phaseConfigService.getEvaluationTypes(caseDefinitionKey)
-        if (evaluatieType !in validTypes) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST, "Onbekend evaluatietype '$evaluatieType'. Kies uit: ${validTypes.joinToString()}"
-            )
-        }
-    }
-
     private fun validateWeergaveStatus(caseDefinitionKey: String?, weergaveStatus: String) {
         if (caseDefinitionKey == null) return
         val validStatussen = phaseConfigService.getPlanStatussen(caseDefinitionKey) ?: return

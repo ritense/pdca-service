@@ -63,7 +63,6 @@ class PhaseConfigResource(
         val config = phaseConfigService.create(
             PhaseConfig(
                 caseDefinitionKey = request.caseDefinitionKey,
-                evaluationTypes = request.evaluationTypes,
                 planStatussen = request.planStatussen,
                 voortgangStatussen = request.voortgangStatussen,
                 positieTypen = request.positieTypen,

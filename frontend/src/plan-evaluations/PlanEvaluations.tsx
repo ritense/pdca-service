@@ -1,12 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { Button, ContentSwitcher, InlineNotification, Switch, Tag } from '@carbon/react';
+import { Button, InlineNotification, Tag } from '@carbon/react';
 import { Klantcontact, openplan } from '../shared/api';
-import { useCaseConfig } from '../shared/caseConfig';
 import { datumDeel, formatDate } from '../shared/dates';
 import { verslagVan } from '../shared/documenten';
 import { offerEvaluationPanel, startEvaluationSession } from '../shared/evaluationSession';
 import { foutmelding } from '../shared/http';
-import { contactmomentDatum, evalTypeLabel, isHoofddoelType } from '../shared/labels';
+import { contactmomentDatum, isHoofddoelType } from '../shared/labels';
 import { LaadFout, NietGeladen } from '../shared/Meldingen';
 import { PlanDossierPagina, PlanPaginaProps } from '../shared/PlanDossierPagina';
 import { EvaluatiesSkeleton } from '../shared/Skeletons';
@@ -34,11 +33,10 @@ export function PlanEvaluations() {
   return <PlanDossierPagina skeleton={<EvaluatiesSkeleton />}>{props => <EvaluatiesPagina {...props} />}</PlanDossierPagina>;
 }
 
-function EvaluatiesPagina({ documentId, plan, details }: PlanPaginaProps) {
+function EvaluatiesPagina({ documentId, plan }: PlanPaginaProps) {
   const planData = usePlanData(plan.uuid, BRONNEN);
   // Actiepunten become acties under a subdoel; the doeltypen tell which doel is the hoofddoel.
   const doeltypen = useResource(() => openplan.doeltypen.list(), []);
-  const caseConfig = useCaseConfig(details.caseDefinitionKey);
   // The evaluatieverslagen: optional, so a failure only says so instead of failing the tab.
   const { documenten, maakVerslag, actief: documentenActief } = useDocumenten(plan.uuid);
   // An evaluation completed in the side panel shows up here with its verslag (recorded with the
@@ -47,7 +45,6 @@ function EvaluatiesPagina({ documentId, plan, details }: PlanPaginaProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
-  const [filter, setFilter] = useState<string | null>(null);
   const [planModal, setPlanModal] = useState(false);
   /** The planned contactmoment being moved to another date. */
   const [verzetten, setVerzetten] = useState<{ uuid: string; datum: string } | null>(null);
@@ -60,15 +57,14 @@ function EvaluatiesPagina({ documentId, plan, details }: PlanPaginaProps) {
     })
     : []), [planData.data, doeltypen.data]);
 
-  const fout = eersteFout(planData, doeltypen, caseConfig);
-  if (!planData.data || !doeltypen.data || !caseConfig.data) {
+  const fout = eersteFout(planData, doeltypen);
+  if (!planData.data || !doeltypen.data) {
     return fout
       ? <LaadFout pagina titel="De evaluaties konden niet geladen worden" error={fout.error} context="dossier" onRetry={fout.reload} />
       : <EvaluatiesSkeleton />;
   }
 
   const { contactmomenten, contactmomentDetails, evaluaties } = planData.data;
-  const evalTypes = caseConfig.data.evaluatieTypen;
   const session = evaluatie.session;
   const detailsVan = (cm: Klantcontact) => contactmomentDetails.find(d => d.contactmomentUuid === cm.uuid);
   const datumVan = (cm: Klantcontact) => contactmomentDatum(cm, detailsVan(cm));
@@ -98,12 +94,10 @@ function EvaluatiesPagina({ documentId, plan, details }: PlanPaginaProps) {
   const uitgevoerd = lopend?.geplandContactmomentUuid
     ? contactmomenten.find(cm => cm.uuid === lopend.geplandContactmomentUuid) ?? null : null;
   const zichtbaar = contactmomenten.filter(cm => cm !== uitgevoerd);
-  const gefilterd = filter ? zichtbaar.filter(cm => detailsVan(cm)?.evaluatieType === filter) : zichtbaar;
   // Planned contactmomenten first (soonest on top), then the history (latest on top).
-  const geplande = gefilterd.filter(isGepland).sort((a, b) => (datumVan(a) || '').localeCompare(datumVan(b) || ''));
-  const historie = gefilterd.filter(cm => !isGepland(cm))
+  const geplande = zichtbaar.filter(isGepland).sort((a, b) => (datumVan(a) || '').localeCompare(datumVan(b) || ''));
+  const historie = zichtbaar.filter(cm => !isGepland(cm))
     .sort((a, b) => (b.plaatsgevondenOp || '').localeCompare(a.plaatsgevondenOp || ''));
-  const filterOpties = [null, ...evalTypes];
 
   return (
     <div className="pdca-container">
@@ -135,16 +129,6 @@ function EvaluatiesPagina({ documentId, plan, details }: PlanPaginaProps) {
           subtitle={sessionMessage ?? 'Rond die eerst af voordat je hier een evaluatie start.'} />
       )}
 
-      {evalTypes.length > 0 && (
-        <div className="pdca-phase-bar">
-          <ContentSwitcher size="sm" className="pdca-filter-switcher"
-            selectedIndex={Math.max(0, filterOpties.indexOf(filter))}
-            onChange={({ index }: { index?: number }) => setFilter(filterOpties[index ?? 0] ?? null)}>
-            {filterOpties.map(t => <Switch key={t ?? 'alle'} name={t ?? 'alle'} text={t ? evalTypeLabel(t) : 'Alle'} />)}
-          </ContentSwitcher>
-        </div>
-      )}
-
       {lopend && (
         <LopendeEvaluatieKaart session={lopend} uitgevoerd={uitgevoerd}
           uitgevoerdOp={uitgevoerd ? datumVan(uitgevoerd) : null} onSession={evaluatie.setSession} />
@@ -168,7 +152,7 @@ function EvaluatiesPagina({ documentId, plan, details }: PlanPaginaProps) {
         );
       })}
 
-      <PlanEvaluatieModal open={planModal} planUuid={plan.uuid} evalTypes={evalTypes}
+      <PlanEvaluatieModal open={planModal} planUuid={plan.uuid}
         onClose={() => setPlanModal(false)}
         onPlanned={async datum => {
           setPlanModal(false);

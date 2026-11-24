@@ -67,10 +67,6 @@ data class EvaluationSession(
     @Column(name = "ended_at")
     var endedAt: LocalDateTime? = null,
 
-    /** One of the case type's evaluation types (PhaseConfig). */
-    @Column(name = "evaluatie_type")
-    var evaluatieType: String? = null,
-
     @Column(name = "deelnemers", columnDefinition = "TEXT")
     var deelnemers: String? = null,
 

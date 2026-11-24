@@ -37,17 +37,14 @@ import java.util.UUID
 @Service
 class ContactmomentService(
     private val klantcontactService: KlantcontactService,
-    private val contactmomentDetailsRepository: ContactmomentDetailsRepository,
-    private val planOverlayService: PlanOverlayService
+    private val contactmomentDetailsRepository: ContactmomentDetailsRepository
 ) {
 
     /** A new contactmoment (took place or planned) of a plan. */
     fun create(request: ContactmomentRequest): ContactmomentDetails {
-        planOverlayService.validateEvaluatieType(request.planUuid, request.evaluatieType)
         val klantcontactUuid = klantcontactService.create(
             NewContactmoment(
                 planUuid = request.planUuid,
-                evaluatieType = request.evaluatieType,
                 plaatsgevondenOp = plaatsgevondenOp(request.datum),
                 afgerond = request.afgerond,
                 verslag = request.verslag
@@ -57,7 +54,6 @@ class ContactmomentService(
             ContactmomentDetails(
                 contactmomentUuid = klantcontactUuid,
                 planUuid = request.planUuid,
-                evaluatieType = request.evaluatieType,
                 geplandeDatum = request.datum,
                 deelnemers = request.deelnemers?.takeIf { it.isNotBlank() },
                 actiepunten = request.actiepunten
@@ -86,7 +82,6 @@ class ContactmomentService(
             contactmomentUuid = contactmomentUuid,
             planUuid = klantcontact.planUuid
                 ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Dit contactmoment hoort niet bij een plan"),
-            evaluatieType = klantcontactService.evaluatieTypeOf(klantcontact.onderwerp) ?: DEFAULT_EVALUATIE_TYPE,
             geplandeDatum = datum
         )
         klantcontactService.reschedule(contactmomentUuid, plaatsgevondenOp(datum))
@@ -94,8 +89,6 @@ class ContactmomentService(
     }
 
     companion object {
-        private const val DEFAULT_EVALUATIE_TYPE = "EVALUATION"
-
         /**
          * The one rule for the moment of a contactmoment on a date (planned
          * or taken place, from every route): noon, local time.

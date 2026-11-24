@@ -8,11 +8,6 @@ import type { VoortgangBetekenis, VoortgangStatusOptie } from './types';
 import { isVerlopen } from './dates';
 import { parseSubject } from './urn';
 
-const EVAL_TYPE_LABELS: Record<string, string> = {
-  INTAKE: 'Intake', PROGRESS: 'Voortgang', EVALUATION: 'Evaluatie',
-  INSPECTION: 'Inspectie', CRISIS: 'Crisis',
-};
-
 const PRIORITY_LABELS: Record<string, string> = {
   HIGH: 'Hoog', NORMAL: 'Normaal', LOW: 'Laag',
 };
@@ -22,7 +17,6 @@ const DIENSTVERLENING_LABELS: Record<string, string> = {
   werk: 'Terug naar werk', pip: 'Inburgering (PIP)', inkomen: 'Inkomensondersteuning',
 };
 
-export function evalTypeLabel(s: string): string { return EVAL_TYPE_LABELS[s] || s; }
 export function priorityLabel(s: string): string { return PRIORITY_LABELS[s] || s; }
 export function dienstverleningLabel(s: string): string { return DIENSTVERLENING_LABELS[s] || s; }
 

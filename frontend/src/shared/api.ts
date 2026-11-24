@@ -15,7 +15,7 @@
  *   klantcontact with its betrokkene and onderwerpobject.
  * - The PDCA overlay (/api/v1/pdca) stores only what the registers don't
  *   model: fase/voortgang/notities per doel and instrument,
- *   evaluatietype/actiepunten per contactmoment, completed evaluations with
+ *   deelnemers/actiepunten per contactmoment, completed evaluations with
  *   their plan changes, acties, betrokkenen, phase-configs and the
  *   documents generated for the plan (the evaluatieverslag). Its PUT
  *   endpoints are partial updates: an absent field keeps its value, null

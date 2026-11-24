@@ -45,7 +45,7 @@ class EvaluationSessionCancelTest {
     private val sessions = mock(EvaluationSessionRepository::class.java)
     private val service = EvaluationSessionService(
         sessions, mock(EvaluationChangeRepository::class.java), mock(PlanDetailsRepository::class.java),
-        mock(ContactmomentDetailsRepository::class.java), mock(PhaseConfigService::class.java),
+        mock(ContactmomentDetailsRepository::class.java),
         mock(KlantcontactService::class.java), mock(DocumentAanvraagService::class.java), mock(TransactionTemplate::class.java)
     )
 

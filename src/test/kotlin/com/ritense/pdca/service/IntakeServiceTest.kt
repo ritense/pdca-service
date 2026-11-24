@@ -39,7 +39,7 @@ class IntakeServiceTest {
             )
         )
         `when`(phaseConfigService.findByCaseDefinitionKey("intake-werk-participatie")).thenReturn(
-            PhaseConfig(caseDefinitionKey = "intake-werk-participatie", evaluationTypes = "[]", planCaseDefinitionKey = "inwonerplan")
+            PhaseConfig(caseDefinitionKey = "intake-werk-participatie", planCaseDefinitionKey = "inwonerplan")
         )
 
         val response = service.prefill("intake")
@@ -63,7 +63,7 @@ class IntakeServiceTest {
         )
         `when`(phaseConfigService.findByCaseDefinitionKey("renovatie-intake")).thenReturn(
             PhaseConfig(
-                caseDefinitionKey = "renovatie-intake", evaluationTypes = "[]", planCaseDefinitionKey = "binnenhof-renovatie",
+                caseDefinitionKey = "renovatie-intake", planCaseDefinitionKey = "binnenhof-renovatie",
                 prefillMapping = """{"subjectIdObject":"/object/id","objectNaam":"/object/naam"}"""
             )
         )

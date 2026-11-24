@@ -64,7 +64,7 @@
         },
         "contactmomenten": {
             "type": "array",
-            "description": "Intake-contactmomenten: datum, evaluatieType, status (gepland/afgerond), notitie, deelnemers",
+            "description": "Intake-contactmomenten (evaluaties): datum, status (gepland/afgerond), notitie, deelnemers",
             "items": {
                 "type": "object"
             }

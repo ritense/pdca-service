@@ -4,10 +4,8 @@
  */
 
 import type { PhaseConfig, VoortgangStatusOptie } from '../shared/api';
-import { jsonLijst, STANDAARD_EVALUATIETYPEN } from '../shared/caseConfig';
+import { jsonLijst } from '../shared/caseConfig';
 import { GERESERVEERDE_STATUSNAMEN } from '../shared/labels';
-
-export const ALL_EVAL_TYPES = ['INTAKE', 'PROGRESS', 'EVALUATION', 'INSPECTION', 'CRISIS'];
 
 /**
  * Prefill fields of the create-plan task form; order and keys mirror
@@ -94,7 +92,6 @@ export interface ConfigForm {
   positieTypen: string[];
   subdoelMapping: SubdoelMappingRij[];
   mapping: MappingRij[];
-  evalTypes: string[];
 }
 
 export function nieuwForm(standaardVoortgang: VoortgangStatusOptie[]): ConfigForm {
@@ -103,7 +100,6 @@ export function nieuwForm(standaardVoortgang: VoortgangStatusOptie[]): ConfigFor
     planStatussen: ['Concept', 'Vastgesteld', 'In uitvoering'],
     voortgang: alsRijen(standaardVoortgang),
     positieTypen: [], subdoelMapping: [], mapping: [],
-    evalTypes: STANDAARD_EVALUATIETYPEN,
   };
 }
 
@@ -117,7 +113,6 @@ export function formVan(cfg: PhaseConfig, standaardVoortgang: VoortgangStatusOpt
     positieTypen: jsonLijst(cfg.positieTypen),
     subdoelMapping: parseSubdoelMapping(cfg.subdoelMapping),
     mapping: parseMapping(cfg.prefillMapping),
-    evalTypes: jsonLijst(cfg.evaluationTypes),
   };
 }
 
@@ -144,7 +139,6 @@ export function payloadVan(form: ConfigForm): Partial<PhaseConfig> {
     positieTypen: JSON.stringify(form.positieTypen),
     subdoelMapping: subdoelRijen.length > 0
       ? JSON.stringify(Object.fromEntries(subdoelRijen.map(r => [r.hoofddoel, r.subdoelen]))) : null,
-    evaluationTypes: JSON.stringify(form.evalTypes),
     prefillMapping: form.isIntake && mappingRijen.length > 0
       ? JSON.stringify(Object.fromEntries(mappingRijen.map(r => [r.veld, r.pad.trim()]))) : null,
     planCaseDefinitionKey: form.isIntake ? form.planCaseDefKey.trim() : null,

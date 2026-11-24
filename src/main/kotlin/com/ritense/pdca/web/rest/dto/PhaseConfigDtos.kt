@@ -22,9 +22,9 @@ import java.util.Optional
 import java.util.UUID
 
 /**
- * PDCA case configuration: evaluation types, configurable plan display
- * statuses, the voortgangsstatussen of doelen ({code, naam, betekenis}
- * objects), the positietypen register (de positie per domein) —
+ * PDCA case configuration: configurable plan display statuses, the
+ * voortgangsstatussen of doelen ({code, naam, betekenis} objects), the
+ * positietypen register (de positie per domein) —
  * all JSON arrays — plus two JSON objects: the subdoelmapping (hoofddoeltype
  * -> subdoeltypen that may be chosen under it) and the prefill mapping
  * (prefill-veld -> documentpad) that drives how the create-plan task form is
@@ -32,7 +32,6 @@ import java.util.UUID
  */
 data class CreatePhaseConfigRequest(
     val caseDefinitionKey: String,
-    val evaluationTypes: String,
     val planStatussen: String? = null,
     val voortgangStatussen: String? = null,
     val positieTypen: String? = null,
@@ -45,11 +44,9 @@ data class CreatePhaseConfigRequest(
  * A partial update of a case configuration, like the overlay's (see
  * [patch]): an absent field keeps its value, an explicit null clears it —
  * clearing [planCaseDefinitionKey] turns an intake case type back into a
- * plan case type. [evaluationTypes] is required by the configuration, so
- * absent or null keeps it.
+ * plan case type.
  */
 data class UpdatePhaseConfigRequest(
-    val evaluationTypes: String? = null,
     val planStatussen: Optional<String>? = null,
     val voortgangStatussen: Optional<String>? = null,
     val positieTypen: Optional<String>? = null,
@@ -59,7 +56,6 @@ data class UpdatePhaseConfigRequest(
 ) {
     /** [existing] with this request's changes. */
     fun applyTo(existing: PhaseConfig): PhaseConfig = existing.copy(
-        evaluationTypes = evaluationTypes ?: existing.evaluationTypes,
         planStatussen = planStatussen.patch(existing.planStatussen),
         voortgangStatussen = voortgangStatussen.patch(existing.voortgangStatussen),
         positieTypen = positieTypen.patch(existing.positieTypen),
@@ -72,7 +68,6 @@ data class UpdatePhaseConfigRequest(
 data class PhaseConfigResponse(
     val id: UUID,
     val caseDefinitionKey: String,
-    val evaluationTypes: String,
     val planStatussen: String?,
     val voortgangStatussen: String?,
     val positieTypen: String?,
@@ -85,7 +80,6 @@ data class PhaseConfigResponse(
     constructor(config: PhaseConfig) : this(
         id = config.id,
         caseDefinitionKey = config.caseDefinitionKey,
-        evaluationTypes = config.evaluationTypes,
         planStatussen = config.planStatussen,
         voortgangStatussen = config.voortgangStatussen,
         positieTypen = config.positieTypen,

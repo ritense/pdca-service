@@ -381,10 +381,3 @@
   font-weight: 600;
   color: var(--cds-text-secondary, #525252);
 }
-
-.pdca-admin-checks {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--pdca-spacing-05);
-  margin-bottom: var(--pdca-spacing-03);
-}

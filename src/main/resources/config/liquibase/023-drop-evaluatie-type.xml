@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Every contactmoment of a plan is an evaluation: the evaluation type of
+  contactmomenten and evaluation sessions, and the evaluation types a case
+  type offers, are not used.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="023-01-drop-contactmoment-evaluatie-type" author="pdca">
+        <dropColumn tableName="contactmoment_details" columnName="evaluatie_type"/>
+    </changeSet>
+
+    <changeSet id="023-02-drop-evaluation-session-evaluatie-type" author="pdca">
+        <dropColumn tableName="evaluation_session" columnName="evaluatie_type"/>
+    </changeSet>
+
+    <changeSet id="023-03-drop-phase-config-evaluation-types" author="pdca">
+        <dropColumn tableName="phase_config" columnName="evaluation_types"/>
+    </changeSet>
+
+</databaseChangeLog>

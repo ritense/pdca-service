@@ -185,7 +185,7 @@ export function CreatePlan() {
   } else {
     const sectieProps = {
       state, dispatch, registers: registers.data,
-      evaluatieTypen: caseConfig.data.evaluatieTypen, subdoelMapping: caseConfig.data.subdoelMapping,
+      subdoelMapping: caseConfig.data.subdoelMapping,
     };
     inhoud = <>
       {prefillMelding && (

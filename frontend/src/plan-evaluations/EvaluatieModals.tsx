@@ -1,34 +1,30 @@
 import React, { useEffect, useState } from 'react';
-import { InlineNotification, Modal, Select, SelectItem, TextArea, TextInput } from '@carbon/react';
+import { InlineNotification, Modal, TextArea, TextInput } from '@carbon/react';
 import { pdca } from '../shared/api';
 import { overWeken, vandaag } from '../shared/dates';
-import { evalTypeLabel } from '../shared/labels';
 import { useSubmit } from '../shared/useSubmit';
 
-const DEFAULT_EVALUATIE_TYPE = 'EVALUATION';
 /** Default interval to a newly planned evaluation. */
 const PLAN_WEKEN = 6;
 /** The agenda becomes the klantcontact's inhoud in Open Klant, which holds at most 1000 characters. */
 const AGENDA_MAX_LENGTH = 1000;
 
-/** Plans an evaluation: a planned contactmoment with date, type and an optional agenda. */
-export function PlanEvaluatieModal({ open, planUuid, evalTypes, onClose, onPlanned }: {
-  open: boolean; planUuid: string; evalTypes: string[];
+/** Plans an evaluation: a planned contactmoment with date and an optional agenda. */
+export function PlanEvaluatieModal({ open, planUuid, onClose, onPlanned }: {
+  open: boolean; planUuid: string;
   onClose: () => void; onPlanned: (datum: string) => void;
 }) {
-  const defaultType = evalTypes.includes(DEFAULT_EVALUATIE_TYPE) ? DEFAULT_EVALUATIE_TYPE : evalTypes[0] ?? DEFAULT_EVALUATIE_TYPE;
   const [datum, setDatum] = useState('');
-  const [type, setType] = useState(defaultType);
   const [agenda, setAgenda] = useState('');
   const { saving, fout, submit, reset } = useSubmit();
   useEffect(() => {
-    if (open) { setDatum(overWeken(PLAN_WEKEN)); setType(defaultType); setAgenda(''); reset(); }
-  }, [open, defaultType, reset]);
+    if (open) { setDatum(overWeken(PLAN_WEKEN)); setAgenda(''); reset(); }
+  }, [open, reset]);
 
   const plannen = async () => {
-    if (!datum || !type) return;
+    if (!datum) return;
     const ok = await submit(() => pdca.contactmomenten.create({
-      planUuid, datum, evaluatieType: type, afgerond: false, verslag: agenda.trim() || undefined,
+      planUuid, datum, afgerond: false, verslag: agenda.trim() || undefined,
     }));
     if (ok) onPlanned(datum);
   };
@@ -36,16 +32,12 @@ export function PlanEvaluatieModal({ open, planUuid, evalTypes, onClose, onPlann
   return (
     <Modal open={open} modalHeading="Evaluatie plannen" size="sm"
       primaryButtonText={saving ? 'Plannen…' : 'Plannen'} secondaryButtonText="Annuleren"
-      primaryButtonDisabled={saving || !datum || !type || agenda.length > AGENDA_MAX_LENGTH}
+      primaryButtonDisabled={saving || !datum || agenda.length > AGENDA_MAX_LENGTH}
       onRequestClose={onClose} onRequestSubmit={plannen}>
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Plannen mislukt" subtitle={fout} lowContrast hideCloseButton />}
         <TextInput id="plan-datum" type="date" labelText="Datum" min={vandaag()} value={datum}
           onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDatum(e.target.value)} />
-        <Select id="plan-type" labelText="Type" value={type}
-          onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setType(e.target.value)}>
-          {evalTypes.map(t => <SelectItem key={t} value={t} text={evalTypeLabel(t)} />)}
-        </Select>
         <TextArea id="plan-agenda" labelText="Agenda of notitie (optioneel)" rows={4}
           enableCounter maxCount={AGENDA_MAX_LENGTH} value={agenda}
           onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setAgenda(e.target.value)} />
