@@ -30,8 +30,8 @@ import java.util.UUID
  * PDCA process overlay for a doel in Open Plan (pk = Open Plan doel uuid):
  * voortgangsstatus, the list ordering ([sortering] orders the flat doelen
  * list), the fine-grained uitvoeringsstatus (the register only knows
- * actief/afgerond/geannuleerd), the internal and external note and, for a
- * subdoel, its beoogde einddatum. Applies to subdoelen and the hoofddoel
+ * actief/afgerond/geannuleerd), the internal and external toelichting of
+ * the voortgang and, for a subdoel, its beoogde einddatum. Applies to subdoelen and the hoofddoel
  * alike.
  */
 @Entity
@@ -49,10 +49,6 @@ data class DoelDetails(
     @Column(name = "uitvoerings_status", nullable = false)
     var uitvoeringsStatus: UitvoeringsStatus = UitvoeringsStatus.GEPLAND,
 
-    /** Explanation of the voortgang (from the intake: the explanation of the doel). */
-    @Column(name = "voortgang_toelichting", columnDefinition = "TEXT")
-    var voortgangToelichting: String? = null,
-
     /**
      * How an active subdoel or hoofddoel is going: the code of one of the
      * voortgangsstatussen configured for the plan's case type
@@ -61,11 +57,14 @@ data class DoelDetails(
     @Column(name = "voortgang_status")
     var voortgangStatus: String? = null,
 
-    /** Note for colleagues only. */
+    /** Interne toelichting of the voortgang: for colleagues only, never in a document. */
     @Column(name = "interne_notitie", columnDefinition = "TEXT")
     var interneNotitie: String? = null,
 
-    /** Note that may be shared with the inwoner. */
+    /**
+     * Externe toelichting of the voortgang: may be shared with the inwoner
+     * (from the intake: the explanation of the doel).
+     */
     @Column(name = "externe_notitie", columnDefinition = "TEXT")
     var externeNotitie: String? = null,
 

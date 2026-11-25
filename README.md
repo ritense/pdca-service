@@ -328,6 +328,13 @@ Rerunning the Open Product seed with the variable updates the existing
   plan creation takes over, and demo defaults with every subdoel's dates in
   the second half of 2027. Running intakes keep the version they started
   with.
+- **Voortgangsstatussen** — the standard list is now *Starten*, *Mee
+  bezig*, *Hetzelfde gebleven*, *Achteruit gegaan*, *Gestopt*, *Behaald*
+  and *Behaald en beter dan verwacht*. On upgrade, doelen of a case type
+  without its own list move over (*Op koers* → *Mee bezig*, *Aandacht
+  nodig* → *Hetzelfde gebleven*, *Loopt achter* → *Achteruit gegaan*), and
+  the single voortgang toelichting becomes the doel's externe toelichting.
+  A case type with its own list in PDCA Beheer keeps that list.
 - **Acties as GZAC tasks** — import `gzac/bouwblokken/pdca-taak.zip`, then
   `inwonerplan.zip` and `binnenhof-renovatie.zip` 1.7.0 (they link the
   building block), and accept the changed footprint of the manifest: five

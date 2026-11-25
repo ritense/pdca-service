@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The voortgang of a doel is explained with an internal and an external
+  toelichting (the doel's interne and externe notitie); the single
+  voortgang toelichting went into the evaluatieverslag, so it becomes the
+  externe toelichting. Doelen of a case type without its own list of
+  voortgangsstatussen move from the old standard list to the new one.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="024-01-voortgang-toelichting-to-externe-notitie" author="pdca">
+        <sql>
+            UPDATE doel_details
+            SET externe_notitie = CASE
+                WHEN externe_notitie IS NULL OR btrim(externe_notitie) = '' THEN voortgang_toelichting
+                ELSE externe_notitie || E'\n\n' || voortgang_toelichting
+            END
+            WHERE voortgang_toelichting IS NOT NULL AND btrim(voortgang_toelichting) &lt;&gt; ''
+        </sql>
+        <dropColumn tableName="doel_details" columnName="voortgang_toelichting"/>
+    </changeSet>
+
+    <changeSet id="024-02-standard-voortgang-statussen" author="pdca">
+        <sql>
+            UPDATE doel_details AS d
+            SET voortgang_status = CASE d.voortgang_status
+                WHEN 'OP_KOERS' THEN 'MEE_BEZIG'
+                WHEN 'AANDACHT_NODIG' THEN 'HETZELFDE_GEBLEVEN'
+                WHEN 'LOOPT_ACHTER' THEN 'ACHTERUIT_GEGAAN'
+            END
+            WHERE d.voortgang_status IN ('OP_KOERS', 'AANDACHT_NODIG', 'LOOPT_ACHTER')
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM plan_details p
+                  JOIN phase_config c ON c.case_definition_key = p.case_definition_key
+                  WHERE p.plan_uuid = d.plan_uuid
+                    AND c.voortgang_statussen IS NOT NULL
+                    AND btrim(c.voortgang_statussen) NOT IN ('', '[]')
+              )
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

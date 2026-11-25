@@ -157,8 +157,8 @@ export interface PlanDetails {
 
 export type UitvoeringsStatus = 'GEPLAND' | 'GESTART';
 
-/** What a voortgangsstatus means: drives its tag colour and the Voortgang KPI. */
-export type VoortgangBetekenis = 'GAAT_GOED' | 'LET_OP' | 'GAAT_NIET_GOED';
+/** What a voortgangsstatus means: drives its tag colour and the Voortgang KPI (NEUTRAAL: assessed, neither good nor bad). */
+export type VoortgangBetekenis = 'GAAT_GOED' | 'NEUTRAAL' | 'LET_OP' | 'GAAT_NIET_GOED';
 
 /**
  * One voortgangsstatus of a plan case type (PhaseConfig.voortgangStatussen):
@@ -175,13 +175,11 @@ export interface DoelDetails {
   planUuid: string;
   /** Refinement of register status actief: gepland or gestart. */
   uitvoeringsStatus: UitvoeringsStatus;
-  /** Explanation of the voortgang. */
-  voortgangToelichting?: string;
   /** How an active subdoel or hoofddoel is going: code of one of the plan's voortgangsstatussen. */
   voortgangStatus?: string;
-  /** Note for colleagues only. */
+  /** Interne toelichting of the voortgang: for colleagues only. */
   interneNotitie?: string;
-  /** Note that may be shared with the inwoner. */
+  /** Externe toelichting of the voortgang: may be shared with the inwoner (and goes into the evaluatieverslag). */
   externeNotitie?: string;
   /** Beoogde einddatum of a subdoel (yyyy-mm-dd): not in the past when set, not after the plan's streefEinddatum. */
   streefEinddatum?: string;

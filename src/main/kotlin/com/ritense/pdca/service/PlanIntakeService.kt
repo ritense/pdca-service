@@ -614,7 +614,7 @@ class PlanIntakeService(
                         doelUuid = uuid,
                         planUuid = planUuid,
                         uitvoeringsStatus = status.uitvoeringsStatus,
-                        voortgangToelichting = doel.toelichting,
+                        externeNotitie = doel.toelichting,
                         streefEinddatum = intake.doelEinddata[index],
                         sortering = index
                     )

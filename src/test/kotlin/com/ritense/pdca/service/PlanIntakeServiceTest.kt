@@ -381,6 +381,15 @@ class PlanIntakeServiceTest {
     }
 
     @Test
+    fun `the toelichting of an intake subdoel becomes its externe toelichting`() {
+        service.createPlanFromIntake(request().copy(doelen = listOf(IntakeDoel(doelType = "Werk", toelichting = "Wil in de zorg werken"))))
+
+        val werk = doelen.single { it.titel == "Werk" }
+        assertEquals("Wil in de zorg werken", doelDetails.rows[werk.uuid]!!.externeNotitie)
+        assertEquals(null, doelDetails.rows[werk.uuid]!!.interneNotitie)
+    }
+
+    @Test
     fun `a subdoel cannot start after its beoogde einddatum`() {
         val fout = assertFailsWith<ResponseStatusException> {
             service.createPlanFromIntake(

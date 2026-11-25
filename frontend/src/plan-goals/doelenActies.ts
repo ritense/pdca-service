@@ -12,7 +12,12 @@ import { actieStatus, voortgangStatus } from '../shared/labels';
 import type { DoelenModel } from './useDoelenModel';
 
 export type Notities = { interneNotitie: string; externeNotitie: string };
-export type VoortgangInvoer = { status: string; toelichting: string };
+/**
+ * Voortgang of a doel: the code of its voortgangsstatus (empty when it has
+ * none or the doel is closed) with its interne and externe toelichting
+ * (stored as the doel's interne and externe notitie).
+ */
+export type VoortgangInvoer = Notities & { status: string };
 export type RegistratieInvoer = { uren: number | null; score: number | null; toelichting: string };
 /** What the subdoel modal saves; streefEinddatum is yyyy-mm-dd, empty for none. */
 /** `startdatum`: when work on the subdoel is planned to start (yyyy-mm-dd), on or before the beoogde einddatum. */
@@ -47,17 +52,11 @@ export function doelenActies(model: DoelenModel) {
   const gestarteSubdoelen = (resultaat: LevenscyclusResultaat) => resultaat.gestarteSubdoelen.forEach(s =>
     subdoel({ uuid: s.uuid, titel: s.titel ?? model.doelTitel(s.uuid) ?? '' }, 'SUBDOEL_GESTART'));
 
-  const notities = async (
-    target: { kind: 'SUBDOEL' | 'HOOFDDOEL' | 'INSTRUMENT'; uuid: string; titel: string },
-    voor: Partial<Notities> | undefined,
-    na: Notities,
-  ) => {
-    if (target.kind === 'INSTRUMENT') await pdca.instrumentdetails.upsert(target.uuid, { planUuid: plan.uuid, ...na });
-    else await pdca.doeldetails.upsert(target.uuid, { planUuid: plan.uuid, ...na });
+  /** The internal and external notes of an instrument. */
+  const notities = async (inst: Instrument, voor: Partial<Notities> | undefined, na: Notities) => {
+    await pdca.instrumentdetails.upsert(inst.uuid, { planUuid: plan.uuid, ...na });
     const wijziging = (soort: string, van: string | undefined, naar: string) => {
-      if ((van || '') !== naar) {
-        rec({ subjectType: target.kind, subjectUuid: target.uuid, subjectTitel: target.titel, soort, samenvoegen: true, vanWaarde: van, naarWaarde: naar });
-      }
+      if ((van || '') !== naar) instrument(inst, soort, { samenvoegen: true, vanWaarde: van, naarWaarde: naar });
     };
     wijziging('INTERNE_NOTITIE', voor?.interneNotitie, na.interneNotitie);
     wijziging('EXTERNE_NOTITIE', voor?.externeNotitie, na.externeNotitie);
@@ -176,25 +175,40 @@ export function doelenActies(model: DoelenModel) {
     },
 
     /**
-     * Voortgang and notes of a subdoel or the hoofddoel, edited together;
-     * each changed part is written and recorded on its own. The explanation
-     * entered with a voortgang becomes the reason of the recorded change
-     * (only when it was changed itself).
+     * Voortgang of a subdoel or the hoofddoel with its interne and externe
+     * toelichting, written in one call; only what changed is sent and
+     * recorded. With a voortgangsstatus the externe toelichting is the
+     * reason of the recorded VOORTGANG change (when it was changed itself),
+     * so the evaluatieverslag shows it with the voortgang; without one it is
+     * recorded on its own. The interne toelichting is recorded as an
+     * internal change, which no document shows.
      */
-    async bewaarDoelBijwerken(kind: 'SUBDOEL' | 'HOOFDDOEL', doel: Doel, voortgang: VoortgangInvoer | null, na: Notities | null) {
+    async bewaarDoelBijwerken(kind: 'SUBDOEL' | 'HOOFDDOEL', doel: Doel, invoer: VoortgangInvoer) {
       const voor = model.detailsVanDoel(doel.uuid);
-      if (voortgang) {
-        await pdca.doeldetails.upsert(doel.uuid, {
-          planUuid: plan.uuid, voortgangStatus: voortgang.status, voortgangToelichting: voortgang.toelichting,
-        });
-        rec({
-          subjectType: kind, subjectUuid: doel.uuid, subjectTitel: doel.titel, soort: 'VOORTGANG', samenvoegen: true,
+      const statusGewijzigd = !!invoer.status && invoer.status !== (voor?.voortgangStatus ?? '');
+      const internGewijzigd = invoer.interneNotitie !== (voor?.interneNotitie ?? '');
+      const externGewijzigd = invoer.externeNotitie !== (voor?.externeNotitie ?? '');
+      if (!statusGewijzigd && !internGewijzigd && !externGewijzigd) return;
+      await pdca.doeldetails.upsert(doel.uuid, {
+        planUuid: plan.uuid,
+        ...(statusGewijzigd ? { voortgangStatus: invoer.status } : {}),
+        ...(internGewijzigd ? { interneNotitie: invoer.interneNotitie } : {}),
+        ...(externGewijzigd ? { externeNotitie: invoer.externeNotitie } : {}),
+      });
+      const doelWijziging = (soort: string, extra: Partial<EvaluationChangeInput>) =>
+        rec({ subjectType: kind, subjectUuid: doel.uuid, subjectTitel: doel.titel, soort, samenvoegen: true, ...extra });
+      if (statusGewijzigd || (externGewijzigd && invoer.status)) {
+        doelWijziging('VOORTGANG', {
           vanWaarde: voor?.voortgangStatus ? voortgangStatus(voor.voortgangStatus, model.voortgangOpties).label : null,
-          naarWaarde: voortgangStatus(voortgang.status, model.voortgangOpties).label,
-          toelichting: voortgang.toelichting !== (voor?.voortgangToelichting ?? '') ? voortgang.toelichting : undefined,
+          naarWaarde: voortgangStatus(invoer.status, model.voortgangOpties).label,
+          toelichting: externGewijzigd ? invoer.externeNotitie : undefined,
         });
+      } else if (externGewijzigd) {
+        doelWijziging('EXTERNE_TOELICHTING', { vanWaarde: voor?.externeNotitie, naarWaarde: invoer.externeNotitie });
       }
-      if (na) await notities({ kind, uuid: doel.uuid, titel: doel.titel }, voor, na);
+      if (internGewijzigd) {
+        doelWijziging('INTERNE_TOELICHTING', { vanWaarde: voor?.interneNotitie, naarWaarde: invoer.interneNotitie });
+      }
     },
 
     /** Hours, effectiveness and notes of an instrument; emptied fields are sent as null, which clears them. */
@@ -213,7 +227,7 @@ export function doelenActies(model: DoelenModel) {
           toelichting: registratie.toelichting !== (voor?.effectiviteitToelichting ?? '') ? registratie.toelichting : undefined,
         });
       }
-      if (na) await notities({ kind: 'INSTRUMENT', uuid: inst.uuid, titel: inst.titel }, voor, na);
+      if (na) await notities(inst, voor, na);
     },
   };
 }
