@@ -109,8 +109,8 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
         setAanvraag(null);
       }
     },
-    bewaarDoelBijwerken: (kind, doel) => async (voortgang, notities) => {
-      await acties.bewaarDoelBijwerken(kind, doel, voortgang, notities);
+    bewaarDoelBijwerken: (kind, doel) => async invoer => {
+      await acties.bewaarDoelBijwerken(kind, doel, invoer);
       await data.herlaad();
     },
     bewaarInstrumentBijwerken: inst => async (registratie, notities) => {

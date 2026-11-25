@@ -39,7 +39,8 @@ import java.util.UUID
  * fails leaves its field empty rather than failing the document.
  *
  * The evaluatieverslag is shared with the inwoner. It therefore never
- * carries internal data: changes of soort `INTERNE_NOTITIE` are left out.
+ * carries internal data: changes of soort `INTERNE_NOTITIE` and
+ * `INTERNE_TOELICHTING` are left out.
  */
 @Service
 class DocumentGegevensService(
@@ -111,7 +112,7 @@ class DocumentGegevensService(
     }?.takeIf { it.isNotBlank() }
 
     private fun wijzigingen(changes: List<EvaluationChange>): List<Map<String, String>> =
-        changes.filter { it.soort != INTERNE_NOTITIE }
+        changes.filter { it.soort !in INTERN }
             .groupBy { it.subjectType to it.subjectUuid }
             .values
             .flatMap { groep ->
@@ -150,7 +151,8 @@ class DocumentGegevensService(
 
     companion object {
         const val SCHEMA_VERSIE = 1
-        const val INTERNE_NOTITIE = "INTERNE_NOTITIE"
+        /** Changes for colleagues only: the internal note or toelichting never goes into a document. */
+        val INTERN = setOf("INTERNE_NOTITIE", "INTERNE_TOELICHTING")
 
         private val DATUM = DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.forLanguageTag("nl-NL"))
 
@@ -177,6 +179,8 @@ class DocumentGegevensService(
             "VOORTGANG" to "Voortgang",
             "INTERNE_NOTITIE" to "Interne notitie",
             "EXTERNE_NOTITIE" to "Externe notitie",
+            "INTERNE_TOELICHTING" to "Interne toelichting",
+            "EXTERNE_TOELICHTING" to "Externe toelichting",
             "INSTRUMENT_TOEGEVOEGD" to "Instrument toegevoegd",
             "INSTRUMENT_GESTART" to "Instrument gestart",
             "INSTRUMENT_AFGEROND" to "Instrument afgerond",
@@ -197,7 +201,9 @@ class DocumentGegevensService(
         )
 
         /** Text changes: only the new text is shown, not old → new. */
-        private val TEKST_WIJZIGINGEN = setOf("INTERNE_NOTITIE", "EXTERNE_NOTITIE", "HOOFDDOEL_TOELICHTING")
+        private val TEKST_WIJZIGINGEN = setOf(
+            "INTERNE_NOTITIE", "EXTERNE_NOTITIE", "INTERNE_TOELICHTING", "EXTERNE_TOELICHTING", "HOOFDDOEL_TOELICHTING"
+        )
 
         /** "Voortgang: Op koers → Let op", "Externe notitie: ...", "Subdoel toegevoegd: Werk". */
         fun omschrijving(soort: String, vanWaarde: String?, naarWaarde: String?): String {

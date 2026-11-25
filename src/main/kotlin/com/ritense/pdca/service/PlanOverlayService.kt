@@ -161,7 +161,6 @@ class PlanOverlayService(
                 )
             current.apply {
                 uitvoeringsStatus = request.uitvoeringsStatus ?: uitvoeringsStatus
-                voortgangToelichting = request.voortgangToelichting.patch(voortgangToelichting)
                 voortgangStatus = request.voortgangStatus.patch(voortgangStatus)
                 interneNotitie = request.interneNotitie.patch(interneNotitie)
                 externeNotitie = request.externeNotitie.patch(externeNotitie)

@@ -31,8 +31,7 @@ export interface DoelenHandlers {
   vraagProductAan: (producttype: ProductType, doelUuid: string) => void;
   /** The product request under way. */
   aanvraag: { producttypeUuid: string; doelUuid: string } | null;
-  bewaarDoelBijwerken: (kind: 'SUBDOEL' | 'HOOFDDOEL', doel: Doel) =>
-    (voortgang: VoortgangInvoer | null, notities: Notities | null) => Promise<void>;
+  bewaarDoelBijwerken: (kind: 'SUBDOEL' | 'HOOFDDOEL', doel: Doel) => (invoer: VoortgangInvoer) => Promise<void>;
   bewaarInstrumentBijwerken: (inst: Instrument) =>
     (registratie: RegistratieInvoer | null, notities: Notities | null) => Promise<void>;
 }

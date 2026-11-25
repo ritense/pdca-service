@@ -16,17 +16,18 @@ export function VoortgangTag({ code, opties }: { code: string; opties: Voortgang
 }
 
 /**
- * "Voortgang & notities" of a doel or instrument: a compact summary with
- * "Bijwerken", which swaps in the edit form until it is saved or cancelled.
+ * "Voortgang & toelichting" of a doel or "Voortgang & notities" of an
+ * instrument: a compact summary with "Bijwerken", which swaps in the edit
+ * form until it is saved or cancelled.
  */
-function VoortgangNotitiesSectie({ bewerken, onBewerken, onSluiten, samenvatting, formulier }: {
-  bewerken: boolean; onBewerken: () => void; onSluiten?: () => void;
+function VoortgangNotitiesSectie({ titel, bewerken, onBewerken, onSluiten, samenvatting, formulier }: {
+  titel: string; bewerken: boolean; onBewerken: () => void; onSluiten?: () => void;
   samenvatting: React.ReactNode; formulier: React.ReactNode;
 }) {
   return (
     <div className="pdca-section-block">
       <div className="pdca-section-title">
-        <span>Voortgang &amp; notities</span>
+        <span>{titel}</span>
         {!bewerken && (
           <div className="pdca-row-actions">
             <Button size="sm" kind="ghost" onClick={onBewerken}>Bijwerken</Button>
@@ -40,33 +41,31 @@ function VoortgangNotitiesSectie({ bewerken, onBewerken, onSluiten, samenvatting
 }
 
 /**
- * Voortgang (an active subdoel or the hoofddoel) and notes of a doel. The
- * voortgang only shows while the doel runs; once it is closed its register
- * status says how it ended.
+ * Voortgang of a doel (an active subdoel or the hoofddoel) with its interne
+ * and externe toelichting. The voortgangsstatus only shows while the doel
+ * runs; once it is closed its register status says how it ended, and only
+ * the toelichting remains.
  */
 export function DoelVoortgangNotities({ id, details, metVoortgang, opties, onSave }: {
   id: string; details?: DoelDetails; metVoortgang: boolean; opties: VoortgangStatusOptie[];
-  onSave: (voortgang: VoortgangInvoer | null, notities: Notities | null) => Promise<void>;
+  onSave: (invoer: VoortgangInvoer) => Promise<void>;
 }) {
   const [bewerken, setBewerken] = useState(false);
   return (
-    <VoortgangNotitiesSectie bewerken={bewerken} onBewerken={() => setBewerken(true)}
+    <VoortgangNotitiesSectie titel="Voortgang & toelichting" bewerken={bewerken} onBewerken={() => setBewerken(true)}
       samenvatting={
         <div className="pdca-summary">
           {metVoortgang && (details?.voortgangStatus ? (
-            <p className="pdca-summary-line">
-              <VoortgangTag code={details.voortgangStatus} opties={opties} />
-              {details.voortgangToelichting && <span className="pdca-text-wrap">{details.voortgangToelichting}</span>}
-            </p>
+            <p className="pdca-summary-line"><VoortgangTag code={details.voortgangStatus} opties={opties} /></p>
           ) : (
             <p className="pdca-summary-line pdca-summary-empty">Nog niet beoordeeld</p>
           ))}
-          <NotitiesSamenvatting details={details} />
+          <TekstenSamenvatting details={details} soort="toelichting" />
         </div>
       }
       formulier={
         <DoelBijwerken id={id} details={details} metVoortgang={metVoortgang} opties={opties}
-          onSave={async (v, n) => { await onSave(v, n); setBewerken(false); }}
+          onSave={async invoer => { await onSave(invoer); setBewerken(false); }}
           onCancel={() => setBewerken(false)} />
       } />
   );
@@ -81,14 +80,15 @@ export function InstrumentVoortgangNotities({ id, details, onSave, onSluiten }: 
   const [bewerken, setBewerken] = useState(false);
   const registratie = registratieSamenvatting(details);
   return (
-    <VoortgangNotitiesSectie bewerken={bewerken} onBewerken={() => setBewerken(true)} onSluiten={onSluiten}
+    <VoortgangNotitiesSectie titel="Voortgang & notities" bewerken={bewerken} onBewerken={() => setBewerken(true)}
+      onSluiten={onSluiten}
       samenvatting={
         <div className="pdca-summary">
           <p className={`pdca-summary-line${registratie ? '' : ' pdca-summary-empty'}`}>
             {registratie ?? 'Nog geen uren of effectiviteit geregistreerd'}
           </p>
           {details?.effectiviteitToelichting && <p className="pdca-summary-line pdca-text-wrap">{details.effectiviteitToelichting}</p>}
-          <NotitiesSamenvatting details={details} />
+          <TekstenSamenvatting details={details} soort="notitie" />
         </div>
       }
       formulier={
@@ -99,13 +99,16 @@ export function InstrumentVoortgangNotities({ id, details, onSave, onSluiten }: 
   );
 }
 
-function NotitiesSamenvatting({ details }: { details?: Partial<Notities> }) {
-  const intern = eersteRegel(details?.interneNotitie ?? '');
+/** The first line of the external and internal text: the toelichting of a doel, the notes of an instrument. */
+function TekstenSamenvatting({ details, soort }: { details?: Partial<Notities>; soort: 'toelichting' | 'notitie' }) {
   const extern = eersteRegel(details?.externeNotitie ?? '');
-  if (!intern && !extern) return <p className="pdca-summary-line pdca-summary-empty">Geen notities</p>;
+  const intern = eersteRegel(details?.interneNotitie ?? '');
+  if (!intern && !extern) {
+    return <p className="pdca-summary-line pdca-summary-empty">{soort === 'toelichting' ? 'Geen toelichting' : 'Geen notities'}</p>;
+  }
   return <>
-    {intern && <p className="pdca-summary-line pdca-text-ellipsis">Interne notitie: {intern}</p>}
-    {extern && <p className="pdca-summary-line pdca-text-ellipsis">Externe notitie: {extern}</p>}
+    {extern && <p className="pdca-summary-line pdca-text-ellipsis">Externe {soort}: {extern}</p>}
+    {intern && <p className="pdca-summary-line pdca-text-ellipsis">Interne {soort}: {intern}</p>}
   </>;
 }
 
@@ -128,32 +131,35 @@ const notitiesVan = (details?: Partial<Notities>): Notities =>
 const notitiesGewijzigd = (notities: Notities, details?: Partial<Notities>) =>
   notities.interneNotitie !== (details?.interneNotitie ?? '') || notities.externeNotitie !== (details?.externeNotitie ?? '');
 
-/** Edit form for the voortgang and the notes of a doel; only the parts that changed are saved. */
+/**
+ * Edit form for the voortgang of a doel: its voortgangsstatus (while the doel
+ * runs) with the interne and externe toelichting; the toelichting can be
+ * saved without a status.
+ */
 function DoelBijwerken({ id, details, metVoortgang, opties, onSave, onCancel }: {
   id: string; details?: DoelDetails; metVoortgang: boolean; opties: VoortgangStatusOptie[];
-  onSave: (voortgang: VoortgangInvoer | null, notities: Notities | null) => Promise<void>;
+  onSave: (invoer: VoortgangInvoer) => Promise<void>;
   onCancel: () => void;
 }) {
-  const [status, setStatus] = useState<string>(details?.voortgangStatus ?? '');
-  const [toelichting, setToelichting] = useState(details?.voortgangToelichting ?? '');
-  const [notities, setNotities] = useState<Notities>(notitiesVan(details));
+  const [status, setStatus] = useState<string>(metVoortgang ? details?.voortgangStatus ?? '' : '');
+  const [toelichting, setToelichting] = useState<Notities>(notitiesVan(details));
   const { saving, fout, submit } = useSubmit();
-  const voortgangGewijzigd = metVoortgang
-    && (status !== (details?.voortgangStatus ?? '') || toelichting !== (details?.voortgangToelichting ?? ''));
-  const notitiesAnders = notitiesGewijzigd(notities, details);
-  const kanOpslaan = (voortgangGewijzigd || notitiesAnders) && !(voortgangGewijzigd && !status);
+  const statusGewijzigd = metVoortgang && !!status && status !== (details?.voortgangStatus ?? '');
+  const kanOpslaan = statusGewijzigd || notitiesGewijzigd(toelichting, details);
   return (
     <div className="pdca-edit-form">
       {metVoortgang && (
-        <VoortgangStatusBlok id={id} status={status} toelichting={toelichting} huidig={details?.voortgangStatus}
-          opties={opties} onStatus={setStatus} onToelichting={setToelichting} />
+        <VoortgangStatusBlok id={id} status={status} huidig={details?.voortgangStatus} opties={opties} onStatus={setStatus} />
       )}
-      <NotitiesBlok id={id} notities={notities} onChange={setNotities} />
+      <div className="pdca-form-grid">
+        <TextArea id={`intern-${id}`} rows={3} labelText="Interne toelichting" helperText="Alleen zichtbaar voor collega's"
+          value={toelichting.interneNotitie} onChange={e => setToelichting({ ...toelichting, interneNotitie: e.target.value })} />
+        <TextArea id={`extern-${id}`} rows={3} labelText="Externe toelichting"
+          helperText="Kan gedeeld worden met de inwoner en komt in het evaluatieverslag"
+          value={toelichting.externeNotitie} onChange={e => setToelichting({ ...toelichting, externeNotitie: e.target.value })} />
+      </div>
       <BijwerkenActies saving={saving} kanOpslaan={kanOpslaan} fout={fout} onCancel={onCancel}
-        onSave={() => submit(() => onSave(
-          voortgangGewijzigd && status ? { status, toelichting } : null,
-          notitiesAnders ? notities : null,
-        ))} />
+        onSave={() => submit(() => onSave({ status, ...toelichting }))} />
     </div>
   );
 }
@@ -200,10 +206,7 @@ function InstrumentBijwerken({ id, details, onSave, onCancel }: {
   );
 }
 
-/**
- * Internal note (colleagues only) and external note (may be shared with the
- * inwoner) of a subdoel, the hoofddoel or an instrument.
- */
+/** Internal note (colleagues only) and external note (may be shared with the inwoner) of an instrument. */
 function NotitiesBlok({ id, notities, onChange }: {
   id: string; notities: Notities; onChange: (notities: Notities) => void;
 }) {
@@ -218,29 +221,24 @@ function NotitiesBlok({ id, notities, onChange }: {
 }
 
 /**
- * Voortgangsstatus with its explanation, for an active subdoel or the
- * hoofddoel; the choices are the plan's voortgangsstatussen. A current status
- * that was removed from the list stays selectable until it is changed.
- * During an evaluation a changed explanation becomes the reason of the
- * recorded change.
+ * Voortgangsstatus of an active subdoel or the hoofddoel; the choices are the
+ * plan's voortgangsstatussen. A current status that was removed from the
+ * list stays selectable until it is changed.
  */
-function VoortgangStatusBlok({ id, status, toelichting, huidig, opties, onStatus, onToelichting }: {
-  id: string; status: string; toelichting: string; huidig?: string; opties: VoortgangStatusOptie[];
-  onStatus: (status: string) => void; onToelichting: (toelichting: string) => void;
+function VoortgangStatusBlok({ id, status, huidig, opties, onStatus }: {
+  id: string; status: string; huidig?: string; opties: VoortgangStatusOptie[]; onStatus: (status: string) => void;
 }) {
   const vervallen = huidig && !opties.some(o => o.code === huidig) ? huidig : null;
   return (
     <div className="pdca-form-grid">
-      <Select id={`voortgang-${id}`} labelText="Voortgang" value={status}
+      <Select id={`voortgang-${id}`} labelText="Voortgang" helperText="Hoe gaat het met dit doel?" value={status}
         onChange={e => onStatus(e.target.value)}>
-        <SelectItem value="" text="Geen status" disabled hidden={!!huidig} />
+        <SelectItem value="" text="Nog niet beoordeeld" disabled hidden={!!huidig} />
         {opties.map(o => <SelectItem key={o.code} value={o.code} text={o.naam} />)}
         {vervallen && (
           <SelectItem value={vervallen} text={`${voortgangStatus(vervallen, opties).label} (niet meer in gebruik)`} />
         )}
       </Select>
-      <TextArea id={`voortgang-toelichting-${id}`} rows={2} labelText="Toelichting" helperText="Waarom gaat het zo?"
-        value={toelichting} onChange={e => onToelichting(e.target.value)} />
     </div>
   );
 }

@@ -14,7 +14,8 @@ function kpi(model: OverzichtModel) {
   const { doelen, doelDetails, acties, contactmomenten, contactmomentDetails } = model.data;
   const detailsVan = (uuid: string) => doelDetails.find(d => d.doelUuid === uuid);
   // Voortgang = how the active subdoelen are going (overlay voortgangsstatus, counted by the
-  // betekenis of the status in the plan's list); the hoofddoel stays out.
+  // betekenis of the status in the plan's list; NEUTRAAL counts as assessed only); the
+  // hoofddoel stays out.
   const subdoelen = doelen.filter(d => !model.isHoofddoel(d));
   const actief = subdoelen.filter(d => d.status === 'actief');
   const betekenisVan = (d: Doel) =>

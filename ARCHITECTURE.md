@@ -511,7 +511,7 @@ signature or GZAC's answers about a user.
 | Verzoeken (product requests) | Objecten API | the app keeps no record of them (§6.2) |
 | Plan ↔ plan dossier, plan ↔ intake, case type, persoon, display status, positie, subdoelgroep, streefdatum | overlay `PlanDetails` | |
 | Progress of plan creation from an intake | overlay `PlanIntake` | reservation and lease (§6.1) |
-| Uitvoeringsstatus Gepland/Gestart, voortgangsstatus and toelichting, notes, sort order of a doel | overlay `DoelDetails` | refinement of register `actief` |
+| Uitvoeringsstatus Gepland/Gestart, voortgangsstatus with its interne and externe toelichting, sort order of a doel | overlay `DoelDetails` | refinement of register `actief` |
 | Uitvoeringsstatus, hours, effectiveness, notes, abort reason of an instrument | overlay `InstrumentDetails` | |
 | Planned date, deelnemers, actiepunten, originating evaluation of a contactmoment | overlay `ContactmomentDetails` | keyed by klantcontact uuid |
 | Betrokkenen and which one is procesbegeleider | overlay `InvolvedParty` | procesbegeleider mirrored to Open Plan `plan.medewerker` |
@@ -545,12 +545,35 @@ gelukt* when false.
 
 **Voortgangsstatus** — next to its lifecycle, a running hoofddoel or subdoel
 says how it is going: one of the plan case type's voortgangsstatussen
-`{code, naam, betekenis}` (§10.2; standard list *Op koers*, *Aandacht
-nodig*, *Loopt achter*). The `code` is stored on the doel, the `betekenis`
-(`GAAT_GOED`, `LET_OP`, `GAAT_NIET_GOED`) gives colour and KPI. It can only be
-set while the doel is `actief` in Open Plan (409 otherwise) and must be in
-the plan's list (400); it never changes the register status. A doel whose
-status was removed from the list keeps showing it (grey).
+`{code, naam, betekenis}` (§10.2). The standard list:
+
+| Voortgangsstatus | `betekenis` |
+|---|---|
+| *Starten* | `NEUTRAAL` |
+| *Mee bezig* | `GAAT_GOED` |
+| *Hetzelfde gebleven* | `LET_OP` |
+| *Achteruit gegaan*, *Gestopt* | `GAAT_NIET_GOED` |
+| *Behaald*, *Behaald en beter dan verwacht* | `GAAT_GOED` |
+
+The `code` is stored on the doel, the `betekenis` gives colour (green, teal,
+magenta, red) and KPI: the Voortgang tile counts `GAAT_GOED` as op koers,
+`LET_OP` and `GAAT_NIET_GOED` as vraagt aandacht, and `NEUTRAAL` only as
+beoordeeld. It can only be set while the doel is `actief` in Open Plan (409
+otherwise) and must be in the plan's list (400); it never changes the
+register status — *Behaald* or *Gestopt* leaves the subdoel Gestart until it
+is completed or aborted. A doel whose status was removed from the list keeps
+showing it (grey).
+
+The voortgang is explained with an **interne toelichting** (for colleagues
+only, `DoelDetails.interneNotitie`) and an **externe toelichting** (may be
+shared with the inwoner, `DoelDetails.externeNotitie`); both can be edited
+with or without a status, also on a closed doel. In an evaluation (§6.5)
+the externe toelichting is the reason of the recorded `VOORTGANG` change
+when it changed with the voortgang, or an `EXTERNE_TOELICHTING` change of
+its own on a doel without a voortgangsstatus; the interne toelichting is an
+`INTERNE_TOELICHTING` change, which the evaluatieverslag leaves out
+(§6.6). The intake's toelichting of a subdoel becomes its externe
+toelichting.
 
 **Procesbegeleider** — the betrokkene with `isPrimary`, at most one per plan
 (partial unique index). `BetrokkeneService` writes it to Open Plan as
@@ -984,8 +1007,8 @@ sequenceDiagram
   carries from the intake. It is taken
   when the evaluation is completed, so the document shows the evaluation as
   it was then. The verslag is shared with the inwoner, so data marked
-  internal never enters it: changes of soort `INTERNE_NOTITIE` are left
-  out. The snapshot is a temporary copy, kept in
+  internal never enters it: changes of soort `INTERNE_NOTITIE` and
+  `INTERNE_TOELICHTING` are left out. The snapshot is a temporary copy, kept in
   `document_aanvraag.gegevens` only until the request ends; the process
   removes `pdcaGegevens` and the PDF from its variables when it ends.
 - **The outcome.** `document-gereed` (`aanvraagId`, `uitkomst` `GEREED` or
@@ -1038,11 +1061,10 @@ reason (§6.5). While the plan is still in concept anything goes.
   `PATCH plan`, `streefEinddatum` in `PUT /plandetails`), the hoofddoel
   (`PUT /plannen/{uuid}/hoofddoel`) and instrument requests
   (`POST /instrumenten/start`). Moving the display status back to concept,
-  or clearing it (`weergaveStatus: null`), is locked too, else the lock
-  would be one step away. Free: voortgang and
-  notes, starting a subdoel, instrument steps and registrations, acties,
-  betrokkenen, contactmomenten, other display statuses, and closing or
-  reopening the plan.
+  or clearing it (`weergaveStatus: null`), is locked too, else the lock would be one step away. Free: voortgang
+  with its toelichting, instrument notes, starting a subdoel, instrument
+  steps and registrations, acties, betrokkenen, contactmomenten, other
+  display statuses, and closing or reopening the plan.
 - **Who may change them**: a user with a running evaluation session on
   that plan (§6.5) — sessions are per user, so a colleague's evaluation
   unlocks nothing.
@@ -1456,7 +1478,7 @@ the demo case types.
 |---|---|---|
 | `PlanDetails` (`plan_details`) | `planUuid` | `persoonUuid`, `caseDefinitionKey`, `dossierId` (plan dossier, unique), `intakeDossierId` (unique: one plan per intake), `weergaveStatus` (display status), `beginPositie` (positie), `subdoelgroep`, `streefEinddatum` |
 | `PlanIntake` (`plan_intake`) | `intakeDossierId` | plan creation from an intake: `status` IN_AANMAAK → GEREED, `planUuid` once created, `claimToken` + `claimedUntil` (the owned claim and its lease; every write is a conditional update on the token) |
-| `DoelDetails` (`doel_details`) | `doelUuid` | `planUuid`, `uitvoeringsStatus` (GEPLAND, GESTART), `voortgangStatus` (a code of the plan's list) and `voortgangToelichting`, `interneNotitie`, `externeNotitie`, `streefEinddatum` (beoogde einddatum of a subdoel, §6.3), `sortering` (the hoofddoel −1) |
+| `DoelDetails` (`doel_details`) | `doelUuid` | `planUuid`, `uitvoeringsStatus` (GEPLAND, GESTART), `voortgangStatus` (a code of the plan's list), `interneNotitie` and `externeNotitie` (the interne and externe toelichting of the voortgang, §5.2), `streefEinddatum` (beoogde einddatum of a subdoel, §6.3), `sortering` (the hoofddoel −1) |
 | `InstrumentDetails` (`instrument_details`) | `instrumentUuid` | `planUuid`, `uitvoeringsStatus` (default GESTART), `urenBesteed`, `effectiviteitScore` (1–5) and `effectiviteitToelichting`, `afbreekReden`, `interneNotitie`, `externeNotitie` |
 | `ContactmomentDetails` (`contactmoment_details`) | `contactmomentUuid` (= klantcontact uuid) | `planUuid`, `geplandeDatum`, `deelnemers`, `actiepunten`, `evaluationSessionId` |
 | `InvolvedParty` (`involved_party`) | id | `planUuid`, name, role, contact details, `isPrimary` (the procesbegeleider; at most one per plan, partial unique index) |
@@ -1488,10 +1510,11 @@ text columns):
   Vastgesteld); the first is the concept status a new plan gets and under
   which the plan lock does not apply (§6.7);
 - `voortgangStatussen` — `[{code, naam, betekenis}]` in display order;
-  empty = the standard list (`VoortgangStatusOptie.STANDAARD`).
+  empty = the standard list (`VoortgangStatusOptie.STANDAARD`, §5.2);
+  `betekenis` is `GAAT_GOED`, `NEUTRAAL`, `LET_OP` or `GAAT_NIET_GOED`.
   `PhaseConfigService` validates on save (every status named, names unique
-  ignoring case, none named like a lifecycle status: Gepland, Gestart,
-  Afgerond, Afgebroken, Behaald, Niet behaald) and assigns the code of a new
+  ignoring case, none named like a lifecycle label a doel shows: Gepland,
+  Gestart, Afgerond, Afgebroken, Niet behaald) and assigns the code of a new
   status once, from its name (`Wacht op inwoner` → `WACHT_OP_INWONER`);
 - `positieTypen` — the allowed values of a plan's positie (free text is
   rejected);
@@ -1607,7 +1630,7 @@ Details, versions and the manual setup steps:
 | Bundle (`frontend/src/`) | Manifest key | GZAC surface | Purpose |
 |---|---|---|---|
 | `plan-overview` | `plan-overview` | case tab *Planoverzicht* | plan header and actions, KPIs, plan data, hoofddoel, betrokkenen |
-| `plan-goals` | `plan-goals` | case tab *Doelen* | hoofddoel and subdoelen, instruments, acties, voortgang and notes |
+| `plan-goals` | `plan-goals` | case tab *Doelen* | hoofddoel and subdoelen with their voortgang and toelichting, instruments with their notes, acties |
 | `plan-evaluations` | `plan-evaluations` | case tab *Evaluaties* | planned and past evaluations with their evaluatieverslag, start of an evaluation |
 | `pdca-admin` | `pdca-admin` | page *PDCA Beheer* | case configuration per case type |
 | `create-plan` | `create-plan` | task form | prefilled plan creation from an intake (§6.1) |
@@ -1708,7 +1731,7 @@ bundles, so nothing is loaded from third parties.
 - **Lifecycle actions are use cases** (§6.3): every button that changes a
   status calls one backend endpoint; the close-plan modal shows the
   afsluitcheck first. A closed doel shows its register status and no
-  voortgang.
+  voortgangsstatus, only its interne and externe toelichting.
 - **Plangegevens** on the Planoverzicht edit only the procesbegeleider (one
   of the betrokkenen) and the toelichting bij het hoofddoel; hoofddoel,
   subdoelgroep and positie come from the intake and are read-only. Editing

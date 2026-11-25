@@ -239,6 +239,7 @@ export function doelgroepVoorSubject(domeinregister: string | null | undefined):
 /** What a voortgangsstatus means, as chosen in PDCA Beheer; the tag colour follows it. */
 export const VOORTGANG_BETEKENISSEN: { betekenis: VoortgangBetekenis; label: string; tag: TagKleur }[] = [
   { betekenis: 'GAAT_GOED', label: 'Gaat goed', tag: 'green' },
+  { betekenis: 'NEUTRAAL', label: 'Neutraal', tag: 'teal' },
   { betekenis: 'LET_OP', label: 'Let op', tag: 'magenta' },
   { betekenis: 'GAAT_NIET_GOED', label: 'Gaat niet goed', tag: 'red' },
 ];
@@ -255,12 +256,13 @@ export function doelBalkKleur(
 }
 
 /**
- * Names of the lifecycle statuses (register status plus gepland/gestart); a
- * voortgangsstatus may not reuse them. Mirrors VoortgangStatusOptie in the backend.
+ * Names of the lifecycle statuses a doel shows (register status plus
+ * gepland/gestart); a voortgangsstatus may not reuse them. "Behaald" is no
+ * lifecycle label and may be one. Mirrors VoortgangStatusOptie in the backend.
  */
-export const GERESERVEERDE_STATUSNAMEN = ['gepland', 'gestart', 'afgerond', 'afgebroken', 'niet behaald', 'behaald'];
+export const GERESERVEERDE_STATUSNAMEN = ['gepland', 'gestart', 'afgerond', 'afgebroken', 'niet behaald'];
 
-/** OP_KOERS -> "Op koers": the name of a status that is no longer in the plan's list. */
+/** MEE_BEZIG -> "Mee bezig": the name of a status that is no longer in the plan's list. */
 function codeAlsNaam(code: string): string {
   const tekst = code.toLowerCase().replace(/_/g, ' ');
   return tekst.charAt(0).toUpperCase() + tekst.slice(1);
@@ -293,6 +295,8 @@ const WIJZIGING_LABELS: Record<string, string> = {
   VOORTGANG: 'Voortgang',
   INTERNE_NOTITIE: 'Interne notitie',
   EXTERNE_NOTITIE: 'Externe notitie',
+  INTERNE_TOELICHTING: 'Interne toelichting',
+  EXTERNE_TOELICHTING: 'Externe toelichting',
   INSTRUMENT_TOEGEVOEGD: 'Instrument toegevoegd',
   INSTRUMENT_GESTART: 'Instrument gestart',
   INSTRUMENT_AFGEROND: 'Instrument afgerond',
@@ -313,7 +317,9 @@ const WIJZIGING_LABELS: Record<string, string> = {
 };
 
 /** Text changes: only the new text is shown, not old → new. */
-const TEKST_WIJZIGINGEN = new Set(['INTERNE_NOTITIE', 'EXTERNE_NOTITIE', 'HOOFDDOEL_TOELICHTING']);
+const TEKST_WIJZIGINGEN = new Set([
+  'INTERNE_NOTITIE', 'EXTERNE_NOTITIE', 'INTERNE_TOELICHTING', 'EXTERNE_TOELICHTING', 'HOOFDDOEL_TOELICHTING',
+]);
 
 /** A text change is its own explanation; every other change can be given a reason. */
 export function wijzigingHeeftReden(soort: string): boolean { return !TEKST_WIJZIGINGEN.has(soort); }
