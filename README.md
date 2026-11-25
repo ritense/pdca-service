@@ -320,9 +320,15 @@ Rerunning the Open Product seed with the variable updates the existing
   `documentProces`. Until the administrator accepts the changed footprint,
   completed evaluations get a failed verslag; "Opnieuw maken" requests it
   again.
-- **Instrument dossier 1.2.0** — import `instrument-verzoek.zip` 1.2.0 (all
-  three plugin actions asynchronous with retries). Dossiers already running
-  keep the process version they started with; new dossiers start on 1.2.0.
+- **Instrument dossier 1.3.0** — import `instrument-verzoek.zip` 1.3.0: the
+  verzoek carries the instrument's startdatum and `aanmaak-instrument`
+  gives the instrument that date (all three plugin actions asynchronous with
+  retries). Dossiers already running keep the process version they started
+  with; new dossiers start on 1.3.0.
+- **Instruments wait for the plan** — no verzoek is filed while a plan is
+  in concept: plan creation plans the intake's instruments instead of
+  requesting them, and the app requests each one from its startdatum once
+  the plan is past concept (a job that runs every minute).
 - **Intakes 1.3.0 and 1.5.0** — import `intake-werk-participatie.zip`
   1.3.0 and `renovatie-intake.zip` 1.5.0: a startdatum per subdoel, which
   plan creation takes over, and demo defaults with every subdoel's dates in

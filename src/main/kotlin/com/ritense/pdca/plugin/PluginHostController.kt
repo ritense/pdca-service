@@ -321,6 +321,7 @@ class PluginHostController(
                     mapOf("key" to "product", "type" to "string", "required" to false),
                     mapOf("key" to "status", "type" to "string", "required" to false),
                     mapOf("key" to "instrumenttype", "type" to "string", "required" to false),
+                    mapOf("key" to "startdatum", "type" to "string", "required" to false),
                     mapOf("key" to "planUuid", "type" to "string", "required" to false)
                 ),
                 "outputs" to listOf("instrumentUuid")

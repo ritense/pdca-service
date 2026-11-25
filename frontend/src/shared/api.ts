@@ -29,7 +29,7 @@
 import { get, HttpError, listAll, send } from './http';
 import type {
   Actie, AfsluitCheck, Betrokkene, BrpPersoon, CompletedEvaluation, ContactmomentDetails, Doel, DoelDetails,
-  DocumentAanvraag, DocumentInhoud, DocumentInstellingen, DocumentSoort, DoelType, HoofddoelWissel, Instrument, InstrumentDetails, InstrumentVerzoek, Klantcontact, LevenscyclusResultaat,
+  DocumentAanvraag, DocumentInhoud, DocumentInstellingen, DocumentSoort, DoelType, HoofddoelWissel, IngeplandInstrument, Instrument, InstrumentAanvraag, InstrumentDetails, Klantcontact, LevenscyclusResultaat,
   NewContactmoment, ObjectRecord, OpenVerzoek, PhaseConfig, Plan, PlanDetails, PlanType, ProductType, RelatieType,
   Resultaat, VoortgangStatusOptie,
 } from './types';
@@ -185,13 +185,23 @@ export const pdca = {
   },
   instrumenten: {
     /**
-     * Product requests: the app files a verzoek for the producttype's
-     * StartInstrument actie (Open Product); GZAC's instrument dossier picks it
-     * up and creates the instrument in the plan from there. 409 while one for
-     * the same doel and product is open.
+     * Product requests from a startdatum (yyyy-mm-dd, default today): for
+     * today on a plan past concept the app files a verzoek for the
+     * producttype's StartInstrument actie (Open Product), which GZAC's
+     * instrument dossier picks up to create the instrument; otherwise the
+     * product is ingepland and requested on its date. 409 while a verzoek
+     * for the same doel and product is open or it is ingepland already.
      */
-    start: (doelUuid: string, producttypeUuid: string) =>
-      send<InstrumentVerzoek>('POST', `${PDCA}/instrumenten/start`, { doelUuid, producttypeUuid }),
+    start: (doelUuid: string, producttypeUuid: string, startdatum?: string) =>
+      send<InstrumentAanvraag>('POST', `${PDCA}/instrumenten/start`, { doelUuid, producttypeUuid, startdatum }),
+    /** The plan's ingeplande instrumenten, earliest startdatum first. */
+    ingepland: (planUuid: string) => get<IngeplandInstrument[]>(`${PDCA}/instrumenten/ingepland`, { planUuid }),
+    /** Moves an ingepland instrument to another startdatum (not in the past); also retries one the registers refused. */
+    wijzigIngepland: (id: string, startdatum: string) =>
+      send<IngeplandInstrument>('PATCH', `${PDCA}/instrumenten/ingepland/${id}`, { startdatum }),
+    /** Requests an ingepland instrument now; 409 while the plan is in concept. */
+    vraagIngeplandAan: (id: string) => send<InstrumentAanvraag>('POST', `${PDCA}/instrumenten/ingepland/${id}/aanvragen`),
+    verwijderIngepland: (id: string) => send<void>('DELETE', `${PDCA}/instrumenten/ingepland/${id}`),
     /** The plan's verzoeken whose instrument has not appeared yet. */
     verzoeken: (planUuid: string) => get<OpenVerzoek[]>(`${PDCA}/instrumenten/verzoeken`, { planUuid }),
     /** A gepland instrument starts; its gepland subdoelen start along with it. */

@@ -5,7 +5,9 @@
  * is up to the page.
  */
 
-import { Actie, Doel, Instrument, InstrumentDetails, LevenscyclusResultaat, openplan, pdca, ProductType } from '../shared/api';
+import {
+  Actie, Doel, IngeplandInstrument, Instrument, InstrumentDetails, LevenscyclusResultaat, openplan, pdca, ProductType,
+} from '../shared/api';
 import { EvaluationChangeInput, recordEvaluationChange } from '../shared/evaluationSession';
 import { datumDeel, formatDate } from '../shared/dates';
 import { actieStatus, voortgangStatus } from '../shared/labels';
@@ -64,13 +66,41 @@ export function doelenActies(model: DoelenModel) {
 
   return {
     /**
-     * Requests a product: the app files a verzoek and creates nothing in the
-     * plan itself; GZAC's instrument dossier picks it up and creates the instrument.
+     * Requests a product from a startdatum. For today on a plan past concept
+     * the app files a verzoek and creates nothing in the plan itself; GZAC's
+     * instrument dossier picks it up and creates the instrument. Otherwise
+     * the backend plans it, and it is requested on its date.
      */
-    async vraagProductAan(producttype: ProductType, doelUuid: string) {
-      const verzoek = await pdca.instrumenten.start(doelUuid, producttype.uuid);
-      subdoel({ uuid: doelUuid, titel: model.doelTitel(doelUuid) ?? '' }, 'PRODUCT_AANGEVRAAGD', { naarWaarde: verzoek.productTitel });
-      return verzoek;
+    async vraagProductAan(producttype: ProductType, doelUuid: string, startdatum: string) {
+      const aanvraag = await pdca.instrumenten.start(doelUuid, producttype.uuid, startdatum);
+      const doel = { uuid: doelUuid, titel: model.doelTitel(doelUuid) ?? '' };
+      if (aanvraag.verzoek) subdoel(doel, 'PRODUCT_AANGEVRAAGD', { naarWaarde: aanvraag.verzoek.productTitel });
+      else subdoel(doel, 'PRODUCT_INGEPLAND', { naarWaarde: `${producttype.naam} vanaf ${formatDate(startdatum)}` });
+      return aanvraag;
+    },
+
+    /** Moves an ingepland instrument to another startdatum; for one the registers refused, also the retry. */
+    async wijzigIngepland(rij: IngeplandInstrument, naam: string, startdatum: string) {
+      await pdca.instrumenten.wijzigIngepland(rij.id, startdatum);
+      if (startdatum !== rij.startdatum) {
+        instrument({ uuid: rij.id, titel: naam }, 'INSTRUMENT_STARTDATUM', {
+          samenvoegen: true, vanWaarde: formatDate(rij.startdatum), naarWaarde: formatDate(startdatum),
+        });
+      }
+    },
+
+    /** Requests an ingepland instrument now, before its date. */
+    async vraagIngeplandAan(rij: IngeplandInstrument, naam: string) {
+      const aanvraag = await pdca.instrumenten.vraagIngeplandAan(rij.id);
+      subdoel({ uuid: rij.doelUuid, titel: model.doelTitel(rij.doelUuid) ?? '' }, 'PRODUCT_AANGEVRAAGD', {
+        naarWaarde: aanvraag.verzoek?.productTitel ?? naam,
+      });
+      return aanvraag;
+    },
+
+    async verwijderIngepland(rij: IngeplandInstrument, naam: string) {
+      await pdca.instrumenten.verwijderIngepland(rij.id);
+      subdoel({ uuid: rij.doelUuid, titel: model.doelTitel(rij.doelUuid) ?? '' }, 'INGEPLAND_VERWIJDERD', { naarWaarde: naam });
     },
 
     /**

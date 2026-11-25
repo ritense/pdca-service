@@ -19,6 +19,7 @@
             "product": "doc:/productUrn",
             "status": "doc:/startStatus",
             "instrumenttype": "doc:/instrumenttype",
+            "startdatum": "doc:/startdatum",
             "planUuid": "doc:/planUuid"
         },
         "actionResultMappings": [

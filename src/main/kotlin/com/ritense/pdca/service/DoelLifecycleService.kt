@@ -41,7 +41,8 @@ import java.util.UUID
  * created its instrument yet, or an actie whose GZAC task is open — and
  * removing while an instrument dossier, a verzoek or a task of it is open.
  * What runs has to be ended (or have its dossier or task ended) first;
- * nothing is cancelled along with the doel.
+ * nothing is cancelled along with the doel. Its ingeplande instrumenten
+ * have not started and go with the doel.
  *
  * Removal runs instruments first and the doel last, each step skipping
  * what is already done, so a failure halfway leaves a doel that still
@@ -52,6 +53,7 @@ class DoelLifecycleService(
     private val openPlanGateway: OpenPlanGateway,
     private val instrumentDetailsRepository: InstrumentDetailsRepository,
     private val instrumentAanvraagService: InstrumentAanvraagService,
+    private val ingeplandInstrumentService: IngeplandInstrumentService,
     private val actionRepository: ActionRepository,
     private val planOverlayService: PlanOverlayService
 ) {
@@ -63,12 +65,14 @@ class DoelLifecycleService(
 
     /**
      * Removes a doel: its own instruments (those under no other doel) and
-     * their overlay rows, the doel itself, then its overlay row and acties.
-     * A doel that is already gone only gets its overlay cleaned up.
+     * their overlay rows, the doel itself, then its overlay row, acties and
+     * ingeplande instrumenten. A doel that is already gone only gets its
+     * overlay cleaned up.
      */
     fun verwijderen(doelUuid: UUID): Resultaat {
         if (openPlanGateway.findDoel(doelUuid) == null) {
             planOverlayService.deleteDoelDetails(doelUuid)
+            ingeplandInstrumentService.verwijderVanDoel(doelUuid)
             return Resultaat(0)
         }
         val instrumenten = openPlanGateway.listInstrumenten(doelUuid)
@@ -80,22 +84,27 @@ class DoelLifecycleService(
         }
         openPlanGateway.deleteDoel(doelUuid)
         planOverlayService.deleteDoelDetails(doelUuid)
+        ingeplandInstrumentService.verwijderVanDoel(doelUuid)
         log.info("Doel {} removed with {} instrumenten", doelUuid, eigen.size)
         return Resultaat(eigen.size)
     }
 
     /**
      * Aborts a doel with its required reason: the doel becomes geannuleerd
-     * with the reason as toelichting. Refused while anything still runs
-     * under it. A doel that is geannuleerd already is left as it is; one
-     * that ended otherwise is refused.
+     * with the reason as toelichting, and its ingeplande instrumenten are
+     * dropped. Refused while anything still runs under it. A doel that is
+     * geannuleerd already is left as it is (apart from dropping what is still
+     * ingepland); one that ended otherwise is refused.
      */
     fun afbreken(doelUuid: UUID, reden: String) {
         val tekst = reden.trim().takeIf { it.isNotEmpty() }
             ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Geef een reden op voor het afbreken")
         val doel = openPlanGateway.findDoel(doelUuid)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Doel niet gevonden in Open Plan")
-        if (doel.status == STATUS_GEANNULEERD) return
+        if (doel.status == STATUS_GEANNULEERD) {
+            ingeplandInstrumentService.verwijderVanDoel(doelUuid)
+            return
+        }
         if (doel.status != STATUS_ACTIEF) {
             throw ResponseStatusException(HttpStatus.CONFLICT, "Alleen een lopend doel kan worden afgebroken (status: ${doel.status})")
         }
@@ -108,6 +117,7 @@ class DoelLifecycleService(
                 toelichtingResultaat = tekst
             )
         )
+        ingeplandInstrumentService.verwijderVanDoel(doelUuid)
         log.info("Doel {} aborted", doelUuid)
     }
 

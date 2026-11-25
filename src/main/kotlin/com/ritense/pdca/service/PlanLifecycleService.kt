@@ -55,6 +55,7 @@ class PlanLifecycleService(
     private val planDetailsRepository: PlanDetailsRepository,
     private val doelDetailsRepository: DoelDetailsRepository,
     private val instrumentAanvraagService: InstrumentAanvraagService,
+    private val ingeplandInstrumentService: IngeplandInstrumentService,
     private val actionRepository: ActionRepository
 ) {
 
@@ -74,7 +75,9 @@ class PlanLifecycleService(
         /** Verzoeken whose instrument has not appeared yet; null when the Objecten API could not be read. */
         val openVerzoeken: Int?,
         /** Acties whose GZAC task is still open; closing leaves the task in the plan dossier's task list. */
-        val openTaken: Int = 0
+        val openTaken: Int = 0,
+        /** Ingeplande instrumenten, not requested yet; closing drops them. */
+        val ingeplandeInstrumenten: Int = 0
     )
 
     /**
@@ -152,7 +155,8 @@ class PlanLifecycleService(
             openInstrumenten = instrumenten.count { !it.isDossierManaged },
             openInstrumentdossiers = instrumenten.filter { it.isDossierManaged }.map { it.titel ?: it.uuid.toString() },
             openVerzoeken = verzoeken,
-            openTaken = actionRepository.findByDoelUuidIn(doelen.map { it.uuid }).count { it.heeftOpenTaak }
+            openTaken = actionRepository.findByDoelUuidIn(doelen.map { it.uuid }).count { it.heeftOpenTaak },
+            ingeplandeInstrumenten = ingeplandInstrumentService.vanPlan(planUuid).size
         )
     }
 
@@ -161,12 +165,16 @@ class PlanLifecycleService(
      * (reason required), with today as einddatum. Open subdoelen,
      * instruments and verzoeken do not stop it — the plan page warns about
      * them ([afsluitCheck]) — but an actief instrument managed by its
-     * instrument dossier does: that dossier has to be closed first (409). A
-     * plan that has the requested status already is left as it is.
+     * instrument dossier does: that dossier has to be closed first (409).
+     * Its ingeplande instrumenten are dropped. A plan that has the requested
+     * status already is left as it is.
      */
     fun afsluiten(planUuid: UUID, status: String, reden: String?): Plan {
         val plan = openPlanGateway.getPlan(planUuid)
-        if (plan.status == status) return plan
+        if (plan.status == status) {
+            ingeplandInstrumentService.verwijderVanPlan(planUuid)
+            return plan
+        }
         if (plan.status != STATUS_ACTIEF) {
             throw ResponseStatusException(HttpStatus.CONFLICT, "Alleen een actief plan kan worden afgesloten (status: ${plan.status})")
         }
@@ -185,7 +193,8 @@ class PlanLifecycleService(
             )
         }
         openPlanGateway.updatePlanStatus(planUuid, PlanStatusUpdate.einde(status, nu(), tekst))
-        log.info("Plan {} closed as {}", planUuid, status)
+        val vervallen = ingeplandInstrumentService.verwijderVanPlan(planUuid)
+        log.info("Plan {} closed as {}{}", planUuid, status, if (vervallen > 0) ", $vervallen ingepland instrument(en) dropped" else "")
         return openPlanGateway.getPlan(planUuid)
     }
 

@@ -80,8 +80,9 @@ class DataRoute(
  *
  * Routes that change a locked part of a plan (its subdoelen, their texts
  * and dates, the plan's toelichting and beoogde einddatum, the hoofddoel,
- * instrument requests) say so with their `slot`; `/data` lets them through
- * only while the plan is in concept or the user evaluates it ([PlanSlot]).
+ * instrument requests and ingeplande instrumenten) say so with their
+ * `slot`; `/data` lets them through only while the plan is in concept or
+ * the user evaluates it ([PlanSlot]).
  */
 @Component
 class DataAccessPolicy(private val scope: PlanScope) {
@@ -222,6 +223,12 @@ class DataAccessPolicy(private val scope: PlanScope) {
             scope.plans(scope.plansOfDoelen(listOf(uuid(c.body.text("doelUuid")))))
         }
         api("GET", "$pdca/instrumenten/verzoeken", "planUuid", requirement = planInQuery)
+        api("GET", "$pdca/instrumenten/ingepland", "planUuid", requirement = planInQuery)
+        val ingeplandInPath: (DataCall, List<String>) -> Requirement = { _, v -> scope.plans(listOf(scope.planOfIngeplandInstrument(uuid(v[0])))) }
+        val ingeplandInPathVast: (DataCall, List<String>) -> List<SlotWijziging> = { _, v -> vast(listOf(scope.planOfIngeplandInstrument(uuid(v[0])))) }
+        api("PATCH", "$pdca/instrumenten/ingepland/{}", slot = ingeplandInPathVast, requirement = ingeplandInPath)
+        api("POST", "$pdca/instrumenten/ingepland/{}/aanvragen", slot = ingeplandInPathVast, requirement = ingeplandInPath)
+        api("DELETE", "$pdca/instrumenten/ingepland/{}", slot = ingeplandInPathVast, requirement = ingeplandInPath)
         api("POST", "$pdca/instrumenten/{}/starten", requirement = instrumentInPath)
         api("POST", "$pdca/instrumenten/{}/afronden", requirement = instrumentInPath)
         api("POST", "$pdca/instrumenten/{}/afbreken", requirement = instrumentInPath)

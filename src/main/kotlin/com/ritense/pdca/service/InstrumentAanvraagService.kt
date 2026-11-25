@@ -48,11 +48,12 @@ import java.util.concurrent.locks.ReentrantLock
  *
  * Which products can be requested, and how, lives in Open Product: a
  * producttype that carries an actie named [START_ACTIE] can be requested
- * from the plan page, and [PlanIntakeService] requests the instruments an
- * intake set up once their plan exists. This is the only way an instrument
- * gets into a plan. Requesting one files a **verzoek**: an object in the
+ * for a doel. This is the only way an instrument gets into a plan, and it
+ * happens only for a plan past concept ([PlanConcept]): before that, and for
+ * a later startdatum, the product is ingepland and requested on its date
+ * ([IngeplandInstrumentService]). Requesting one files a **verzoek**: an object in the
  * Objecten API of the objecttype named in that actie, with the plan, doel,
- * subject and producttype as its data. GZAC's Verzoek plugin picks the
+ * subject, producttype and the instrument's startdatum as its data. GZAC's Verzoek plugin picks the
  * object up (through Open Notificaties) and starts the instrument dossier
  * `instrument-verzoek`, which manages the instrument in Open Plan through the
  * plugin actions aanmaak-instrument and update-instrument
@@ -85,6 +86,7 @@ class InstrumentAanvraagService(
     private val openPlanGateway: OpenPlanGateway,
     private val openProductGateway: OpenProductGateway,
     private val objectenGateway: ObjectenGateway,
+    private val planConcept: PlanConcept,
     private val objectMapper: ObjectMapper
 ) {
 
@@ -149,7 +151,34 @@ class InstrumentAanvraagService(
         val mappings: Map<String, List<Pair<String, String>>>
     )
 
-    fun start(doelUuid: UUID, producttypeUuid: UUID): Verzoek {
+    /**
+     * Files the verzoek for a product under a doel, now. [startdatum] is the
+     * planned start of the instrument; an earlier date (one that passed
+     * while the plan was in concept) becomes today, since an instrument does
+     * not start before it is requested. [ingeplandInstrumentId] marks the
+     * verzoek of an ingepland instrument, so a retry finds it
+     * ([isIngediend]). Refused (409) for a plan in concept, a doel or plan
+     * that no longer runs and a doel and product with an open verzoek.
+     */
+    fun start(doelUuid: UUID, producttypeUuid: UUID, startdatum: LocalDate? = null, ingeplandInstrumentId: UUID? = null): Verzoek {
+        val (doel, plan) = lopend(doelUuid)
+        if (planConcept.inConcept(plan.uuid)) {
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Het plan is nog een concept; een instrument wordt pas aangevraagd als het plan is vastgesteld"
+            )
+        }
+        val producttype = openProductGateway.getProducttype(producttypeUuid)
+        val productUrn = productUrn(producttypeUuid, producttype)
+        val vandaag = LocalDate.now()
+        val start = startdatum?.takeIf { it.isAfter(vandaag) } ?: vandaag
+        return requestLocks.withLock("$doelUuid $productUrn") {
+            fileVerzoek(doel, plan, producttypeUuid, producttype, productUrn, start, ingeplandInstrumentId)
+        }
+    }
+
+    /** The doel and its plan, both still actief; 409 otherwise. */
+    fun lopend(doelUuid: UUID): Pair<Doel, Plan> {
         val doel = openPlanGateway.getDoel(doelUuid)
         val planUuid = doel.plannen.firstOrNull()?.uuid
             ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Doel $doelUuid hangt niet onder een plan")
@@ -161,15 +190,52 @@ class InstrumentAanvraagService(
                 else "Het doel is ${doel.status}; er kan geen instrument meer onder worden aangevraagd"
             )
         }
-        val producttype = openProductGateway.getProducttype(producttypeUuid)
-        val productUrn = PdcaUrn.producttype(producttype.code ?: producttypeUuid.toString()).toString()
-        return requestLocks.withLock("$doelUuid $productUrn") {
-            fileVerzoek(doel, plan, producttypeUuid, producttype, productUrn)
-        }
+        return doel to plan
     }
 
+    /** The URN a producttype is known by in verzoeken and instruments. */
+    fun productUrn(producttypeUuid: UUID, producttype: ProductType): String =
+        PdcaUrn.producttype(producttype.code ?: producttypeUuid.toString()).toString()
+
+    /**
+     * The start recipe of a producttype, checked: it has a [START_ACTIE]
+     * actie of soort `verzoek` that names the verzoek objecttype. 422 with
+     * the reason otherwise.
+     */
+    fun aanvraagbaar(producttypeUuid: UUID, producttype: ProductType): StartActie {
+        val titel = producttype.naam ?: producttype.code ?: producttypeUuid.toString()
+        val actie = startActie(producttypeUuid, titel)
+        if (actie.soort != SOORT_VERZOEK) {
+            throw ResponseStatusException(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "De startactie van '$titel' heeft soort '${actie.soort}'; alleen 'verzoek' wordt ondersteund"
+            )
+        }
+        if (actie.objecttype == null) {
+            throw ResponseStatusException(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "De actie $START_ACTIE van '$titel' noemt geen objecttype van het verzoek " +
+                    "(static 'type' in de mapping); vul die in Open Product in"
+            )
+        }
+        return actie
+    }
+
+    /** Whether the verzoek of an ingepland instrument was filed already (by an earlier attempt). */
+    fun isIngediend(ingeplandInstrumentId: UUID): Boolean =
+        objectenGateway.listObjects(mapOf("type" to VERZOEK_TYPE, "data__ingeplandInstrumentId" to ingeplandInstrumentId.toString()))
+            .isNotEmpty()
+
     /** Files the verzoek for [doel] and [producttype], unless one is open already (409); runs under the lock of [start]. */
-    private fun fileVerzoek(doel: Doel, plan: Plan, producttypeUuid: UUID, producttype: ProductType, productUrn: String): Verzoek {
+    private fun fileVerzoek(
+        doel: Doel,
+        plan: Plan,
+        producttypeUuid: UUID,
+        producttype: ProductType,
+        productUrn: String,
+        startdatum: LocalDate,
+        ingeplandInstrumentId: UUID?
+    ): Verzoek {
         val doelUuid = doel.uuid
         val planUuid = plan.uuid
         val code = producttype.code ?: producttypeUuid.toString()
@@ -182,18 +248,8 @@ class InstrumentAanvraagService(
             )
         }
 
-        val actie = startActie(producttypeUuid, titel)
-        if (actie.soort != SOORT_VERZOEK) {
-            throw ResponseStatusException(
-                HttpStatus.UNPROCESSABLE_ENTITY,
-                "De startactie van '$titel' heeft soort '${actie.soort}'; alleen 'verzoek' wordt ondersteund"
-            )
-        }
-        val objecttype = actie.objecttype ?: throw ResponseStatusException(
-            HttpStatus.UNPROCESSABLE_ENTITY,
-            "De actie $START_ACTIE van '$titel' noemt geen objecttype van het verzoek " +
-                "(static 'type' in de mapping); vul die in Open Product in"
-        )
+        val actie = aanvraagbaar(producttypeUuid, producttype)
+        val objecttype = checkNotNull(actie.objecttype) { "checked by aanvraagbaar" }
 
         val (subjectId, bsn) = subjectOf(plan, doel)
         val data = linkedMapOf<String, Any?>(
@@ -206,7 +262,9 @@ class InstrumentAanvraagService(
             "productUrn" to productUrn,
             "startStatus" to producttype.parameter(START_STATUS_PARAMETER),
             "instrumenttype" to producttype.parameter(INSTRUMENTTYPE_PARAMETER),
-            "aangevraagdOp" to OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS).toString()
+            "startdatum" to startdatum.toString(),
+            "aangevraagdOp" to OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS).toString(),
+            "ingeplandInstrumentId" to ingeplandInstrumentId?.toString()
         )
         data += actie.statics
         data += resolveMappings(
@@ -229,18 +287,6 @@ class InstrumentAanvraagService(
         )
         log.info("Verzoek for product '$code' filed for doel $doelUuid of plan $planUuid: ${created.url ?: "(no url)"}")
         return Verzoek(created.url, titel)
-    }
-
-    /**
-     * [start] for a producttype known by its code, the way intake documents
-     * name products. Fails with 422 when Open Product has no producttype
-     * with that code.
-     */
-    fun startByCode(doelUuid: UUID, code: String): Verzoek {
-        val producttype = openProductGateway.findProducttypeByCode(code) ?: throw ResponseStatusException(
-            HttpStatus.UNPROCESSABLE_ENTITY, "Open Product kent geen producttype met code '$code'"
-        )
-        return start(doelUuid, producttype.uuid)
     }
 
     // ------------------------------------------------------- open verzoeken

@@ -29,5 +29,6 @@
     <include file="config/liquibase/022-evaluation-session-vastgesteld.xml"/>
     <include file="config/liquibase/023-drop-evaluatie-type.xml"/>
     <include file="config/liquibase/024-voortgang-interne-externe-toelichting.xml"/>
+    <include file="config/liquibase/025-ingepland-instrument.xml"/>
 
 </databaseChangeLog>

@@ -57,9 +57,10 @@ import java.util.UUID
  * Creates the plan of an intake dossier (`POST /plan-intake`, ARCHITECTURE
  * §6.1): plan + doelen in Open Plan, the contactmomenten as klantcontacten in
  * Open Klant, the overlay rows and betrokkenen, the plan dossier of the plan
- * case type the intake's case configuration names, and then one verzoek per
- * intake instrument through [InstrumentAanvraagService] (each gets its own
- * instrument dossier, which creates it in the plan).
+ * case type the intake's case configuration names, and then every intake
+ * instrument as an ingepland instrument ([IngeplandInstrumentService]): it
+ * is requested from its startdatum once the plan is past concept, and then
+ * gets its own instrument dossier, which creates it in the plan.
  *
  * The call is safe to repeat and never reports a half-built plan as done:
  *
@@ -79,14 +80,15 @@ import java.util.UUID
  *     before it creates anything (the persoon by bsn, the plan from the
  *     reservation, doelen per doeltype, contactmomenten per date/type/state,
  *     betrokkenen, the plan dossier through
- *     [DossierLinkService.ensurePlanDossier], verzoeken per doel and
- *     product), so a retry after a failure completes the missing steps.
+ *     [DossierLinkService.ensurePlanDossier], ingeplande instrumenten per
+ *     doel and product), so a retry after a failure completes the missing
+ *     steps.
  *  4. **Done.** Only then is the reservation [PlanIntakeStatus.GEREED];
  *     only a GEREED plan is reported as existing (`bestaand`).
  *
  * A temporary failure (a register or GZAC unavailable) fails the call and
  * leaves the reservation IN_AANMAAK for the retry; an instrument that
- * cannot be requested for a business reason becomes a warning.
+ * cannot be ingepland for a business reason becomes a warning.
  */
 @Service
 class PlanIntakeService(
@@ -100,6 +102,7 @@ class PlanIntakeService(
     private val involvedPartyRepository: InvolvedPartyRepository,
     private val klantcontactService: KlantcontactService,
     private val instrumentAanvraagService: InstrumentAanvraagService,
+    private val ingeplandInstrumentService: IngeplandInstrumentService,
     private val planOverlayService: PlanOverlayService,
     private val openPlanGateway: OpenPlanGateway,
     private val transactionTemplate: TransactionTemplate,
@@ -142,8 +145,10 @@ class PlanIntakeService(
         val plantypeUuid: UUID,
         val overkoepelendPlanUuid: UUID,
         val bsn: String,
-        /** Per instrument row: the index of its subdoel, or null when it cannot be requested. */
+        /** Per instrument row: the index of its subdoel, or null when it cannot be ingepland. */
         val instrumentDoelen: List<Int?>,
+        /** Per instrument row: its own startdatum, or null for its subdoel's. */
+        val instrumentStartdata: List<LocalDate?>,
         val warnings: List<String>
     )
 
@@ -203,7 +208,7 @@ class PlanIntakeService(
             documentId = intakeDocumentId,
             planDossierId = planDossierId,
             doelen = 0,
-            instrumentenAangevraagd = 0,
+            instrumentenIngepland = 0,
             contactmomenten = 0,
             betrokkenen = 0,
             warnings = emptyList(),
@@ -334,34 +339,38 @@ class PlanIntakeService(
 
         // Every instrument row is matched to a subdoel up front; the row
         // names it by doeltype name, which is ambiguous when two subdoelen
-        // share a doeltype. A product is requested once per subdoel: a
+        // share a doeltype. A product is ingepland once per subdoel: a
         // second row for the same subdoel and product is dropped with a
-        // warning (the open verzoek of the first would refuse it anyway).
+        // warning.
         val requested = mutableSetOf<Pair<Int, String>>()
         val instrumentDoelen = request.instrumenten.map { instrument ->
             val code = instrument.product?.trim()?.takeIf { it.isNotEmpty() }
             val naam = instrument.doel?.trim()?.takeIf { it.isNotEmpty() }
             val kandidaten = request.doelen.indices.filter { naam == null || request.doelen[it].doelType == naam }
             when {
-                code == null -> null.also { warnings += "Instrument zonder instrumenttype niet aangevraagd" }
-                request.doelen.isEmpty() -> null.also { warnings += "Instrument '$code' niet aangevraagd: het plan heeft geen subdoel om het aan te koppelen" }
+                code == null -> null.also { warnings += "Instrument zonder instrumenttype niet gepland" }
+                request.doelen.isEmpty() -> null.also { warnings += "Instrument '$code' niet gepland: het plan heeft geen subdoel om het aan te koppelen" }
                 naam != null && kandidaten.isEmpty() ->
-                    null.also { warnings += "Instrument '$code' niet aangevraagd: subdoel '$naam' komt niet voor in het plan" }
+                    null.also { warnings += "Instrument '$code' niet gepland: subdoel '$naam' komt niet voor in het plan" }
                 naam == null && request.doelen.size > 1 -> kandidaten.first().also {
-                    warnings += "Instrument '$code' noemt geen subdoel; aangevraagd onder het eerste subdoel '${request.doelen[it].doelType}'"
+                    warnings += "Instrument '$code' noemt geen subdoel; gepland onder het eerste subdoel '${request.doelen[it].doelType}'"
                 }
                 kandidaten.size > 1 -> kandidaten.first().also {
-                    warnings += "Instrument '$code': het plan heeft ${kandidaten.size} subdoelen '$naam'; aangevraagd onder het eerste"
+                    warnings += "Instrument '$code': het plan heeft ${kandidaten.size} subdoelen '$naam'; gepland onder het eerste"
                 }
                 else -> kandidaten.first()
             }?.takeIf { doelIndex ->
                 requested.add(doelIndex to code!!).also { unique ->
                     if (!unique) {
                         warnings += "Instrument '$code' staat meer dan eens onder subdoel '${request.doelen[doelIndex].doelType}'; " +
-                            "één keer aangevraagd"
+                            "één keer gepland"
                     }
                 }
             }
+        }
+
+        val instrumentStartdata = request.instrumenten.map { instrument ->
+            datum(instrument.startdatum, "startdatum bij instrument '${instrument.product?.trim().orEmpty()}'", fouten)
         }
 
         val bsn = if (request.subjectType == "PERSON") request.subjectId.trim() else OBJECT_CONTACT_BSN
@@ -390,6 +399,7 @@ class PlanIntakeService(
             overkoepelendPlanUuid = overkoepelendUuid,
             bsn = bsn,
             instrumentDoelen = instrumentDoelen,
+            instrumentStartdata = instrumentStartdata,
             warnings = warnings
         )
     }
@@ -463,19 +473,19 @@ class PlanIntakeService(
         ensureBetrokkenen(intake, planUuid, procesbegeleider)
         renewClaim(claim)
         val planDossierId = dossierLinkService.ensurePlanDossier(planUuid, request.subjectNaam).first
-        val aangevraagd = ensureVerzoeken(intake, subdoelUuids, warnings) { renewClaim(claim) }
+        val ingepland = ensureIngepland(intake, planUuid, subdoelUuids, warnings) { renewClaim(claim) }
 
         log.info(
-            "Plan {} ({}) {} from intake {} (plan dossier {}): {} subdoelen, {} instrumenten requested, {} contactmomenten",
+            "Plan {} ({}) {} from intake {} (plan dossier {}): {} subdoelen, {} instrumenten ingepland, {} contactmomenten",
             planUuid, intake.planCaseDefinitionKey, if (hervat) "completed" else "created", request.documentId,
-            planDossierId, subdoelUuids.size, aangevraagd, request.contactmomenten.size
+            planDossierId, subdoelUuids.size, ingepland, request.contactmomenten.size
         )
         return PlanIntakeResponse(
             planUuid = planUuid.toString(),
             documentId = request.documentId,
             planDossierId = planDossierId,
             doelen = subdoelUuids.size,
-            instrumentenAangevraagd = aangevraagd,
+            instrumentenIngepland = ingepland,
             contactmomenten = request.contactmomenten.size,
             betrokkenen = request.betrokkenen.size,
             warnings = warnings,
@@ -684,34 +694,47 @@ class PlanIntakeService(
     }
 
     /**
-     * One verzoek per intake instrument row, now that plan and plan dossier
-     * exist. Per subdoel and product only the rows not yet covered by a
-     * verzoek (from an earlier attempt) are filed, so a retry never files
-     * twice. A business refusal becomes a warning; a temporary failure fails
-     * the call, and the retry files what is missing. [renewClaim] renews the
-     * claim before each verzoek. Returns the number of rows covered by a
-     * verzoek.
+     * Every intake instrument row as an ingepland instrument, now that plan
+     * and plan dossier exist, from the row's startdatum or else its
+     * subdoel's (or the plan's). A row already covered — ingepland by an
+     * earlier attempt, or requested since (a plan the intake gave a display
+     * status past concept) — is not planned again, so a retry never plans
+     * twice. A row under an afgerond subdoel and a product the registers
+     * refuse become a warning; a temporary failure fails the call, and the
+     * retry plans what is missing. [renewClaim] renews the claim before each
+     * row. Returns the number of rows covered.
      */
-    private fun ensureVerzoeken(intake: Intake, subdoelUuids: List<UUID>, warnings: MutableList<String>, renewClaim: () -> Unit): Int {
-        val rijen = intake.request.instrumenten.mapIndexedNotNull { i, instrument ->
-            val doelIndex = intake.instrumentDoelen[i] ?: return@mapIndexedNotNull null
-            subdoelUuids[doelIndex] to instrument.product!!.trim()
-        }
+    private fun ensureIngepland(
+        intake: Intake,
+        planUuid: UUID,
+        subdoelUuids: List<UUID>,
+        warnings: MutableList<String>,
+        renewClaim: () -> Unit
+    ): Int {
         var gedekt = 0
-        rijen.groupBy { it }.forEach { (sleutel, groep) ->
-            val (doelUuid, code) = sleutel
+        intake.request.instrumenten.forEachIndexed { i, instrument ->
+            val doelIndex = intake.instrumentDoelen[i] ?: return@forEachIndexed
+            val code = instrument.product!!.trim()
+            if (intake.doelStatussen[doelIndex] == IntakeStatus.AFGEROND) {
+                warnings += "Instrument '$code' niet gepland: subdoel '${intake.request.doelen[doelIndex].doelType}' is afgerond"
+                return@forEachIndexed
+            }
+            val doelUuid = subdoelUuids[doelIndex]
             val urn = PdcaUrn.producttype(code).toString()
-            val al = instrumentAanvraagService.verzoekenVoor(doelUuid).count { it.productUrn == urn }
-            gedekt += minOf(al, groep.size)
-            repeat((groep.size - al).coerceAtLeast(0)) {
-                renewClaim()
-                try {
-                    instrumentAanvraagService.startByCode(doelUuid, code)
-                    gedekt++
-                } catch (e: ResponseStatusException) {
-                    if (e.statusCode.is5xxServerError) throw e
-                    warnings += "Instrument '$code' niet aangevraagd: ${e.reason ?: e.statusCode}"
-                }
+            if (ingeplandInstrumentService.isIngepland(doelUuid, urn) ||
+                instrumentAanvraagService.verzoekenVoor(doelUuid).any { it.productUrn == urn }
+            ) {
+                gedekt++
+                return@forEachIndexed
+            }
+            renewClaim()
+            val startdatum = intake.instrumentStartdata[i] ?: intake.doelStartdata[doelIndex] ?: intake.startdatum
+            try {
+                ingeplandInstrumentService.planIn(planUuid, doelUuid, code, startdatum)
+                gedekt++
+            } catch (e: ResponseStatusException) {
+                if (e.statusCode.is5xxServerError) throw e
+                warnings += "Instrument '$code' niet gepland: ${e.reason ?: e.statusCode}"
             }
         }
         return gedekt

@@ -48,7 +48,7 @@ data class PlanPrefillResponse(
  * this (edited by the user) to POST /api/v1/pdca/plan-intake. Everything
  * except subject + titel is optional — minimal prefill yields a bare plan,
  * maximal prefill a complete plan with doelen, contactmomenten and
- * betrokkenen, plus the instrumenten to request once the plan exists. The
+ * betrokkenen, plus the instrumenten the plan gets as ingepland. The
  * subject of a persoon plan must be a valid bsn (elfproef, [Bsn]).
  */
 data class PlanIntakeRequest(
@@ -105,15 +105,18 @@ data class IntakeDoel(
 )
 
 /**
- * An instrument to request once the plan exists: [product] is the Open
- * Product producttype code, [doel] the subdoel by doeltype name. Without a
+ * An instrument the plan gets as ingepland: [product] is the Open Product
+ * producttype code, [doel] the subdoel by doeltype name, [startdatum] the
+ * day from which it is requested once the plan is past concept (`yyyy-MM-dd`
+ * or a form.io date; the subdoel's startdatum when absent). Without a
  * subdoel, or when two subdoelen share that doeltype, it goes under the
  * first (matching) subdoel with a warning; an unknown subdoel is not
- * requested and becomes a warning.
+ * planned and becomes a warning.
  */
 data class IntakeInstrument(
     val product: String? = null,
-    val doel: String? = null
+    val doel: String? = null,
+    val startdatum: String? = null
 )
 
 data class IntakeContactmoment(
@@ -143,8 +146,8 @@ data class PlanIntakeResponse(
     /** The plan dossier the plan is linked 1:1 to; always set, a plan is only done with its dossier. */
     val planDossierId: String,
     val doelen: Int,
-    /** Verzoeken filed for the intake's instrumenten; each instrument appears once its instrument dossier created it. */
-    val instrumentenAangevraagd: Int,
+    /** The intake's instrumenten that are ingepland; each is requested from its startdatum once the plan is past concept. */
+    val instrumentenIngepland: Int,
     val contactmomenten: Int,
     val betrokkenen: Int,
     val warnings: List<String>,

@@ -18,8 +18,7 @@ package com.ritense.pdca.security
 
 import com.ritense.pdca.domain.EvaluationSessionStatus
 import com.ritense.pdca.repository.EvaluationSessionRepository
-import com.ritense.pdca.repository.PlanDetailsRepository
-import com.ritense.pdca.service.PhaseConfigService
+import com.ritense.pdca.service.PlanConcept
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Component
 import org.springframework.web.server.ResponseStatusException
@@ -37,15 +36,15 @@ data class SlotWijziging(val planUuid: UUID, val weergaveStatus: String? = null)
  * The plan lock (ARCHITECTURE §6.7): once a plan has left its concept status,
  * its subdoelen (adding, removing, aborting, completing, their toelichting,
  * startdatum and beoogde einddatum), the plan's toelichting bij het hoofddoel and
- * beoogde einddatum, its hoofddoel and its instrument requests change only
- * in an evaluation the user runs on that plan, so the inwoner is informed
- * and the change is recorded with its reason. Moving the display status
+ * beoogde einddatum, its hoofddoel and its instrument requests (ingeplande
+ * instrumenten included) change only in an evaluation the user runs on that
+ * plan, so the inwoner is informed and the change is recorded with its
+ * reason. Moving the display status
  * back to concept is locked as well, else the lock would be one click away.
  *
- * The concept status is the first display status of the plan's case type
- * (the status a new plan gets), "Concept" when the case type has none; a
- * plan without display status is in concept. [DataAccessPolicy] marks the
- * routes that make such changes; `/data` checks them after authorization.
+ * Whether a plan is in concept is [PlanConcept]'s rule. [DataAccessPolicy]
+ * marks the routes that make such changes; `/data` checks them after
+ * authorization.
  *
  * An evaluation that lets such a change through records that it did; it
  * can then only be completed, so the change is not left without the
@@ -53,9 +52,8 @@ data class SlotWijziging(val planUuid: UUID, val weergaveStatus: String? = null)
  */
 @Component
 class PlanSlot(
-    private val planDetailsRepository: PlanDetailsRepository,
-    private val evaluationSessionRepository: EvaluationSessionRepository,
-    private val phaseConfigService: PhaseConfigService
+    private val planConcept: PlanConcept,
+    private val evaluationSessionRepository: EvaluationSessionRepository
 ) {
 
     /**
@@ -68,7 +66,7 @@ class PlanSlot(
         val evaluatie by lazy { evaluationSessionRepository.findByUserLoginAndStatus(login, EvaluationSessionStatus.RUNNING) }
         var ontgrendeldDoor: UUID? = null
         wijzigingen.forEach { wijziging ->
-            val concept = conceptStatus(wijziging.planUuid) ?: return@forEach
+            val concept = planConcept.van(wijziging.planUuid) ?: return@forEach
             if (wijziging.weergaveStatus != null && !wijziging.weergaveStatus.equals(concept.status, ignoreCase = true)) return@forEach
             if (concept.inConcept) return@forEach
             val sessie = evaluatie?.takeIf { it.planUuid == wijziging.planUuid }
@@ -82,20 +80,7 @@ class PlanSlot(
         }
     }
 
-    private data class Concept(val status: String, val inConcept: Boolean)
-
-    /** The plan's concept status and whether it is in it; null for a plan without overlay row (nothing to lock). */
-    private fun conceptStatus(planUuid: UUID): Concept? {
-        val details = planDetailsRepository.findById(planUuid).orElse(null) ?: return null
-        val status = details.caseDefinitionKey?.let { phaseConfigService.getPlanStatussen(it)?.firstOrNull() } ?: STANDAARD_CONCEPT
-        val huidig = details.weergaveStatus?.takeIf { it.isNotBlank() }
-        return Concept(status, huidig == null || huidig.equals(status, ignoreCase = true))
-    }
-
     companion object {
-        /** The concept status of a case type without configured display statuses (also the UI's fallback). */
-        const val STANDAARD_CONCEPT = "Concept"
-
         const val VERGRENDELD =
             "Dit deel van het plan is vastgesteld en verandert alleen tijdens een evaluatie; start eerst een evaluatie op het tabblad Evaluaties"
     }

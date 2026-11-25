@@ -22,6 +22,7 @@ import com.ritense.pdca.repository.ContactmomentDetailsRepository
 import com.ritense.pdca.repository.DocumentAanvraagRepository
 import com.ritense.pdca.repository.DoelDetailsRepository
 import com.ritense.pdca.repository.EvaluationSessionRepository
+import com.ritense.pdca.repository.IngeplandInstrumentRepository
 import com.ritense.pdca.repository.InstrumentDetailsRepository
 import com.ritense.pdca.repository.InvolvedPartyRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
@@ -60,6 +61,7 @@ class PlanScope(
     private val involvedPartyRepository: InvolvedPartyRepository,
     private val evaluationSessionRepository: EvaluationSessionRepository,
     private val documentAanvraagRepository: DocumentAanvraagRepository,
+    private val ingeplandInstrumentRepository: IngeplandInstrumentRepository,
     private val openPlanGateway: OpenPlanGateway
 ) {
 
@@ -114,6 +116,9 @@ class PlanScope(
 
     fun planOfDocumentAanvraag(aanvraagId: UUID): UUID =
         documentAanvraagRepository.findPlanUuidById(aanvraagId) ?: throw denied()
+
+    fun planOfIngeplandInstrument(id: UUID): UUID =
+        ingeplandInstrumentRepository.findPlanUuidById(id) ?: throw denied()
 
     companion object {
         fun denied() = ResponseStatusException(HttpStatus.FORBIDDEN, GEEN_TOEGANG)

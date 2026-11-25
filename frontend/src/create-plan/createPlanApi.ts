@@ -63,8 +63,11 @@ export interface PlanIntakeRequest {
   doelen: (Record<string, unknown> & {
     doelType: string; beschrijving: string; status: DoelStatus; startdatum: string | null; streefEinddatum: string | null;
   })[];
-  /** Instrumenten to request once the plan exists: producttype code + subdoel (doeltype name; empty = the first). */
-  instrumenten: { product: string; doel: string }[];
+  /**
+   * Instrumenten the plan gets as gepland: producttype code, subdoel
+   * (doeltype name; empty = the first) and startdatum (null = the subdoel's).
+   */
+  instrumenten: { product: string; doel: string; startdatum: string | null }[];
   contactmomenten: (Record<string, unknown> & { datum: string; status: EvaluatieStatus; notitie: string })[];
   betrokkenen: (Record<string, unknown> & {
     naam: string; rol: string; organisatie: string; email: string; procesbegeleider: boolean;
@@ -77,8 +80,8 @@ export interface PlanIntakeResponse {
   /** Always set: a plan is only reported once its plan dossier exists. */
   planDossierId: string;
   doelen: number;
-  /** Verzoeken filed for the instrumenten; each appears in the plan once its instrument dossier created it. */
-  instrumentenAangevraagd: number;
+  /** Instrumenten gepland; each is requested from its startdatum once the plan is past concept. */
+  instrumentenIngepland: number;
   contactmomenten: number;
   betrokkenen?: number;
   warnings?: string[];

@@ -19,9 +19,10 @@ import { SubjectSectie, useSubjectZoeker } from './SubjectSectie';
  * the intake dossier's content through the case type's prefill mapping:
  * anything from just a bsn up to a complete plan with subdoelen,
  * instrumenten, evaluaties and betrokkenen. The backend creates everything,
- * including the plan dossier, in one call (`plan-intake`) and then requests
- * the instrumenten, one verzoek and instrument dossier each; the form then
- * completes the GZAC task with the plan result.
+ * including the plan dossier, in one call (`plan-intake`), with the
+ * instrumenten as gepland: each is requested from its startdatum once the
+ * plan is vastgesteld and then gets its own instrument dossier. The form
+ * then completes the GZAC task with the plan result.
  *
  * GZAC does not size task-form iframes to their content: the iframe is a
  * fixed viewport inside the task modal, so the form scrolls internally and
@@ -142,7 +143,7 @@ export function CreatePlan() {
         : {
           titel: `Plan ${res.hervat ? 'verder aangemaakt' : 'aangemaakt'} met ${aantal(res.doelen, 'subdoel', 'subdoelen')} en `
             + `${aantal(res.contactmomenten, 'evaluatie', 'evaluaties')}`
-            + (res.instrumentenAangevraagd > 0 ? `; ${aantal(res.instrumentenAangevraagd, 'instrument', 'instrumenten')} aangevraagd.` : '.'),
+            + (res.instrumentenIngepland > 0 ? `; ${aantal(res.instrumentenIngepland, 'instrument', 'instrumenten')} gepland.` : '.'),
           tekst: waarschuwingen,
         });
       // The task only completes on a complete plan: the response always carries its plan dossier.

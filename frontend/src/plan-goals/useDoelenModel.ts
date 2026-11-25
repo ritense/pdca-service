@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import {
-  Doel, DoelDetails, heeftStartActie, Instrument, InstrumentDetails, openplan, openproduct, pdca, Plan, PlanDetails,
+  Doel, DoelDetails, heeftStartActie, IngeplandInstrument, Instrument, InstrumentDetails, openplan, openproduct, pdca, Plan, PlanDetails,
   ProductType, VoortgangStatusOptie, OpenVerzoek, Actie, DoelType,
 } from '../shared/api';
 import { CaseConfig, useCaseConfig } from '../shared/caseConfig';
@@ -47,8 +47,9 @@ export interface DoelenModel {
  * The data of the Doelen tab, each source with its own state. The
  * page needs the plan data, the doeltypen (which doel is the hoofddoel), the
  * voortgangsstatussen and the case configuration (subdoelmapping); the
- * producttypen (what can be requested) and the open verzoeken are sections
- * of their own that can fail without the rest.
+ * producttypen (what can be requested), the open verzoeken and the
+ * ingeplande instrumenten are sections of their own that can fail without
+ * the rest.
  */
 export function useDoelenData(plan: Plan, details: PlanDetails) {
   const planData = usePlanData(plan.uuid, BRONNEN);
@@ -57,12 +58,14 @@ export function useDoelenData(plan: Plan, details: PlanDetails) {
   const caseConfig = useCaseConfig(details.caseDefinitionKey);
   const producttypen = useResource(() => openproduct.producttypen.list(), []);
   const { verzoeken, volg } = useOpenVerzoeken(plan.uuid, planData.reload);
+  const ingepland = useResource(() => pdca.instrumenten.ingepland(plan.uuid), [plan.uuid]);
 
   const herlaadPlanData = planData.reload;
   const herlaadVerzoeken = verzoeken.reload;
+  const herlaadIngepland = ingepland.reload;
   const herlaad = useCallback(async () => {
-    await Promise.all([herlaadPlanData(), herlaadVerzoeken()]);
-  }, [herlaadPlanData, herlaadVerzoeken]);
+    await Promise.all([herlaadPlanData(), herlaadVerzoeken(), herlaadIngepland()]);
+  }, [herlaadPlanData, herlaadVerzoeken, herlaadIngepland]);
 
   const model = useDoelenModel(plan, details, planData.data, doeltypen.data, voortgangOpties.data, caseConfig.data);
 
@@ -72,6 +75,7 @@ export function useDoelenData(plan: Plan, details: PlanDetails) {
     vereist: [planData, doeltypen, voortgangOpties, caseConfig] as Bron[],
     producttypen,
     verzoeken,
+    ingepland,
     volgVerzoek: volg,
     herlaad,
   };
@@ -144,3 +148,7 @@ export function aanvraagbareProducttypen(model: DoelenModel, producttypen: Produ
 /** The verzoeken of a doel that have no instrument yet. */
 export const verzoekenVan = (verzoeken: OpenVerzoek[] | undefined, doelUuid: string) =>
   (verzoeken ?? []).filter(v => v.doelUuid === doelUuid);
+
+/** The ingeplande instrumenten of one doel, earliest startdatum first (the order the backend lists them in). */
+export const ingeplandVan = (ingepland: IngeplandInstrument[] | undefined, doelUuid: string) =>
+  (ingepland ?? []).filter(i => i.doelUuid === doelUuid);

@@ -147,7 +147,7 @@ flowchart LR
 | `registers/` | The register descriptions (`Register`), the contract transport (`RegisterContractRequestFactory`) with its limiter (`ContractCallLimiter`), the pager (`RegisterPager`), the error mapping (`RegisterException`), the typed gateways per register (`openplan/`, `openproduct/`, `openklant/`, `objecten/` on `RegisterGateway`), the register proxy (`RegisterProxyController`) and the display-only stubs (`RegisterStubController`, `StubRegisterService`) |
 | `repository/` | Spring Data repositories, including the atomic reserve/claim of `PlanIntakeRepository` |
 | `security/` | The trust boundary (§4): `HostSignatureVerifier`/`HostSignatureFilter`, `GzacInstances`, `UserVerifier`, `PdcaUser`, `DataRateLimiter`, `DataAccessPolicy`, `PlanScope`, `PlanSlot` (the plan lock, §6.7), `DataDispatch` |
-| `service/` | The use cases: `PlanIntakeService` (plan from intake) and `IntakeService` (prefill), `DossierLinkService`, `InstrumentAanvraagService` (verzoeken) and `InstrumentActionService` (plugin actions), `PlanLifecycleService`, `DoelLifecycleService`, `InstrumentLifecycleService`, `PlanOverlayService`, `ContactmomentService` and `KlantcontactService`, `EvaluationSessionService`, `DocumentAanvraagService` (document requests and their plugin actions) and `DocumentGegevensService` (the data snapshot of a document), `BetrokkeneService`, `ActionService` and `ActieTaakService` (an actie as GZAC task), `PhaseConfigService`, and `GzacClient` (all GZAC calls) |
+| `service/` | The use cases: `PlanIntakeService` (plan from intake) and `IntakeService` (prefill), `DossierLinkService`, `InstrumentAanvraagService` (verzoeken), `IngeplandInstrumentService` (ingeplande instrumenten and the job that requests them) and `InstrumentActionService` (plugin actions), `PlanConcept` (whether a plan is in concept), `PlanLifecycleService`, `DoelLifecycleService`, `InstrumentLifecycleService`, `PlanOverlayService`, `ContactmomentService` and `KlantcontactService`, `EvaluationSessionService`, `DocumentAanvraagService` (document requests and their plugin actions) and `DocumentGegevensService` (the data snapshot of a document), `BetrokkeneService`, `ActionService` and `ActieTaakService` (an actie as GZAC task), `PhaseConfigService`, and `GzacClient` (all GZAC calls) |
 | `web/rest/` | REST resources under `/api/v1/pdca/*` and `/api/v1/admin/*` (§9) and `ErrorResponseAdvice` (§7) |
 
 Controllers only map HTTP to service calls; the rules live in the services.
@@ -504,11 +504,12 @@ signature or GZAC's answers about a user.
 | Plan: titel, plantype (the dienstverlening), status, start/einddatum, `redenEinde`, `notitie`, subject (`domeinregister` URN), procesbegeleider (`medewerker` URN) | Open Plan | `plan.zaak` is not used |
 | Persoon of a plan | Open Plan | created from the bsn when Open Plan does not know it |
 | Doelen: hoofddoel and subdoelen, hierarchy (`doel.hoofdDoel`), doeltype, status, resultaat, `toelichtingResultaat` | Open Plan | the plan's hoofddoel is its actief doel of a hoofddoel type; no overlay copy |
-| Instruments: titel, status, `product` URN, `zaak` (instrument dossier URN), instrumenttype | Open Plan | managed by the instrument dossier (§6.2) |
+| Instruments: titel, status, startdatum, `product` URN, `zaak` (instrument dossier URN), instrumenttype | Open Plan | managed by the instrument dossier (§6.2) |
 | Reference data: doeltypen (category `Hoofddoel` marks hoofddoel types, other categories are themas), plantypen, instrumenttypen, relatietypen | Open Plan | seeded in the dev stack |
 | Producttypen, their themas and doelgroep, the `StartInstrument` actie and parameters `startStatus`/`instrumenttype` | Open Product | decide what can be requested and how (§6.2) |
 | Contactmomenten (planned and taken place) with onderwerpobject and betrokkene partij | Open Klant | klantcontacten (§6.4) |
 | Verzoeken (product requests) | Objecten API | the app keeps no record of them (§6.2) |
+| Ingeplande instrumenten: a product chosen for a subdoel, not requested yet, with its startdatum | overlay `IngeplandInstrument` | deleted once its verzoek is filed (§6.2) |
 | Plan ↔ plan dossier, plan ↔ intake, case type, persoon, display status, positie, subdoelgroep, streefdatum | overlay `PlanDetails` | |
 | Progress of plan creation from an intake | overlay `PlanIntake` | reservation and lease (§6.1) |
 | Uitvoeringsstatus Gepland/Gestart, voortgangsstatus with its interne and externe toelichting, sort order of a doel | overlay `DoelDetails` | refinement of register `actief` |
@@ -538,6 +539,11 @@ the same words everywhere (`frontend/src/shared/labels.ts`):
 | Instrument | `actief` + overlay GEPLAND | `actief` otherwise (also without overlay row) | `afgerond` | `geannuleerd` |
 | Actie | PLANNED | IN_PROGRESS | COMPLETED | — (plus *Ter beoordeling* PENDING_REVIEW, *Afgekeurd* REJECTED, and *Vervallen* CANCELLED for a task ended as not needed) |
 | Plan | — (the configured display status while `actief`) | — | `afgerond` | `geannuleerd` |
+
+An **ingepland** instrument — chosen for a subdoel, not requested yet
+(§6.2) — is *Gepland* too, *Gepland (concept)* while the plan is in
+concept; it has no Dossier button and shows the date from which it is
+requested.
 
 A contactmoment is *Afgerond* when `indicatieContactGelukt` is true,
 *Gepland* (or *Verlopen* once its date passed) when it is null, *Niet
@@ -615,7 +621,8 @@ as done**:
    statuses and resultaten, dates (a subdoel's beoogde einddatum against
    the rules of §6.3, except for an afgerond subdoel, and its own
    startdatum not after it — without one a subdoel starts on the plan's
-   startdatum; form.io date values are read by their date part), lengths (titel ≤ 255, toelichtingen and
+   startdatum; an instrument's startdatum a valid date; form.io date values
+   are read by their date part), lengths (titel ≤ 255, toelichtingen and
    evaluation notes ≤ 1000, the registers' limits), the status of each
    evaluation, positie and display status against the plan case type, betrokkenen, the
    subject and the one-active-plan rule (plans of this intake excepted).
@@ -642,9 +649,9 @@ as done**:
    the first column of the plan case lists; before creating one it searches
    GZAC for a dossier of the plan case type whose `planId` is this plan —
    one whose creation answer got lost, or whose link was not saved — and
-   links that instead); and finally the verzoeken
-   (§6.2), counted per subdoel and product so a retry files only what is
-   missing. A temporary failure fails the call and leaves the reservation
+   links that instead); and finally the ingeplande instruments (§6.2), per
+   subdoel and product, counting a verzoek the app filed for one meanwhile,
+   so a retry plans only what is missing. A temporary failure fails the call and leaves the reservation
    IN_AANMAAK; submitting again completes it (`hervat: true`).
 4. **Done.** Only then is the reservation GEREED, and only a GEREED plan is
    reported as existing: a repeat submission gets that plan back
@@ -653,19 +660,20 @@ as done**:
    is removed then. Every successful answer carries the plan dossier, so the
    task form completes its task only on a complete plan.
 
-**Instruments of the intake** are not created by the call: each row becomes
-a verzoek through the same `InstrumentAanvraagService` as the plan page
-(by producttype code), so every instrument gets its own instrument dossier.
-A row names its subdoel by doeltype name (no name or a duplicate doeltype:
-the first match, with a warning; an unknown name: not requested, a
-warning). A product is requested once per subdoel: a second row for the
-same subdoel and product is dropped up front with a warning (*"Instrument
-'<code>' staat meer dan eens onder subdoel '<doel>'; één keer
-aangevraagd"*). A row the registers refuse (unknown producttype, no
-`StartInstrument` actie, an open verzoek, a closed subdoel) becomes a
-warning (*"Instrument '<code>' niet aangevraagd: <reden>"*) instead of
-failing the plan; the answer counts the rows covered by a verzoek
-(`instrumentenAangevraagd`).
+**Instruments of the intake** are not requested by the call: the plan is in
+concept, so each row becomes an ingepland instrument (§6.2, by producttype
+code), requested from its startdatum once the plan is past concept, and
+then gets its own instrument dossier. Its startdatum is the row's own, else
+its subdoel's, else the plan's; it may lie after the subdoel's beoogde
+einddatum. A row names its subdoel by doeltype name (no name or a duplicate
+doeltype: the first match, with a warning; an unknown name: not planned, a
+warning). A product is planned once per subdoel: a second row for the same
+subdoel and product is dropped up front with a warning (*"Instrument
+'<code>' staat meer dan eens onder subdoel '<doel>'; één keer gepland"*).
+A row under an afgerond subdoel, or one the registers refuse (unknown
+producttype, no `StartInstrument` actie), becomes a warning (*"Instrument
+'<code>' niet gepland: <reden>"*) instead of failing the plan; the answer
+counts the rows covered (`instrumentenIngepland`).
 
 **Back into the intake.** The task form submits its result `doc:`-prefixed
 (`doc:planId`, `doc:planTitel`, `doc:planDossierId`), so it lands in the
@@ -686,7 +694,10 @@ way an instrument gets into a plan**, from the plan page ("Instrument
 aanvragen") and for the instruments of an intake (§6.1). The app holds no
 configuration for it: the registers say what can be requested and how, the
 Objecten API carries the request, and GZAC runs one dossier type for every
-product (`InstrumentAanvraagService`, `InstrumentActionService`).
+product (`InstrumentAanvraagService`, `InstrumentActionService`). A product
+is requested only for a plan **past concept** and from the instrument's
+**startdatum**; until then it is ingepland (see *Ingeplande instrumenten*
+below), so not every instrument runs at once.
 
 ```mermaid
 sequenceDiagram
@@ -698,7 +709,8 @@ sequenceDiagram
     participant G as GZAC (Verzoek plugin, instrument-verzoek)
     participant PL as Open Plan
 
-    UI->>APP: POST /api/v1/pdca/instrumenten/start {doelUuid, producttypeUuid}
+    UI->>APP: POST /api/v1/pdca/instrumenten/start {doelUuid, producttypeUuid, startdatum}
+    Note over APP: plan in concept or later date: ingepland (201), requested on its date
     APP->>OBJ: open verzoek for this doel + product? (409 if so)
     APP->>OP: producttype + its acties (StartInstrument)
     APP->>OBJ: POST /api/v2/objects (verzoek)
@@ -731,14 +743,20 @@ sequenceDiagram
   parameters `startStatus` (`actief`, or `gepland`) and `instrumenttype`
   (name or uuid of an Open Plan instrumenttype) shape the instrument. A
   missing actie or objecttype is a 422 with the reason.
-- **The verzoek.** `POST /instrumenten/start` creates an object with
+- **The verzoek.** `POST /instrumenten/start` with a `startdatum` of today
+  (the default) on a plan past concept creates an object with
   `record.data = {type: "instrument", bsn?, data}` (the shape GZAC's Verzoek
   plugin expects; `bsn` only for a persoon plan), `data` holding
   `planUuid`, `doelUuid`, `subjectId`, `productTypeUuid`,
   `productTypeCode`, `productTitel`, `productUrn`, `startStatus`,
-  `instrumenttype`, `aangevraagdOp` and the recipe's extras. It answers 202
-  and keeps nothing; it refuses (409) a doel or plan that no longer runs and
-  a doel and product with an open verzoek. The check and the filing run
+  `instrumenttype`, `startdatum` (the planned start; one that passed while
+  the plan was in concept becomes the day of filing), `aangevraagdOp`,
+  `ingeplandInstrumentId` (for an ingepland one) and the recipe's extras.
+  It answers 202 `{verzoek}` and keeps nothing; a request for a later date,
+  or on a plan in concept, is ingepland instead (201 `{ingepland}`). It
+  refuses a startdatum in the past (400) and (409) a doel or plan that no
+  longer runs and a doel and product with an open verzoek; filing itself
+  refuses a plan in concept, whoever asks. The check and the filing run
   under an in-memory lock per doel and product, so two concurrent requests
   on one replica cannot both pass the check; with several replicas, two
   requests for the same doel and product that reach different replicas at
@@ -753,8 +771,10 @@ sequenceDiagram
   and the instrument's status in the plan follows shortly after, once the
   job has run.
 - **`aanmaak-instrument`** (`doelUuid`, `titel`, optional `product`,
-  `status`, `instrumenttype`, `planUuid`) creates the instrument with the
-  calling dossier as `zaak` (dossier URN, case type read from the document).
+  `status`, `instrumenttype`, `startdatum`, `planUuid`) creates the
+  instrument with the calling dossier as `zaak` (dossier URN, case type
+  read from the document) and the verzoek's `startdatum` as its startdatum
+  (today without one; an unreadable date is refused, `STARTDATUM_ONGELDIG`).
   It is **retry-safe**: it first lists the doel's instruments with that
   `zaak` and returns the one an earlier attempt created. It refuses a doel
   or plan that is no longer actief, falls back to the register's first
@@ -784,6 +804,54 @@ sequenceDiagram
   plan creation, neither a slow notification route nor a retry files
   duplicates. The app does not check the dossier type's process links
   (§12): a verzoek filed before they are in place waits to be picked up.
+
+**Ingeplande instrumenten** (`IngeplandInstrumentService`). A product chosen
+for a subdoel that is not requested yet is a row of the overlay
+(`IngeplandInstrument`: plan, doel, producttype, `productUrn`, startdatum):
+no verzoek, dossier or Open Plan instrument exists until it is due. It is
+not a copy of register data — the fact exists only in the app until the
+verzoek is filed, and then the row is deleted.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Gepland: plan page (later date, or plan in concept) / intake
+    Gepland --> Aangevraagd: startdatum reached and plan past concept (job) / Nu aanvragen
+    Gepland --> Gepland: startdatum changed
+    Gepland --> NietAangevraagd: registers refuse
+    NietAangevraagd --> Gepland: Opnieuw proberen
+    Gepland --> [*]: removed / doel removed or aborted / plan closed
+    NietAangevraagd --> [*]: removed
+    Aangevraagd --> [*]: verzoek filed, row deleted
+```
+
+- **Planning** checks the producttype as a request would (a `StartInstrument`
+  actie of soort `verzoek` with an objecttype; 422), so a product that
+  cannot be requested is refused now and not on its date. One per doel and
+  product (unique key; 409 *"'<titel>' is voor dit doel al ingepland"*); a
+  product with an open verzoek can still be planned for later. The plan
+  page's startdatum is not in the past and may lie after the subdoel's
+  beoogde einddatum.
+- **The job** (`vraagAanWatKlaarStaat`, every minute) takes the rows whose
+  startdatum has come and that carry no refusal, skips those of a plan in
+  concept (`PlanConcept`, from the database) and files the verzoek of each
+  through `InstrumentAanvraagService.start`, then deletes the row. So
+  leaving concept requests everything due within about a minute.
+- **Once, also with several replicas.** A row is claimed before it is filed
+  (a conditional update with a five-minute lease), so of two replicas, or
+  the job and a user, only one files it; the verzoek carries the row id, so
+  a row whose verzoek was filed but not yet deleted is only deleted on the
+  next attempt (`isIngediend`, a `data_attrs` lookup).
+- **Refusals and failures.** A business refusal (4xx: no `StartInstrument`
+  actie any more, an open verzoek for the same doel and product, a doel
+  completed meanwhile) is stored on the row (`fout`) and the job leaves it
+  alone; the plan page shows *"Niet aangevraagd: <reden>"* and *Opnieuw
+  proberen*, which moves the date to today (`PATCH`, which also clears the
+  refusal). A temporary failure releases the claim and is tried on the next
+  run.
+- **Managing them**: `GET /instrumenten/ingepland?planUuid=`,
+  `PATCH /instrumenten/ingepland/{id}` (`{startdatum}`, not in the past),
+  `POST …/{id}/aanvragen` (now, with today as startdatum; 409 in concept)
+  and `DELETE …/{id}`; the last three refuse a row being filed (409).
 
 ### 6.3 Plan, doel and instrument lifecycle
 
@@ -816,7 +884,9 @@ registers itself.
   instrument (§6.2) or an actie of it has an open GZAC task (§6.8);
   removing is refused the same way for an actief dossier-managed
   instrument, an open verzoek or an open task. Nothing is cancelled along
-  with the doel: what runs is ended first, where it is managed. Removal
+  with the doel: what runs is ended first, where it is managed. Its
+  ingeplande instruments have not started and are dropped with it, on
+  removal and on abort. Removal
   takes the instruments first and the doel last, so a retry completes an
   interrupted removal. When the verzoeken cannot be read the refusal
   stands (fail closed). Completing a subdoel and editing its toelichting
@@ -853,8 +923,10 @@ registers itself.
   plan page manages, open verzoeken and open actie tasks only warn —
   closing leaves them —
   but an actief dossier-managed instrument blocks closing (409): its
-  dossier has to end it first. A verzoek whose dossier only appears after
-  the plan closed fails in `aanmaak-instrument`.
+  dossier has to end it first. Closing drops the plan's ingeplande
+  instruments (the afsluitcheck counts them, `ingeplandeInstrumenten`);
+  reopening does not bring them back. A verzoek whose dossier only appears
+  after the plan closed fails in `aanmaak-instrument`.
 - **Reopening a plan** (`POST /plannen/{uuid}/heractiveren`) clears
   `einddatum` and `redenEinde`, under the one-active-plan rule (409).
 
@@ -1059,8 +1131,10 @@ reason (§6.5). While the plan is still in concept anything goes.
   `PUT /doeldetails`), the
   plan's toelichting bij het hoofddoel and beoogde einddatum (proxy
   `PATCH plan`, `streefEinddatum` in `PUT /plandetails`), the hoofddoel
-  (`PUT /plannen/{uuid}/hoofddoel`) and instrument requests
-  (`POST /instrumenten/start`). Moving the display status back to concept
+  (`PUT /plannen/{uuid}/hoofddoel`), instrument requests
+  (`POST /instrumenten/start`) and the ingeplande instruments
+  (`PATCH`/`DELETE /instrumenten/ingepland/{id}`, `…/aanvragen`). Moving
+  the display status back to concept
   is locked too, else the lock would be one step away. Free: voortgang
   with its toelichting, instrument notes, starting a subdoel, instrument
   steps and registrations, acties, betrokkenen, contactmomenten, other
@@ -1072,9 +1146,10 @@ reason (§6.5). While the plan is still in concept anything goes.
   it changes (`slot`, from its path or body), and `/data` checks it with
   `PlanSlot` after authorization: 409 *"Dit deel van het plan is
   vastgesteld en verandert alleen tijdens een evaluatie; …"*. One place
-  covers the use cases and the register proxy alike. Plan creation and the
-  plugin actions do not pass `/data` and are not locked: an instrument
-  dossier still ends its instrument.
+  covers the use cases and the register proxy alike. Plan creation, the
+  plugin actions and the job that requests ingeplande instruments do not
+  pass `/data` and are not locked: an instrument dossier still ends its
+  instrument.
 - **Such an evaluation is completed.** When `PlanSlot` lets a locked
   change through for an evaluation, it first records that on the session
   (`vastgesteldGewijzigd`, set only by a conditional update while the
@@ -1241,6 +1316,7 @@ sequenceDiagram
   | Actie as GZAC task (§6.8) | the actie is saved first; a refused or failed start removes it again, a start whose answer is lost keeps it when its process reported itself; `actie-taak-gestart` and `actie-gereed` take only the actie's own process and leave an actie that has ended alone |
   | Hoofddoel switch (§6.3) | reuse the new hoofddoel of an interrupted switch, then close the old ones and re-point |
   | Instrument request (§6.2) | 409 while a verzoek for that doel and product is open |
+  | Ingepland instrument requested (§6.2) | a claim with lease per row; the verzoek carries the row id, so a row whose verzoek was filed is only deleted on the next attempt; a refusal stays on the row |
   | `aanmaak-instrument` | returns the instrument this dossier already created |
   | `update-instrument`, instrument afronden/afbreken | the requested end state already reached is a success without a write |
   | Evaluatieverslag (§6.6) | the request is committed with the completion, before the process starts; `document-aanvraag-ophalen` returns this process instance's request; `document-gereed` is only taken from that process and leaves an ended request as it is; "Opnieuw maken" returns the request still being made, otherwise records a new one |
@@ -1393,8 +1469,12 @@ path, query parameters) is a 403. *Caller*: **user** = any verified user;
 | GET | `…/dossiers/{documentId}/plan` | the plan of a plan dossier (404: none) | dossier |
 | GET | `…/dossiers/{documentId}/plan-prefill` | create-plan prefill from an intake dossier | dossier |
 | POST | `…/plan-intake` | create plan + plan dossier from an intake (§6.1) | dossier (body `documentId`) |
-| POST | `…/instrumenten/start` | file a verzoek for a doel and producttype (202); locked (§6.7) | plan (of body `doelUuid`) |
+| POST | `…/instrumenten/start` | request a producttype for a doel from a `startdatum`: file the verzoek (202) or plan it (201) (§6.2); locked (§6.7) | plan (of body `doelUuid`) |
 | GET | `…/instrumenten/verzoeken?planUuid` | the plan's open verzoeken | plan |
+| GET | `…/instrumenten/ingepland?planUuid` | the plan's ingeplande instruments | plan |
+| PATCH | `…/instrumenten/ingepland/{id}` | move to another `startdatum`, clearing a refusal; locked | plan (of the row) |
+| POST | `…/instrumenten/ingepland/{id}/aanvragen` | request it now (202); 409 in concept; locked | plan (of the row) |
+| DELETE | `…/instrumenten/ingepland/{id}` | remove it; locked | plan (of the row) |
 | POST | `…/instrumenten/{uuid}/starten`, `…/afronden`, `…/afbreken` | instrument lifecycle (§6.3) | plan (of the instrument) |
 | DELETE | `…/doelen/{uuid}` | remove a doel with its instruments; 409 while something of it still runs (§6.3); locked (§6.7) | plan (of the doel) |
 | POST | `…/doelen/{uuid}/afbreken` | abort a doel; 409 while something under it still runs (§6.3); locked (§6.7) | plan (of the doel) |
@@ -1469,6 +1549,7 @@ the demo case types.
 | `PlanIntake` (`plan_intake`) | `intakeDossierId` | plan creation from an intake: `status` IN_AANMAAK → GEREED, `planUuid` once created, `claimToken` + `claimedUntil` (the owned claim and its lease; every write is a conditional update on the token) |
 | `DoelDetails` (`doel_details`) | `doelUuid` | `planUuid`, `uitvoeringsStatus` (GEPLAND, GESTART), `voortgangStatus` (a code of the plan's list), `interneNotitie` and `externeNotitie` (the interne and externe toelichting of the voortgang, §5.2), `streefEinddatum` (beoogde einddatum of a subdoel, §6.3), `sortering` (the hoofddoel −1) |
 | `InstrumentDetails` (`instrument_details`) | `instrumentUuid` | `planUuid`, `uitvoeringsStatus` (default GESTART), `urenBesteed`, `effectiviteitScore` (1–5) and `effectiviteitToelichting`, `afbreekReden`, `interneNotitie`, `externeNotitie` |
+| `IngeplandInstrument` (`ingepland_instrument`) | id | a product chosen for a subdoel, not requested yet (§6.2): `planUuid`, `doelUuid`, `producttypeUuid`, `productUrn` (unique per doel), `startdatum`, `fout` (the registers' last refusal), `geclaimdTot` (the lease of the request filing it), `aangemaaktOp`; deleted once its verzoek is filed |
 | `ContactmomentDetails` (`contactmoment_details`) | `contactmomentUuid` (= klantcontact uuid) | `planUuid`, `geplandeDatum`, `deelnemers`, `actiepunten`, `evaluationSessionId` |
 | `InvolvedParty` (`involved_party`) | id | `planUuid`, name, role, contact details, `isPrimary` (the procesbegeleider; at most one per plan, partial unique index) |
 | `Action` (`action`) | id | `doelUuid`, optional `instrumentUuid` and `contactmomentUuid`, title, description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED; with a task only → COMPLETED or CANCELLED by the task), assignee name, priority, dates, result, `taakProcessInstanceId` (the GZAC process of its task, §6.8; unique) |
@@ -1709,7 +1790,21 @@ bundles, so nothing is loaded from third parties.
   Starten, Ter beoordeling and Goedkeuren/Afkeuren.
 - **Instruments enter only through "Instrument aanvragen"**, which appears
   only when the subdoel has requestable producttypen; the empty list says
-  which of the two applies.
+  which of the two applies. Choosing a product asks its startdatum (today
+  by default, no past dates): the button reads *Nu aanvragen* for today on
+  a plan past concept and *Plannen* otherwise, and the text says when the
+  instrument is requested. An instrument row shows its startdatum.
+- **Ingeplande instruments** show under their subdoel (earliest first) as
+  *Gepland (concept)* or *Gepland* with *start <datum>*. The section
+  header counts the subdoel's instruments by the status they show, only the
+  statuses that occur (*"Instrumenten (1 gestart, 1 aangevraagd, 2
+  gepland)"*, open verzoeken as aangevraagd). A gepland row's menu offers *Startdatum wijzigen*,
+  *Nu aanvragen* (past concept) and *Verwijderen*, locked like the
+  requests (§6.7); a refused one shows *"Niet aangevraagd: <reden>"* with
+  *Opnieuw proberen*. Aborting or removing the subdoel says they are
+  dropped, closing the plan warns that they lapse. In an evaluation the
+  page records `PRODUCT_INGEPLAND`, `INSTRUMENT_STARTDATUM` and
+  `INGEPLAND_VERWIJDERD`.
 - **Open verzoeken** show as *Aangevraagd* rows under their subdoel; after
   ten minutes the row adds *"nog geen dossier na N minuten"*, the sign that
   the notification route, the Verzoek plugin or `aanmaak-instrument` is
@@ -1764,8 +1859,11 @@ bundles, so nothing is loaded from third parties.
   `globalThis.pdfjsWorker`, which makes pdf.js skip `new Worker`) and
   fetches nothing: no wasm decoders, cMaps or standard font data, the
   generated PDFs embed their fonts.
-- **Create-plan form** — a backend refusal is shown above the button and
-  leaves the form usable; a 409 says the plan is still being created; after
+- **Create-plan form** — each instrument row has an optional startdatum
+  (empty: its subdoel's), and the section says the instruments are planned
+  and requested from their startdatum once the plan is vastgesteld. A
+  backend refusal is shown above the button and leaves the form usable; a
+  409 says the plan is still being created; after
   an interrupted creation it says that submitting again reuses what exists;
   warnings come with the success message. The task completes only on a
   complete plan.

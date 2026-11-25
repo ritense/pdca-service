@@ -77,6 +77,12 @@ export function PlanActieModal({ actie, planUuid, weergaveStatus, onClose, onSub
             <InlineNotification kind="info" title="Er staat nog werk open" lowContrast hideCloseButton
               subtitle={`${open}. Die blijven zoals ze zijn; het plan wordt toch ${actie === 'afronden' ? 'afgerond' : 'afgebroken'}.`} />
           )}
+          {check && !geblokkeerd && check.ingeplandeInstrumenten > 0 && (
+            <InlineNotification kind="warning" title="Geplande instrumenten vervallen" lowContrast hideCloseButton
+              subtitle={check.ingeplandeInstrumenten === 1
+                ? '1 gepland instrument is nog niet aangevraagd; het vervalt bij het afsluiten.'
+                : `${check.ingeplandeInstrumenten} geplande instrumenten zijn nog niet aangevraagd; ze vervallen bij het afsluiten.`} />
+          )}
           <p>
             Het plan wordt {actie === 'afronden' ? 'afgerond' : 'afgebroken'} met de datum van vandaag als einddatum.
           </p>

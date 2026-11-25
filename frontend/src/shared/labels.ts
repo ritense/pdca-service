@@ -74,6 +74,32 @@ export function instrumentStatus(
   return levenscyclus(instrument, details?.uitvoeringsStatus !== 'GEPLAND');
 }
 
+/**
+ * Status of an ingepland instrument: chosen for a subdoel, not requested
+ * yet. Gepland like an instrument that has not started, marked (concept)
+ * while the plan is in concept, since nothing is requested before the plan
+ * is vastgesteld.
+ */
+export function ingeplandStatus(planInConcept: boolean): StatusWeergave {
+  return { label: planInConcept ? 'Gepland (concept)' : 'Gepland', tag: 'purple' };
+}
+
+/** The order in which a subdoel's instruments are counted by status. */
+const INSTRUMENT_TELVOLGORDE = ['Gestart', 'Aangevraagd', 'Gepland', 'Afgerond', 'Niet behaald', 'Afgebroken'];
+
+/**
+ * "1 gestart, 1 gepland": a subdoel's instruments counted by the status they
+ * show (open verzoeken as Aangevraagd, ingeplande ones as Gepland), only the
+ * statuses that occur; "0" without any.
+ */
+export function instrumentenTelling(statussen: string[]): string {
+  const telling = new Map<string, number>();
+  statussen.forEach(s => telling.set(s, (telling.get(s) ?? 0) + 1));
+  const volgorde = [...INSTRUMENT_TELVOLGORDE, ...[...telling.keys()].filter(s => !INSTRUMENT_TELVOLGORDE.includes(s))];
+  const delen = volgorde.filter(s => telling.has(s)).map(s => `${telling.get(s)} ${s.toLowerCase()}`);
+  return delen.length > 0 ? delen.join(', ') : '0';
+}
+
 const ACTIE_STATUSSEN: Record<string, StatusWeergave> = {
   PLANNED: GEPLAND,
   IN_PROGRESS: GESTART,
@@ -305,6 +331,9 @@ const WIJZIGING_LABELS: Record<string, string> = {
   ACTIE_TOEGEVOEGD: 'Actie toegevoegd',
   ACTIE_STATUS: 'Actiestatus',
   PRODUCT_AANGEVRAAGD: 'Instrument aangevraagd',
+  PRODUCT_INGEPLAND: 'Instrument gepland',
+  INSTRUMENT_STARTDATUM: 'Startdatum instrument',
+  INGEPLAND_VERWIJDERD: 'Gepland instrument verwijderd',
   HOOFDDOEL_GEWISSELD: 'Hoofddoel gewisseld',
   HOOFDDOEL_TOELICHTING: 'Toelichting bij hoofddoel',
   PLAN_STATUS: 'Status plan',
