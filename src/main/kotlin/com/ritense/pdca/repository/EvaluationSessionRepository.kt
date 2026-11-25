@@ -40,12 +40,22 @@ interface EvaluationSessionRepository : JpaRepository<EvaluationSession, UUID> {
 
     /**
      * Records that running session [id] changed a locked part of its plan;
-     * 0 when the session no longer runs.
+     * 1 when this call recorded it, 0 when the session no longer runs or
+     * had it recorded already.
      */
     @Transactional
     @Modifying(clearAutomatically = true)
-    @Query("UPDATE EvaluationSession s SET s.vastgesteldGewijzigd = true WHERE s.id = :id AND s.status = $RUNNING")
-    fun markeerVastgesteldGewijzigd(@Param("id") id: UUID): Int
+    @Query(
+        "UPDATE EvaluationSession s SET s.vastgesteldGewijzigd = true " +
+            "WHERE s.id = :id AND s.status = $RUNNING AND s.vastgesteldGewijzigd = false"
+    )
+    fun markVastgesteldGewijzigd(@Param("id") id: UUID): Int
+
+    /** Takes back the record of [markVastgesteldGewijzigd] while session [id] runs. */
+    @Transactional
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE EvaluationSession s SET s.vastgesteldGewijzigd = false WHERE s.id = :id AND s.status = $RUNNING")
+    fun unmarkVastgesteldGewijzigd(@Param("id") id: UUID): Int
 
     /**
      * Cancels running session [id] unless it changed a locked part of its

@@ -20,6 +20,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.ritense.pdca.config.PdcaProperties
 import com.ritense.pdca.config.SecurityConfig
 import com.ritense.pdca.domain.DoelDetails
+import com.ritense.pdca.domain.EvaluationSession
+import com.ritense.pdca.domain.EvaluationSessionStatus
 import com.ritense.pdca.domain.PlanDetails
 import com.ritense.pdca.plugin.ConfigurationStore
 import com.ritense.pdca.plugin.GzacAccess
@@ -70,6 +72,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
@@ -136,6 +139,11 @@ class TrustBoundaryTest {
 
         @GetMapping("/api/v1/pdca/dossiers/{id}/plan")
         fun dossierPlan(@PathVariable id: String): Nothing = throw ResponseStatusException(HttpStatus.NOT_FOUND, "Geen plan bij dit dossier")
+
+        /** A locked change: refused (409) for doeltype "weigeren", made otherwise. */
+        @PutMapping("/api/v1/pdca/plannen/{uuid}/hoofddoel")
+        fun hoofddoel(@PathVariable uuid: UUID, @RequestBody body: Map<String, Any?>): Map<String, Any?> =
+            if (body["doeltypeUuid"] == "weigeren") throw ResponseStatusException(HttpStatus.CONFLICT, "Geweigerd") else body
     }
 
     @LocalServerPort
@@ -294,6 +302,27 @@ class TrustBoundaryTest {
 
         assertEquals(404, response.statusCode())
         assertEquals("Geen plan bij dit dossier", json(response)["detail"])
+    }
+
+    @Test
+    fun `a locked change the handler refuses takes its record on the evaluation back`() {
+        val token = user("jan")
+        `when`(gzacClient.userCanReadDocument(token, "plan-dossier")).thenReturn(true)
+        `when`(planDetailsRepository.findById(planUuid)).thenReturn(
+            Optional.of(PlanDetails(planUuid = planUuid, persoonUuid = UUID.randomUUID(), dossierId = "plan-dossier", weergaveStatus = "Vastgesteld"))
+        )
+        val sessie = EvaluationSession(dossierId = "plan-dossier", planUuid = planUuid, userLogin = "jan", status = EvaluationSessionStatus.RUNNING)
+        `when`(evaluationSessionRepository.findByUserLoginAndStatus("jan", EvaluationSessionStatus.RUNNING)).thenReturn(sessie)
+        `when`(evaluationSessionRepository.markVastgesteldGewijzigd(sessie.id)).thenReturn(1)
+
+        val geweigerd = data(token, "PUT", "/api/v1/pdca/plannen/$planUuid/hoofddoel", body = mapOf("doeltypeUuid" to "weigeren"))
+        assertEquals(409, geweigerd.statusCode(), geweigerd.body())
+        verify(evaluationSessionRepository).unmarkVastgesteldGewijzigd(sessie.id)
+
+        val gemaakt = data(token, "PUT", "/api/v1/pdca/plannen/$planUuid/hoofddoel", body = mapOf("doeltypeUuid" to "werk"))
+        assertEquals(200, gemaakt.statusCode(), gemaakt.body())
+        verify(evaluationSessionRepository, times(2)).markVastgesteldGewijzigd(sessie.id)
+        verify(evaluationSessionRepository, times(1)).unmarkVastgesteldGewijzigd(sessie.id)
     }
 
     @Test

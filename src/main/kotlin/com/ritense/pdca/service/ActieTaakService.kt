@@ -45,8 +45,11 @@ import java.util.UUID
  * submitted on the plan dossier; the building block's first service task
  * calls back synchronously ([taakGestart]) and records its process on the
  * actie. A start GZAC refuses removes the actie again, so no actie exists
- * without its task; a start whose answer is lost keeps the actie when the
- * callback recorded the task, and removes it otherwise.
+ * without its task. A start whose outcome is unknown (no answer, or a
+ * gateway error) keeps the actie when the callback recorded the task, and
+ * removes it otherwise; the removal is conditional, so a callback that
+ * comes in after it finds no actie and makes GZAC roll that start back,
+ * and no task is left without its actie.
  *
  * The process reports the outcome with [gereed]; both callbacks are safe to
  * repeat and taken only from the process that carries the actie.
@@ -91,12 +94,22 @@ class ActieTaakService(
                 )
             )
         } catch (e: RuntimeException) {
-            val opgenomen = actionRepository.findById(actie.id).orElse(null)
-            if (e !is GzacClient.StartGeweigerdException && opgenomen?.taakProcessInstanceId != null) {
-                log.warn("Start of the task of actie {} answered with an error, but its process {} reported itself; kept", actie.id, opgenomen.taakProcessInstanceId)
-                return opgenomen
+            if (e is GzacClient.StartGeweigerdException) {
+                // GZAC rolled the start back, also a process that reported itself.
+                actionRepository.deleteById(actie.id)
+                log.warn("Task of actie {} refused by GZAC; actie removed again: {}", actie.id, e.message)
+                throw e
             }
-            actionRepository.deleteById(actie.id)
+            // Unknown whether GZAC started the task (it may still be busy).
+            // The removal and its process reporting itself exclude each
+            // other: once the actie is gone, actie-taak-gestart fails and
+            // GZAC rolls that start back; once reported, the actie stays.
+            if (actionRepository.deleteIfTaakUnrecorded(actie.id) == 0) {
+                actionRepository.findById(actie.id).orElse(null)?.let { opgenomen ->
+                    log.warn("Start of the task of actie {} answered with an error, but its process {} reported itself; kept", actie.id, opgenomen.taakProcessInstanceId)
+                    return opgenomen
+                }
+            }
             log.warn("Task of actie {} not started; actie removed again: {}", actie.id, e.message)
             throw e
         }
@@ -113,7 +126,12 @@ class ActieTaakService(
     fun taakGestart(properties: Map<String, Any?>, processInstanceId: String?) {
         val (actie, proces) = actieVanProces(properties, processInstanceId)
         if (actie.taakProcessInstanceId == proces) return
-        if (actie.taakProcessInstanceId != null || actionRepository.recordTaak(actie.id, proces) == 0) {
+        if (actie.taakProcessInstanceId == null && actionRepository.recordTaak(actie.id, proces) == 1) return
+        // Recorded by another process, or removed in the meantime (a start
+        // whose answer was lost): either way this start is refused.
+        val nu = actionRepository.findById(actie.id).orElse(null)
+            ?: throw PluginActionException("ACTIE_ONBEKEND", "Er is geen actie ${actie.id} (meer) in het plan")
+        if (nu.taakProcessInstanceId != proces) {
             throw PluginActionException("ACTIE_HEEFT_AL_EEN_TAAK", "Actie ${actie.id} heeft al een taak in een ander proces")
         }
     }
