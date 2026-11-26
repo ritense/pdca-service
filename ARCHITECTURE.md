@@ -1664,15 +1664,16 @@ Epistola settings.
 - **`gzac/epistola/catalogs/pdca-documenten/`** — the authored Epistola
   catalog with the theme `pdca` and the template `evaluatieverslag`, whose
   data model is the snapshot of §6.6. It is imported into the Suite tenant
-  of GZAC's Epistola configuration and released with the version of its
-  `catalog.json`; a change to the catalog raises that version.
+  of GZAC's Epistola configuration as `local/<tenant>/pdca-documenten`
+  (Epistola API v2); the import installs the release of its
+  `catalog.json`, so a change to the catalog raises that version.
 - **`gzac/dev-setup/`** — the local dev setup: a small Kotlin program
   (Gradle source set `devSetup`) that configures a running local GZAC (a
   Valtimo checkout's dev app with its gzac-docker-compose stack) through
   GZAC's admin REST API, logged in as the dev administrator, with the values
   of `dev-values.json`: the register plugins (upload, configurations), the
   verzoek route (objecttype, object management, Verzoek plugin, Notificaties
-  callback), the Epistola templates (the catalog imported and released in
+  callback), the Epistola templates (the catalog imported, with its release, into
   the Suite tenant, called directly with the tenant's API key), the app's
   registration, the task building block and, once GZAC has discovered the
   running app, its

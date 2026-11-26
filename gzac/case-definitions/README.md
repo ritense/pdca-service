@@ -43,7 +43,7 @@ Next to the case definitions the app needs two artefacts for its documents
   configuration.
 - **`../epistola/catalogs/pdca-documenten/`** — the Epistola catalog with
   the template `evaluatieverslag` the process renders; import it into the
-  tenant of that Epistola configuration and release it.
+  tenant of that Epistola configuration, which installs its release.
 
 `./gradlew buildGzacZips` also builds the system process zip
 (`../system-processes/build-zips.sh` on its own). For the local stack the

@@ -93,20 +93,20 @@ is an authored Epistola catalog: `catalog.json` (slug `pdca-documenten`,
 release version) and `resources/` with the theme `pdca` and the template
 `evaluatieverslag`, whose data model is the `pdcaGegevens` snapshot. Import
 it into the tenant of GZAC's Epistola configuration as a zip with
-`catalog.json` at its root, then release it:
+`catalog.json` at its root, naming the catalog's registry `local` and the
+tenant's namespace (the tenant key, padded with `0` to 3 characters); the
+import installs the release of `catalog.json`:
 
 ```bash
 (cd ../epistola/catalogs/pdca-documenten && zip -r -X /tmp/pdca-documenten.zip catalog.json resources)
-curl -X POST -H "Authorization: ApiKey $EPISTOLA_API_KEY" -H "Accept: application/vnd.epistola.v1+json" \
-  -F "file=@/tmp/pdca-documenten.zip;type=application/zip" -F catalogType=AUTHORED -F authoredMode=MERGE \
+curl -X POST -H "Authorization: ApiKey $EPISTOLA_API_KEY" -H "Accept: application/vnd.epistola.v2+json" \
+  -F "file=@/tmp/pdca-documenten.zip;type=application/zip" -F registry=local -F namespace=$TENANT \
   "$EPISTOLA_URL/tenants/$TENANT/catalogs/import"
-curl -X POST -H "Authorization: ApiKey $EPISTOLA_API_KEY" -H "Content-Type: application/vnd.epistola.v1+json" \
-  -d '{"releaseVersion":"1.0.0"}' "$EPISTOLA_URL/tenants/$TENANT/catalogs/pdca-documenten/release"
 ```
 
-Every import makes new template versions in the Suite, and a release needs a
-version greater than the catalog's last one: a change to the catalog raises
-`release.version` in `catalog.json`, and the release uses that version.
+Importing a release the Suite already has with the same content changes
+nothing; the Suite refuses a release version it has with other content, so a
+change to the catalog raises `release.version` in `catalog.json`.
 
 ## Rebuilding
 
