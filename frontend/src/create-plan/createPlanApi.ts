@@ -65,7 +65,7 @@ export interface PlanIntakeRequest {
   })[];
   /** Instrumenten to request once the plan exists: producttype code + subdoel (doeltype name; empty = the first). */
   instrumenten: { product: string; doel: string }[];
-  contactmomenten: (Record<string, unknown> & { datum: string; evaluatieType: string; status: EvaluatieStatus; notitie: string })[];
+  contactmomenten: (Record<string, unknown> & { datum: string; status: EvaluatieStatus; notitie: string })[];
   betrokkenen: (Record<string, unknown> & {
     naam: string; rol: string; organisatie: string; email: string; procesbegeleider: boolean;
   })[];

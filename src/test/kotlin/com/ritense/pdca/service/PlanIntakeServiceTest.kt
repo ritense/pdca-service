@@ -159,7 +159,7 @@ class PlanIntakeServiceTest {
 
         `when`(gzacClient.getDocument(INTAKE)).thenReturn(mapOf("definitionId" to mapOf("name" to "intake-werk-participatie")))
         `when`(phaseConfigService.findByCaseDefinitionKey("intake-werk-participatie")).thenReturn(
-            PhaseConfig(caseDefinitionKey = "intake-werk-participatie", evaluationTypes = "[]", planCaseDefinitionKey = "inwonerplan")
+            PhaseConfig(caseDefinitionKey = "intake-werk-participatie", planCaseDefinitionKey = "inwonerplan")
         )
         `when`(phaseConfigService.getPositieTypen("inwonerplan")).thenReturn(null)
         `when`(phaseConfigService.getPlanStatussen("inwonerplan")).thenReturn(null)
@@ -196,14 +196,12 @@ class PlanIntakeServiceTest {
             "plan-dossier" to true
         }
         `when`(klantcontactService.ofPlan(anyValue())).thenAnswer { inv -> klantcontacten.filter { it.planUuid == inv.arguments[0] } }
-        `when`(klantcontactService.evaluatieTypeOf(anyValue())).thenCallRealMethod()
         `when`(klantcontactService.create(anyValue())).thenAnswer {
             val nieuw = it.arguments[0] as NewContactmoment
-            val label = mapOf("EVALUATION" to "Evaluatie")[nieuw.evaluatieType] ?: nieuw.evaluatieType
             klantcontacten += Klantcontact(
                 uuid = UUID.randomUUID(),
                 planUuid = nieuw.planUuid,
-                onderwerp = "$label: Plan",
+                onderwerp = "Evaluatie: Plan",
                 indicatieContactGelukt = if (nieuw.afgerond) true else null,
                 plaatsgevondenOp = nieuw.plaatsgevondenOp
             )
@@ -434,8 +432,8 @@ class PlanIntakeServiceTest {
     }
 
     @Test
-    fun `a retry finds the contactmoment of a configured evaluation type instead of creating it again`() {
-        val contactmoment = IntakeContactmoment(datum = "2026-03-02", evaluatieType = "NAZORG", status = "gepland")
+    fun `a retry finds the contactmoment an earlier attempt created instead of creating it again`() {
+        val contactmoment = IntakeContactmoment(datum = "2026-03-02", status = "gepland")
         falen += "klantcontact-antwoord"
         assertFailsWith<ResponseStatusException> { service.createPlanFromIntake(request().copy(contactmomenten = listOf(contactmoment))) }
         assertEquals(1, klantcontacten.size)
@@ -444,7 +442,6 @@ class PlanIntakeServiceTest {
         service.createPlanFromIntake(request().copy(contactmomenten = listOf(contactmoment)))
 
         assertEquals(1, klantcontacten.size)
-        assertEquals("NAZORG", contactmomentDetails.rows.values.single().evaluatieType)
         assertEquals(klantcontacten.single().uuid, contactmomentDetails.rows.keys.single())
     }
 

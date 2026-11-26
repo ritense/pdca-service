@@ -28,7 +28,7 @@ export type SubdoelRij = Rij<{ doelType: string; beschrijving: string; status: D
 /** An instrument to request once the plan exists: producttype code + subdoel (doeltype name; empty = the first). */
 export type InstrumentRij = Rij<{ product: string; doel: string }>;
 /** `auto`: the default first evaluation, whose date follows the startdatum until the row is edited. */
-export type EvaluatieRij = Rij<{ datum: string; evaluatieType: string; status: EvaluatieStatus; notitie: string; auto: boolean }>;
+export type EvaluatieRij = Rij<{ datum: string; status: EvaluatieStatus; notitie: string; auto: boolean }>;
 export type BetrokkeneRij = Rij<{ naam: string; rol: string; organisatie: string; email: string; procesbegeleider: boolean }>;
 
 export type Sectie = 'subdoelen' | 'instrumenten' | 'evaluaties' | 'betrokkenen';
@@ -69,7 +69,7 @@ type Lijsten = Pick<FormState, Sectie>;
 export type FormActie =
   | { type: 'veld'; veld: keyof PlanVelden; waarde: string }
   | { type: 'subject'; subjectType?: SubjectType; subjectId?: string }
-  | { type: 'toevoegen'; sectie: Sectie; evaluatieTypen: string[] }
+  | { type: 'toevoegen'; sectie: Sectie }
   | { type: 'wijzigRij'; sectie: Sectie; key: number; wijziging: Record<string, unknown> }
   | { type: 'verwijderRij'; sectie: Sectie; key: number }
   | { type: 'procesbegeleider'; key: number; gekozen: boolean }
@@ -93,17 +93,14 @@ export function beginState(): FormState {
   };
 }
 
-function nieuweEvaluatie(evaluatieTypen: string[], datum = '', auto = false): EvaluatieRij {
-  return {
-    key: sleutel(), extra: {}, datum, notitie: '', status: 'gepland', auto,
-    evaluatieType: evaluatieTypen.includes('EVALUATION') ? 'EVALUATION' : evaluatieTypen[0] ?? 'EVALUATION',
-  };
+function nieuweEvaluatie(datum = '', auto = false): EvaluatieRij {
+  return { key: sleutel(), extra: {}, datum, notitie: '', status: 'gepland', auto };
 }
 
-function nieuweRij(sectie: Sectie, evaluatieTypen: string[]): Lijsten[Sectie][number] {
+function nieuweRij(sectie: Sectie): Lijsten[Sectie][number] {
   if (sectie === 'subdoelen') return { key: sleutel(), extra: {}, doelType: '', beschrijving: '', status: 'gepland', startdatum: '', streefEinddatum: '' };
   if (sectie === 'instrumenten') return { key: sleutel(), extra: {}, product: '', doel: '' };
-  if (sectie === 'evaluaties') return nieuweEvaluatie(evaluatieTypen);
+  if (sectie === 'evaluaties') return nieuweEvaluatie();
   return { key: sleutel(), extra: {}, naam: '', rol: '', organisatie: '', email: '', procesbegeleider: false };
 }
 
@@ -124,7 +121,7 @@ export function formReducer(state: FormState, actie: FormActie): FormState {
       return {
         ...state,
         open: { ...state.open, [actie.sectie]: true },
-        [actie.sectie]: [...state[actie.sectie], nieuweRij(actie.sectie, actie.evaluatieTypen)],
+        [actie.sectie]: [...state[actie.sectie], nieuweRij(actie.sectie)],
       };
     case 'wijzigRij': {
       // Editing the default first evaluation detaches its date from the startdatum.
@@ -276,15 +273,14 @@ export function vulVoor(p: PlanPrefill, registers: Registers, cfg: CaseConfig):
   });
   const evaluaties: EvaluatieRij[] = prefillRijen(p.contactmomenten).map(c => ({
     key: sleutel(),
-    extra: overige(c, ['datum', 'evaluatieType', 'status', 'notitie']),
+    extra: overige(c, ['datum', 'status', 'notitie']),
     datum: c.datum ? datumDeel(tekst(c.datum)) : '',
-    evaluatieType: tekst(c.evaluatieType) || nieuweEvaluatie(cfg.evaluatieTypen).evaluatieType,
     status: c.status === 'afgerond' ? 'afgerond' : 'gepland',
     notitie: tekst(c.notitie),
     auto: false,
   }));
   state.evaluaties = evaluaties.length > 0 ? evaluaties
-    : [nieuweEvaluatie(cfg.evaluatieTypen, plusWeken(state.startdatum, EERSTE_EVALUATIE_WEKEN), true)];
+    : [nieuweEvaluatie(plusWeken(state.startdatum, EERSTE_EVALUATIE_WEKEN), true)];
   let procesbegeleiderGekozen = false;
   state.betrokkenen = prefillRijen(p.betrokkenen).map(b => {
     // Exactly one procesbegeleider per plan: the first one marked wins.
@@ -336,7 +332,7 @@ export function maakRequest(state: FormState, documentId: string, subjectNaam: s
     })),
     instrumenten: state.instrumenten.map(i => ({ product: i.product, doel: i.doel })),
     contactmomenten: state.evaluaties.filter(c => c.datum).map(c => ({
-      ...c.extra, datum: c.datum, evaluatieType: c.evaluatieType, status: c.status, notitie: c.notitie,
+      ...c.extra, datum: c.datum, status: c.status, notitie: c.notitie,
     })),
     betrokkenen: state.betrokkenen.filter(b => b.naam.trim()).map(b => ({
       ...b.extra, naam: b.naam.trim(), rol: b.rol, organisatie: b.organisatie, email: b.email.trim(),

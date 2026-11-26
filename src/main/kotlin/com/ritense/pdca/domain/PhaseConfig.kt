@@ -24,10 +24,10 @@ import java.time.LocalDateTime
 import java.util.UUID
 
 /**
- * PDCA configuration per GZAC case definition: evaluation types, plan display
- * statuses, the voortgangsstatussen of doelen, the positietypen register, which subdoeltypen belong under which
- * hoofddoeltype, the intake prefill mapping and the intake -> plan case type
- * reference.
+ * PDCA configuration per GZAC case definition: plan display statuses, the
+ * voortgangsstatussen of doelen, the positietypen register, which subdoeltypen
+ * belong under which hoofddoeltype, the intake prefill mapping and the intake
+ * -> plan case type reference.
  */
 @Entity
 @Table(name = "phase_config")
@@ -37,10 +37,6 @@ data class PhaseConfig(
 
     @Column(name = "case_definition_key", nullable = false, unique = true)
     val caseDefinitionKey: String,
-
-    /** JSON array of evaluation types (INTAKE, PROGRESS, ...). */
-    @Column(name = "evaluation_types", nullable = false, columnDefinition = "TEXT")
-    var evaluationTypes: String,
 
     /** JSON array of configurable plan display statuses (Concept, Vastgesteld, ...). */
     @Column(name = "plan_statussen", columnDefinition = "TEXT")

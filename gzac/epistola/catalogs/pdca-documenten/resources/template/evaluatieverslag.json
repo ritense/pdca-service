@@ -46,10 +46,6 @@
               "type": "string",
               "description": "Datum van de evaluatie"
             },
-            "type": {
-              "type": "string",
-              "description": "Soort evaluatie"
-            },
             "uitgevoerdDoor": {
               "type": "string",
               "description": "Wie de evaluatie heeft uitgevoerd"
@@ -119,7 +115,6 @@
           },
           "evaluatie": {
             "datum": "4 november 2026",
-            "type": "Tussentijdse evaluatie",
             "uitgevoerdDoor": "Mark Jansen",
             "deelnemers": "Sanne de Vries, Mark Jansen, Fatima El Amrani (jobcoach)",
             "verslag": "Sanne heeft de afgelopen drie maanden vier dagdelen per week vrijwilligerswerk gedaan bij de kringloopwinkel. Dit gaat goed: zij is er elke afgesproken dag geweest en krijgt positieve feedback van de coördinator.\n\nDe schulden zijn in beeld gebracht en het traject bij de schuldhulpverlening is gestart. Sanne geeft aan dat de rust die dit oplevert haar helpt om zich op werk te richten.\n\nHet doel om in het eerste kwartaal betaald werk te vinden blijkt nog te ambitieus. Samen is afgesproken eerst een werkervaringsplaats van zes maanden te zoeken."
@@ -164,7 +159,6 @@
           },
           "evaluatie": {
             "datum": "",
-            "type": "",
             "uitgevoerdDoor": "",
             "deelnemers": "",
             "verslag": ""
@@ -544,7 +538,7 @@
                   "content": [
                     {
                       "type": "text",
-                      "text": "Type"
+                      "text": "Uitgevoerd door"
                     }
                   ]
                 }
@@ -573,7 +567,7 @@
                     {
                       "type": "expression",
                       "attrs": {
-                        "expression": "evaluatie.type"
+                        "expression": "evaluatie.uitgevoerdDoor"
                       }
                     }
                   ]
@@ -600,7 +594,7 @@
                   "content": [
                     {
                       "type": "text",
-                      "text": "Uitgevoerd door"
+                      "text": "Deelnemers"
                     }
                   ]
                 }
@@ -617,62 +611,6 @@
         },
         "n-evaluatie-tabel-v2": {
           "id": "n-evaluatie-tabel-v2",
-          "type": "text",
-          "slots": [],
-          "props": {
-            "content": {
-              "type": "doc",
-              "content": [
-                {
-                  "type": "paragraph",
-                  "content": [
-                    {
-                      "type": "expression",
-                      "attrs": {
-                        "expression": "evaluatie.uitgevoerdDoor"
-                      }
-                    }
-                  ]
-                }
-              ]
-            }
-          },
-          "styles": {
-            "paddingTop": "2pt",
-            "paddingBottom": "2pt",
-            "marginBottom": "0pt"
-          }
-        },
-        "n-evaluatie-tabel-l3": {
-          "id": "n-evaluatie-tabel-l3",
-          "type": "text",
-          "slots": [],
-          "props": {
-            "content": {
-              "type": "doc",
-              "content": [
-                {
-                  "type": "paragraph",
-                  "content": [
-                    {
-                      "type": "text",
-                      "text": "Deelnemers"
-                    }
-                  ]
-                }
-              ]
-            }
-          },
-          "styles": {
-            "fontWeight": "700",
-            "color": "#5f6b7a",
-            "paddingTop": "2pt",
-            "paddingBottom": "2pt",
-            "marginBottom": "0pt"
-          }
-        },
-        "n-evaluatie-tabel-v3": {
-          "id": "n-evaluatie-tabel-v3",
           "type": "text",
           "slots": [],
           "props": {
@@ -708,9 +646,7 @@
             "s-evaluatie-tabel-cell-1-0",
             "s-evaluatie-tabel-cell-1-1",
             "s-evaluatie-tabel-cell-2-0",
-            "s-evaluatie-tabel-cell-2-1",
-            "s-evaluatie-tabel-cell-3-0",
-            "s-evaluatie-tabel-cell-3-1"
+            "s-evaluatie-tabel-cell-2-1"
           ],
           "styles": {
             "marginBottom": "0pt"
@@ -720,7 +656,7 @@
               30,
               70
             ],
-            "rows": 4,
+            "rows": 3,
             "columns": 2,
             "headerRows": 0,
             "merges": []
@@ -1343,22 +1279,6 @@
           "name": "cell-2-1",
           "children": [
             "n-evaluatie-tabel-v2"
-          ]
-        },
-        "s-evaluatie-tabel-cell-3-0": {
-          "id": "s-evaluatie-tabel-cell-3-0",
-          "nodeId": "n-evaluatie-tabel",
-          "name": "cell-3-0",
-          "children": [
-            "n-evaluatie-tabel-l3"
-          ]
-        },
-        "s-evaluatie-tabel-cell-3-1": {
-          "id": "s-evaluatie-tabel-cell-3-1",
-          "nodeId": "n-evaluatie-tabel",
-          "name": "cell-3-1",
-          "children": [
-            "n-evaluatie-tabel-v3"
           ]
         },
         "s-verslag-alineas-body": {

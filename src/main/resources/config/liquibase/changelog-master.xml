@@ -27,5 +27,6 @@
     <include file="config/liquibase/020-drop-action-assignee-type.xml"/>
     <include file="config/liquibase/021-action-taak.xml"/>
     <include file="config/liquibase/022-evaluation-session-vastgesteld.xml"/>
+    <include file="config/liquibase/023-drop-evaluatie-type.xml"/>
 
 </databaseChangeLog>

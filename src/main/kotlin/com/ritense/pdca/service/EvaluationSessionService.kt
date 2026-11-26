@@ -43,7 +43,6 @@ class EvaluationSessionConflictException(val running: EvaluationSession?) :
 
 /** Contactmoment fields of a running evaluation; null leaves a field unchanged. */
 data class EvaluationDraft(
-    val evaluatieType: String? = null,
     val deelnemers: String? = null,
     val verslag: String? = null
 )
@@ -89,7 +88,6 @@ class EvaluationSessionService(
     private val changeRepository: EvaluationChangeRepository,
     private val planDetailsRepository: PlanDetailsRepository,
     private val contactmomentDetailsRepository: ContactmomentDetailsRepository,
-    private val phaseConfigService: PhaseConfigService,
     private val klantcontactService: KlantcontactService,
     private val documentAanvraagService: DocumentAanvraagService,
     private val transactionTemplate: TransactionTemplate
@@ -104,8 +102,7 @@ class EvaluationSessionService(
      * Starts an evaluation of the dossier's plan. With
      * [geplandContactmomentUuid] it carries out that planned contactmoment
      * of the plan; without it, it carries out the plan's earliest planned
-     * contactmoment that is due (today or earlier), if any. The session takes
-     * over the planned contactmoment's evaluation type.
+     * contactmoment that is due (today or earlier), if any.
      */
     fun start(
         userLogin: String,
@@ -119,10 +116,6 @@ class EvaluationSessionService(
         val gepland = geplandContactmomentUuid
             ?.let { checkedPlannedContactmoment(plan.planUuid, it) }
             ?: duePlannedContactmoment(plan.planUuid)
-        val evaluatieType = gepland
-            ?.let { contactmomentDetailsRepository.findById(it).orElse(null)?.evaluatieType }
-            ?.takeIf { type -> evaluationTypes(caseDefinitionKey).let { it.isEmpty() || type in it } }
-            ?: defaultEvaluationType(caseDefinitionKey)
         return try {
             transactionTemplate.execute {
                 repository.saveAndFlush(
@@ -131,7 +124,6 @@ class EvaluationSessionService(
                         caseDefinitionKey = caseDefinitionKey,
                         planUuid = plan.planUuid,
                         userLogin = userLogin,
-                        evaluatieType = evaluatieType,
                         geplandContactmomentUuid = gepland
                     )
                 )
@@ -144,13 +136,6 @@ class EvaluationSessionService(
     @Transactional
     fun updateDraft(userLogin: String, draft: EvaluationDraft): EvaluationSession {
         val session = running(userLogin)
-        draft.evaluatieType?.let { type ->
-            val types = evaluationTypes(session.caseDefinitionKey)
-            if (types.isNotEmpty() && type !in types) {
-                throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Onbekend evaluatietype '$type'")
-            }
-            session.evaluatieType = type
-        }
         draft.deelnemers?.let { session.deelnemers = it }
         draft.verslag?.let { verslag ->
             if (verslag.length > KlantcontactService.INHOUD_MAX_LENGTH) {
@@ -238,7 +223,6 @@ class EvaluationSessionService(
         val session = running(userLogin)
         val verslag = session.verslag?.takeIf { it.isNotBlank() }
             ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Vul eerst het gespreksverslag in")
-        val evaluatieType = session.evaluatieType ?: defaultEvaluationType(session.caseDefinitionKey)
         val now = LocalDateTime.now()
         val plaatsgevondenOp = session.startedAt.atZone(ZoneId.systemDefault()).toOffsetDateTime()
         val deelnemers = session.deelnemers?.takeIf { it.isNotBlank() }
@@ -247,13 +231,12 @@ class EvaluationSessionService(
             ?.takeIf { it.gepland && it.planUuid == session.planUuid }
 
         val contactmomentUuid = if (gepland != null) {
-            klantcontactService.completePlanned(gepland.uuid, session.planUuid, evaluatieType, plaatsgevondenOp, verslag)
+            klantcontactService.completePlanned(gepland.uuid, session.planUuid, plaatsgevondenOp, verslag)
             gepland.uuid
         } else {
             klantcontactService.create(
                 NewContactmoment(
                     planUuid = session.planUuid,
-                    evaluatieType = evaluatieType,
                     plaatsgevondenOp = plaatsgevondenOp,
                     afgerond = true,
                     verslag = verslag
@@ -265,21 +248,18 @@ class EvaluationSessionService(
         var requested: DocumentAanvraag? = null
         val completed = transactionTemplate.execute {
             val details = contactmomentDetailsRepository.findById(contactmomentUuid).orElse(null)?.apply {
-                this.evaluatieType = evaluatieType
                 this.deelnemers = deelnemers ?: this.deelnemers
                 evaluationSessionId = session.id
                 updatedAt = now
             } ?: ContactmomentDetails(
                 contactmomentUuid = contactmomentUuid,
                 planUuid = session.planUuid,
-                evaluatieType = evaluatieType,
                 geplandeDatum = gepland?.plaatsgevondenOp?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDate()
                     ?: LocalDate.now(),
                 deelnemers = deelnemers,
                 evaluationSessionId = session.id
             )
             contactmomentDetailsRepository.save(details)
-            session.evaluatieType = evaluatieType
             session.contactmomentUuid = contactmomentUuid
             session.status = EvaluationSessionStatus.COMPLETED
             session.endedAt = now
@@ -360,20 +340,7 @@ class EvaluationSessionService(
     private fun running(userLogin: String): EvaluationSession =
         current(userLogin) ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Er loopt geen evaluatie")
 
-    /** EVALUATION when the case type offers it, otherwise its first evaluation type. */
-    private fun defaultEvaluationType(caseDefinitionKey: String?): String {
-        val types = evaluationTypes(caseDefinitionKey)
-        return types.firstOrNull { it == DEFAULT_EVALUATION_TYPE } ?: types.firstOrNull() ?: DEFAULT_EVALUATION_TYPE
-    }
-
-    private fun evaluationTypes(caseDefinitionKey: String?): List<String> =
-        caseDefinitionKey?.let { key ->
-            phaseConfigService.findByCaseDefinitionKey(key)?.let { phaseConfigService.getEvaluationTypes(key) }
-        } ?: emptyList()
-
     private companion object {
-        const val DEFAULT_EVALUATION_TYPE = "EVALUATION"
-
         const val NIET_TE_ANNULEREN =
             "In deze evaluatie zijn vastgestelde delen van het plan gewijzigd; rond de evaluatie af, " +
                 "zodat de inwoner op de hoogte is en de wijzigingen met het gesprek worden vastgelegd"

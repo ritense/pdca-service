@@ -3,7 +3,7 @@ import { Button, Tag, Tile } from '@carbon/react';
 import { Edit, TrashCan } from '@carbon/react/icons';
 import type { PhaseConfig, VoortgangStatusOptie } from '../shared/api';
 import { jsonLijst } from '../shared/caseConfig';
-import { evalTypeLabel, voortgangStatus } from '../shared/labels';
+import { voortgangStatus } from '../shared/labels';
 import { parseSubdoelMapping, parseVoortgang } from './configForm';
 
 const thStyle: React.CSSProperties = {
@@ -31,7 +31,6 @@ export function ConfigTabel({ configs, standaardVoortgang, onBewerk, onVerwijder
             <th style={thStyle}>Voortgangsstatussen</th>
             <th style={thStyle}>Positietypen</th>
             <th style={thStyle}>Subdoelen per hoofddoel</th>
-            <th style={thStyle}>Evaluatietypen</th>
             <th style={{ ...thStyle, textAlign: 'right' }}>Acties</th>
           </tr>
         </thead>
@@ -79,11 +78,6 @@ export function ConfigTabel({ configs, standaardVoortgang, onBewerk, onVerwijder
                           {r.hoofddoel} ({r.subdoelen.length})
                         </Tag>
                       ))}
-                  </div>
-                </td>
-                <td style={tdStyle}>
-                  <div style={tagsStyle}>
-                    {jsonLijst(cfg.evaluationTypes).map(t => <Tag key={t} size="sm" type="purple">{evalTypeLabel(t)}</Tag>)}
                   </div>
                 </td>
                 <td style={{ ...tdStyle, textAlign: 'right' }}>

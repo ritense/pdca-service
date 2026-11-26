@@ -1,11 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Checkbox, ContentSwitcher, InlineNotification, Modal, Select, SelectItem, Switch, TextInput } from '@carbon/react';
+import { ContentSwitcher, InlineNotification, Modal, Select, SelectItem, Switch, TextInput } from '@carbon/react';
 import { DoelType, pdca, PhaseConfig, VoortgangStatusOptie } from '../shared/api';
-import { evalTypeLabel } from '../shared/labels';
 import { LaadFout, NietGeladen } from '../shared/Meldingen';
 import { Resource } from '../shared/useResource';
 import { useSubmit } from '../shared/useSubmit';
-import { ALL_EVAL_TYPES, ConfigForm, formFouten, formVan, nieuwForm, payloadVan } from './configForm';
+import { ConfigForm, formFouten, formVan, nieuwForm, payloadVan } from './configForm';
 import { hintStyle, sectionTitleStyle, SortableList, VoortgangStatussenEditor } from './LijstEditors';
 import { MappingEditor, SubdoelMappingEditor } from './MappingEditors';
 
@@ -58,10 +57,6 @@ export function ConfigModal({ open, bewerk, configs, gzacDossiertypes, doeltypen
       : pdca.phaseConfigs.create(payload)));
     if (ok) onSaved();
   };
-
-  const toggleEvalType = (type: string) => wijzig({
-    evalTypes: form.evalTypes.includes(type) ? form.evalTypes.filter(t => t !== type) : [...form.evalTypes, type],
-  });
 
   return (
     <Modal open={open} size="lg" modalHeading={bewerk ? 'Configuratie bewerken' : 'Nieuwe configuratie'}
@@ -168,15 +163,6 @@ export function ConfigModal({ open, bewerk, configs, gzacDossiertypes, doeltypen
           ) : doeltypen.error != null ? (
             <LaadFout titel="Het doeltype-register kon niet geladen worden" error={doeltypen.error} onRetry={doeltypen.reload} />
           ) : <p style={hintStyle}>Doeltypen laden…</p>}
-
-          <h5 style={sectionTitleStyle}>Evaluatietypen</h5>
-          <p style={hintStyle}>Vaste typen uit de PDCA-app (geen register).</p>
-          <div className="pdca-admin-checks">
-            {ALL_EVAL_TYPES.map(t => (
-              <Checkbox key={t} id={`et-${t}`} labelText={evalTypeLabel(t)}
-                checked={form.evalTypes.includes(t)} onChange={() => toggleEvalType(t)} />
-            ))}
-          </div>
         </>}
       </div>
     </Modal>

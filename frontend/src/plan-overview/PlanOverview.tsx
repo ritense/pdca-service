@@ -85,7 +85,7 @@ function OverzichtPagina({ documentId, plan, details, setPlan, setDetails }: Pla
               else setBetrokkenen(resultaat.betrokkenen);
               showSuccess('Wijziging opgeslagen');
             }} />
-          <RecenteEvaluaties contactmomenten={model.data.contactmomenten} details={model.data.contactmomentDetails} />
+          <RecenteEvaluaties contactmomenten={model.data.contactmomenten} />
         </div>
         <div>
           <Betrokkenen betrokkenen={betrokkenen} relatietypen={overzicht.relatietypen}

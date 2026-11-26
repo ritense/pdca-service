@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, InlineNotification, Layer, Select, SelectItem, Tag, type TagProps } from '@carbon/react';
+import { Button, InlineNotification, Layer, Select, SelectItem, Tag } from '@carbon/react';
 import { ArrowRight, ChevronRight } from '@carbon/react/icons';
 import { CompletedEvaluation, ContactmomentDetails, Doel, DocumentAanvraag, Klantcontact, pdca } from '../shared/api';
 import { jsonLijst } from '../shared/caseConfig';
@@ -9,13 +9,9 @@ import {
   currentEvaluationSession, EvaluationChange, EvaluationSession, listEvaluationChanges,
 } from '../shared/evaluationSession';
 import { foutmelding } from '../shared/http';
-import { contactmomentStatus, evalTypeLabel } from '../shared/labels';
+import { contactmomentStatus } from '../shared/labels';
 import { NietGeladen } from '../shared/Meldingen';
 import { WijzigingenLijst } from '../shared/WijzigingenLijst';
-
-const evalTypeTag = (evalType: string): NonNullable<TagProps<'div'>['type']> =>
-  evalType === 'INTAKE' ? 'purple' : evalType === 'CRISIS' ? 'red' : evalType === 'INSPECTION' ? 'warm-gray'
-    : evalType === 'EVALUATION' ? 'green' : 'blue';
 
 function Chevron({ open }: { open: boolean }) {
   return <ChevronRight size={16} className={`pdca-chevron${open ? ' pdca-chevron--open' : ''}`} />;
@@ -57,11 +53,10 @@ export function LopendeEvaluatieKaart({ session, uitgevoerd, uitgevoerdOp, onSes
   useEffect(() => { if (open) laad(); }, [open, laad]);
 
   return (
-    <Layer className={`pdca-eval-card type-${session.evaluatieType ?? ''}`}>
+    <Layer className="pdca-eval-card">
       <div className="pdca-row pdca-eval-header" onClick={() => setOpen(o => !o)}>
         <div className="pdca-row-main">
           <Chevron open={open} />
-          {session.evaluatieType && <Tag size="sm" type={evalTypeTag(session.evaluatieType)}>{evalTypeLabel(session.evaluatieType)}</Tag>}
           <Tag size="sm" type="blue">Loopt</Tag>
           <span className="pdca-eval-kop-tekst">
             {uitgevoerdOp && `Gepland op ${formatDate(uitgevoerdOp)} · `}
@@ -116,15 +111,13 @@ export function ContactmomentKaart({
 }) {
   const [open, setOpen] = useState(false);
   const gepland = cm.indicatieContactGelukt == null;
-  const evalType = details?.evaluatieType || '';
   const status = contactmomentStatus(cm, gepland ? datum : null);
   const actiepunten = jsonLijst(details?.actiepunten);
   return (
-    <Layer className={`pdca-eval-card type-${evalType}`}>
+    <Layer className="pdca-eval-card">
       <div className="pdca-row pdca-eval-header" onClick={() => setOpen(o => !o)}>
         <div className="pdca-row-main">
           <Chevron open={open} />
-          {evalType && <Tag size="sm" type={evalTypeTag(evalType)}>{evalTypeLabel(evalType)}</Tag>}
           <Tag size="sm" type={status.tag}>{status.label}</Tag>
           <span className="pdca-eval-kop-tekst">
             {datum ? `${gepland ? 'Gepland op ' : ''}${formatDate(datum)}` : 'Geen datum'}

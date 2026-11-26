@@ -61,7 +61,6 @@ data class DoelDetailsRequest(
 data class ContactmomentRequest(
     val planUuid: UUID,
     val datum: LocalDate,
-    val evaluatieType: String,
     val afgerond: Boolean = true,
     val verslag: String? = null,
     val deelnemers: String? = null,

@@ -13,7 +13,6 @@ export interface EvaluationSession {
   status: 'RUNNING' | 'COMPLETED' | 'CANCELLED';
   startedAt: string;
   endedAt: string | null;
-  evaluatieType: string | null;
   deelnemers: string | null;
   /** Gespreksverslag; becomes the contactmoment's notitie on completion. */
   verslag: string | null;
@@ -134,7 +133,7 @@ export async function startEvaluationSession(geplandContactmomentUuid?: string):
 }
 
 /** Saves the contactmoment fields of the running evaluation. */
-export const updateEvaluationDraft = (draft: { evaluatieType?: string; deelnemers?: string; verslag?: string }) =>
+export const updateEvaluationDraft = (draft: { deelnemers?: string; verslag?: string }) =>
   send<EvaluationSession>('POST', `${SESSIONS}/current/draft`, draft);
 
 /** Completes the running evaluation: it becomes an afgerond contactmoment, visible to colleagues. */

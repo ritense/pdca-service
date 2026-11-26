@@ -311,7 +311,7 @@ intake gives them no status. The row shapes are the input of the
 | `doelen` | `doelType`, `beschrijving`, `status`, `startdatum`, `streefEinddatum` |
 | `instrumenten` | `product` (producttype code; the select shows the product name), `doel` (the subdoel it is requested under) |
 | `betrokkenen` | `naam`, `rol`, `organisatie`, `email`, `procesbegeleider` |
-| `contactmomenten` (renovatie-intake only) | `datum`, `evaluatieType`, `status`, `notitie`, `deelnemers` |
+| `contactmomenten` (renovatie-intake only) | `datum`, `status`, `notitie`, `deelnemers` |
 
 - **Status** of doelen: `gepland`, `gestart` or `afgerond` (Gepland /
   Gestart / Afgerond); of contactmomenten: `gepland` or `afgerond`.

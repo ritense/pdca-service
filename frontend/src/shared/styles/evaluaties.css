@@ -5,16 +5,6 @@
   border-left: 4px solid var(--cds-border-subtle, #e0e0e0);
 }
 
-.pdca-eval-card.type-INTAKE { border-left-color: #8a3ffc; }
-
-.pdca-eval-card.type-PROGRESS { border-left-color: var(--cds-interactive, #0f62fe); }
-
-.pdca-eval-card.type-EVALUATION { border-left-color: var(--cds-support-success, #24a148); }
-
-.pdca-eval-card.type-INSPECTION { border-left-color: #ff832b; }
-
-.pdca-eval-card.type-CRISIS { border-left-color: var(--cds-support-error, #da1e28); }
-
 .pdca-eval-card {
   margin-bottom: var(--pdca-spacing-03);
 }
@@ -27,12 +17,6 @@
 .pdca-eval-body {
   padding: 0 20px 20px 46px;
   border-top: 1px solid var(--cds-border-subtle, #e0e0e0);
-}
-
-/* Evaluation type filter: as wide as its options, never wider than the tab. */
-.pdca-filter-switcher {
-  width: auto;
-  max-width: 100%;
 }
 
 /* Side panel (evaluation): fills the whole panel height on the host theme's

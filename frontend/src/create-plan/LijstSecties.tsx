@@ -3,7 +3,7 @@ import { AccordionItem, Button, Checkbox, Select, SelectItem, Tag, TextInput } f
 import { Add, TrashCan } from '@carbon/react/icons';
 import { heeftStartActie, ProductType } from '../shared/api';
 import { formatDate, vandaag } from '../shared/dates';
-import { doelgroepVoorSubject, evalTypeLabel, producttypenVoorDoel, subdoelTypenVoorHoofddoel } from '../shared/labels';
+import { doelgroepVoorSubject, producttypenVoorDoel, subdoelTypenVoorHoofddoel } from '../shared/labels';
 import { subjectUrn } from '../shared/urn';
 import type { DoelStatus, EvaluatieStatus } from './createPlanApi';
 import { subdoelEinddatumFout, subdoelStartdatumFout } from './createPlanForm';
@@ -28,14 +28,13 @@ interface SectieProps {
   state: FormState;
   dispatch: Dispatch<FormActie>;
   registers: Registers;
-  evaluatieTypen: string[];
   subdoelMapping: string | null;
 }
 
 /** One list section: heading with a summary while closed, its rows and an add button. */
-function LijstSectie({ sectie, titel, samenvatting, waarschuwing, toevoegen, state, dispatch, evaluatieTypen, children }: {
+function LijstSectie({ sectie, titel, samenvatting, waarschuwing, toevoegen, state, dispatch, children }: {
   sectie: Sectie; titel: string; samenvatting: string; waarschuwing?: string; toevoegen: string;
-  state: FormState; dispatch: Dispatch<FormActie>; evaluatieTypen: string[]; children: React.ReactNode;
+  state: FormState; dispatch: Dispatch<FormActie>; children: React.ReactNode;
 }) {
   return (
     <AccordionItem open={state.open[sectie]}
@@ -48,7 +47,7 @@ function LijstSectie({ sectie, titel, samenvatting, waarschuwing, toevoegen, sta
         </span>
       }>
       {children}
-      <Button kind="ghost" size="sm" renderIcon={Add} onClick={() => dispatch({ type: 'toevoegen', sectie, evaluatieTypen })}>
+      <Button kind="ghost" size="sm" renderIcon={Add} onClick={() => dispatch({ type: 'toevoegen', sectie })}>
         {toevoegen}
       </Button>
     </AccordionItem>
@@ -174,12 +173,12 @@ export function InstrumentenSectie(props: SectieProps) {
 }
 
 export function EvaluatiesSectie(props: SectieProps) {
-  const { state, dispatch, evaluatieTypen } = props;
+  const { state, dispatch } = props;
   const wijzig = (key: number, wijziging: Record<string, unknown>) => dispatch({ type: 'wijzigRij', sectie: 'evaluaties', key, wijziging });
   return (
     <LijstSectie {...props} sectie="evaluaties" titel={`Geplande evaluaties (${state.evaluaties.length})`} toevoegen="Evaluatie toevoegen"
       samenvatting={state.evaluaties
-        .map(c => [evalTypeLabel(c.evaluatieType), c.datum ? formatDate(c.datum) : 'zonder datum'].join(' '))
+        .map(c => (c.datum ? formatDate(c.datum) : 'zonder datum'))
         .join(', ') || 'Nog geen evaluaties'}>
       {state.evaluaties.length === 0 && <p className="cp-leeg">Nog geen evaluaties.</p>}
       {state.evaluaties.map(c => (
@@ -187,12 +186,6 @@ export function EvaluatiesSectie(props: SectieProps) {
           <div className="cp-veld">
             <TextInput id={`cp-evaluatie-${c.key}-datum`} size="sm" type="date" labelText="Datum" value={c.datum}
               onChange={e => wijzig(c.key, { datum: e.target.value })} />
-          </div>
-          <div className="cp-veld">
-            <Select id={`cp-evaluatie-${c.key}-type`} size="sm" labelText="Type" value={c.evaluatieType}
-              onChange={e => wijzig(c.key, { evaluatieType: e.target.value })}>
-              {metGekozen(evaluatieTypen, c.evaluatieType).map(t => <SelectItem key={t} value={t} text={evalTypeLabel(t)} />)}
-            </Select>
           </div>
           <div className="cp-veld cp-veld--smal">
             <Select id={`cp-evaluatie-${c.key}-status`} size="sm" labelText="Status" value={c.status}

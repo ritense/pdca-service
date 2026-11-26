@@ -1,14 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Layer, Button, Tag, Loading, InlineNotification, Select, SelectItem, TextInput, TextArea } from '@carbon/react';
+import { Layer, Button, Tag, Loading, InlineNotification, TextInput, TextArea } from '@carbon/react';
 import { Checkmark } from '@carbon/react/icons';
 import { withdrawPanel } from '../shared/bridge';
 import { openklant, pdca } from '../shared/api';
-import { laadCaseConfig } from '../shared/caseConfig';
 import { formatDate, formatTime, overWeken, vandaag } from '../shared/dates';
 import { verslagVan } from '../shared/documenten';
 import { Evaluatieverslag } from '../shared/Evaluatieverslag';
 import { foutmelding } from '../shared/http';
-import { evalTypeLabel } from '../shared/labels';
 import { LaadFout, NietGeladen } from '../shared/Meldingen';
 import { useInitContext } from '../shared/PdcaRoot';
 import { useDocumenten } from '../shared/useDocumenten';
@@ -19,19 +17,18 @@ import {
 } from '../shared/evaluationSession';
 import { WijzigingenLijst } from '../shared/WijzigingenLijst';
 
-type Draft = { evaluatieType: string; deelnemers: string; verslag: string };
+type Draft = { deelnemers: string; verslag: string };
 
 const SAVE_DELAY_MS = 700;
 /** The verslag becomes the klantcontact's inhoud in Open Klant, which holds at most 1000 characters. */
 const VERSLAG_MAX_LENGTH = 1000;
 /** Default interval to the next evaluation offered after completing one. */
 const VOLGENDE_EVALUATIE_WEKEN = 6;
-const DEFAULT_EVALUATIE_TYPE = 'EVALUATION';
 
 /**
  * Side-panel content of a running evaluation. Stays open while the user moves
  * through GZAC. The plan itself is changed in the plan tabs; the panel polls
- * those changes and holds the contactmoment fields (type, deelnemers,
+ * those changes and holds the contactmoment fields (deelnemers,
  * gespreksverslag). The evaluation ends explicitly: completing records it as
  * a contactmoment (the planned one it carries out, if any), after which the
  * panel shows its evaluatieverslag as it is being made and the next
@@ -48,10 +45,7 @@ export function EvaluationPanel() {
   /** The plan's title; null while unknown, with [titelFout] when it could not be read. */
   const [titel, setTitel] = useState<string | null>(null);
   const [titelFout, setTitelFout] = useState<unknown>(null);
-  /** The case type's evaluation types; null until loaded, with [typesFout] when they could not be read. */
-  const [evalTypes, setEvalTypes] = useState<string[] | null>(null);
-  const [typesFout, setTypesFout] = useState<unknown>(null);
-  const [draft, setDraft] = useState<Draft>({ evaluatieType: '', deelnemers: '', verslag: '' });
+  const [draft, setDraft] = useState<Draft>({ deelnemers: '', verslag: '' });
   const [saving, setSaving] = useState<'idle' | 'pending' | 'saved' | 'failed'>('idle');
   const [wijzigingen, setWijzigingen] = useState<EvaluationChange[]>([]);
   /** A locked part of the plan was changed in this evaluation (the backend refuses to cancel it then). */
@@ -93,14 +87,10 @@ export function EvaluationPanel() {
     return () => clearInterval(timer);
   }, [session, completed, cancelled, loadWijzigingen, loadVastgesteld]);
 
-  /** The plan's title and the case type's evaluation types; each says so in the panel when it fails. */
+  /** The plan's title (the panel says so when it fails) and the date of the planned contactmoment it carries out. */
   const loadDetails = useCallback((current: EvaluationSession) => {
     setTitelFout(null);
-    setTypesFout(null);
     planTitle(current).then(setTitel, setTitelFout);
-    // Without a case type the panel has no type to choose.
-    (current.caseDefinitionKey ? laadCaseConfig(current.caseDefinitionKey).then(c => c.evaluatieTypen) : Promise.resolve([]))
-      .then(setEvalTypes, setTypesFout);
     if (current.geplandContactmomentUuid) {
       // Only the date in the "Planning" line; without it the line just says "Geplande evaluatie".
       openklant.klantcontacten.listByPlan(current.planUuid)
@@ -122,7 +112,6 @@ export function EvaluationPanel() {
       setSession(current);
       setVastgesteld(current.vastgesteldGewijzigd);
       setDraft({
-        evaluatieType: current.evaluatieType ?? '',
         deelnemers: current.deelnemers ?? '',
         verslag: current.verslag ?? '',
       });
@@ -235,8 +224,7 @@ export function EvaluationPanel() {
       <InlineNotification kind="success" title="Evaluatie afgerond" lowContrast hideCloseButton
         subtitle="Het verslag en de wijzigingen staan nu bij de evaluaties van het plan." />
       <VerslagSectie planUuid={session.planUuid} sessieId={session.id} />
-      <VolgendeEvaluatie planUuid={session.planUuid} evalTypes={evalTypes ?? []}
-        defaultType={draft.evaluatieType || DEFAULT_EVALUATIE_TYPE} />
+      <VolgendeEvaluatie planUuid={session.planUuid} />
       <Button size="sm" kind="secondary" onClick={closePanel}>Paneel sluiten</Button>
     </>);
   }
@@ -287,15 +275,6 @@ export function EvaluationPanel() {
         </div>
       )}
 
-      {typesFout != null && (
-        <LaadFout titel="De contactmomenttypen konden niet geladen worden" error={typesFout} onRetry={() => loadDetails(session)} />
-      )}
-      {evalTypes && evalTypes.length > 0 && (
-        <Select id="eval-type" size="sm" labelText="Type contactmoment" value={draft.evaluatieType}
-          onChange={e => updateField('evaluatieType', e.target.value)}>
-          {evalTypes.map(t => <SelectItem key={t} value={t} text={evalTypeLabel(t)} />)}
-        </Select>
-      )}
       <TextInput id="eval-deelnemers" size="sm" labelText="Deelnemers" placeholder="Komma-gescheiden"
         value={draft.deelnemers} onChange={e => updateField('deelnemers', e.target.value)} />
       <TextArea id="eval-verslag" labelText="Gespreksverslag" rows={6} enableCounter maxCount={VERSLAG_MAX_LENGTH}
@@ -379,15 +358,10 @@ function VerslagSectie({ planUuid, sessieId }: { planUuid: string; sessieId: str
 
 /**
  * After completing: plan the next evaluation of the plan as a planned
- * contactmoment (default six weeks from today, the type of the evaluation
- * just completed).
+ * contactmoment (default six weeks from today).
  */
-function VolgendeEvaluatie({ planUuid, evalTypes, defaultType }: {
-  planUuid: string; evalTypes: string[]; defaultType: string;
-}) {
-  const types = evalTypes.length > 0 ? evalTypes : [DEFAULT_EVALUATIE_TYPE];
+function VolgendeEvaluatie({ planUuid }: { planUuid: string }) {
   const [datum, setDatum] = useState(overWeken(VOLGENDE_EVALUATIE_WEKEN));
-  const [type, setType] = useState(types.includes(defaultType) ? defaultType : types[0]);
   const [busy, setBusy] = useState(false);
   const [fout, setFout] = useState<string | null>(null);
   const [gepland, setGepland] = useState<string | null>(null);
@@ -396,7 +370,7 @@ function VolgendeEvaluatie({ planUuid, evalTypes, defaultType }: {
     setBusy(true);
     setFout(null);
     try {
-      await pdca.contactmomenten.create({ planUuid, datum, evaluatieType: type, afgerond: false });
+      await pdca.contactmomenten.create({ planUuid, datum, afgerond: false });
       setGepland(datum);
     } catch (e) {
       setFout(foutmelding(e));
@@ -416,11 +390,6 @@ function VolgendeEvaluatie({ planUuid, evalTypes, defaultType }: {
       <div className="pdca-panel-form">
         <TextInput id="volgende-datum" size="sm" type="date" labelText="Datum" min={vandaag()}
           value={datum} onChange={e => setDatum(e.target.value)} />
-        {evalTypes.length > 0 && (
-          <Select id="volgende-type" size="sm" labelText="Type" value={type} onChange={e => setType(e.target.value)}>
-            {evalTypes.map(t => <SelectItem key={t} value={t} text={evalTypeLabel(t)} />)}
-          </Select>
-        )}
         {fout && <InlineNotification kind="error" title="Plannen mislukt" subtitle={fout} lowContrast
           onCloseButtonClick={() => setFout(null)} />}
         <div className="pdca-panel-actions">

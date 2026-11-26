@@ -397,14 +397,12 @@
       "defaultValue": [
         {
           "datum": "2026-02-05",
-          "evaluatieType": "INTAKE",
           "status": "afgerond",
           "notitie": "Startoverleg: scope en planning brandveiligheidsonderzoek vastgesteld.",
           "deelnemers": "P. Bakker, K. Visser"
         },
         {
           "datum": "2027-10-01",
-          "evaluatieType": "INSPECTION",
           "status": "gepland",
           "notitie": "Geplande inspectie-evaluatie na herstelwerkzaamheden.",
           "deelnemers": ""
@@ -417,34 +415,6 @@
           "type": "textfield",
           "input": true,
           "tableView": true
-        },
-        {
-          "label": "Type",
-          "key": "evaluatieType",
-          "type": "select",
-          "input": true,
-          "tableView": true,
-          "widget": "html5",
-          "data": {
-            "values": [
-              {
-                "label": "Intake",
-                "value": "INTAKE"
-              },
-              {
-                "label": "Voortgang",
-                "value": "PROGRESS"
-              },
-              {
-                "label": "Inspectie",
-                "value": "INSPECTION"
-              },
-              {
-                "label": "Evaluatie",
-                "value": "EVALUATION"
-              }
-            ]
-          }
         },
         {
           "label": "Status",

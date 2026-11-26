@@ -206,7 +206,6 @@ export interface NewContactmoment {
   planUuid: string;
   /** Plain date, yyyy-mm-dd. */
   datum: string;
-  evaluatieType: string;
   afgerond: boolean;
   /** Verslag, or the agenda/notitie of a planned contactmoment (at most 1000 characters). */
   verslag?: string;
@@ -215,7 +214,6 @@ export interface NewContactmoment {
 export interface ContactmomentDetails {
   contactmomentUuid: string;
   planUuid: string;
-  evaluatieType: string;
   geplandeDatum?: string;
   deelnemers?: string;
   actiepunten?: string;
@@ -342,8 +340,6 @@ export interface Betrokkene {
 export interface PhaseConfig {
   id: string;
   caseDefinitionKey: string;
-  /** JSON array: evaluation types. */
-  evaluationTypes: string;
   /** JSON array: configurable plan statuses (Concept, Vastgesteld, ...). */
   planStatussen?: string | null;
   /** JSON array of VoortgangStatusOptie: voortgangsstatussen of doelen; empty = the standard list. */

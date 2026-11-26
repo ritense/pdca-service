@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import {
-  Button, ContainedList, ContainedListItem, IconButton, InlineNotification, Layer, Select, SelectItem, Stack, Tag,
-  TextArea, Tile, type TagProps,
+  Button, ContainedList, ContainedListItem, IconButton, InlineNotification, Layer, Select, SelectItem, Stack,
+  TextArea, Tile,
 } from '@carbon/react';
 import { CenterCircle, Document, Edit, Group, Milestone, UserFollow, type CarbonIconType } from '@carbon/react/icons';
-import type { Betrokkene, ContactmomentDetails, Klantcontact, Plan, PlanDetails } from '../shared/api';
+import type { Betrokkene, Klantcontact, Plan, PlanDetails } from '../shared/api';
 import { formatDate } from '../shared/dates';
-import { doelTypeNaam, evalTypeLabel } from '../shared/labels';
+import { doelTypeNaam } from '../shared/labels';
 import { VERGRENDELD_HINT } from '../shared/planSlot';
 import { useSubmit } from '../shared/useSubmit';
 import type { PlanVeld } from './overzichtActies';
@@ -148,14 +148,8 @@ export function PlanGegevens({ plan, details, model, procesbegeleider, vergrende
   );
 }
 
-const EVAL_TAG_TYPE: Record<string, NonNullable<TagProps<'div'>['type']>> = {
-  INTAKE: 'blue', PROGRESS: 'purple', EVALUATION: 'green', INSPECTION: 'warm-gray', CRISIS: 'red',
-};
-
 /** The last three contactmomenten that took place. */
-export function RecenteEvaluaties({ contactmomenten, details }: {
-  contactmomenten: Klantcontact[]; details: ContactmomentDetails[];
-}) {
+export function RecenteEvaluaties({ contactmomenten }: { contactmomenten: Klantcontact[] }) {
   const recent = contactmomenten
     .filter(c => c.indicatieContactGelukt === true)
     .sort((a, b) => (b.plaatsgevondenOp || '').localeCompare(a.plaatsgevondenOp || ''))
@@ -165,20 +159,14 @@ export function RecenteEvaluaties({ contactmomenten, details }: {
       <Layer>
         <div className="pdca-card-header"><h4>Recente evaluaties</h4></div>
         <div className="pdca-card-body">
-          {recent.length === 0 ? <p className="pdca-empty">Nog geen evaluaties</p> : recent.map(cm => {
-            const cmd = details.find(d => d.contactmomentUuid === cm.uuid);
-            return (
-              <div key={cm.uuid} className="pdca-eval-item">
-                <Tag type={(cmd && EVAL_TAG_TYPE[cmd.evaluatieType]) || 'gray'} size="sm">
-                  {cmd ? evalTypeLabel(cmd.evaluatieType) : 'Afgerond'}
-                </Tag>
-                <div className="pdca-eval-info">
-                  <div className="pdca-eval-date">{cm.plaatsgevondenOp ? formatDate(cm.plaatsgevondenOp) : 'Geen datum'}</div>
-                  <div className={`pdca-eval-summary${cm.inhoud ? '' : ' empty'}`}>{cm.inhoud || 'Geen notitie'}</div>
-                </div>
+          {recent.length === 0 ? <p className="pdca-empty">Nog geen evaluaties</p> : recent.map(cm => (
+            <div key={cm.uuid} className="pdca-eval-item">
+              <div className="pdca-eval-info">
+                <div className="pdca-eval-date">{cm.plaatsgevondenOp ? formatDate(cm.plaatsgevondenOp) : 'Geen datum'}</div>
+                <div className={`pdca-eval-summary${cm.inhoud ? '' : ' empty'}`}>{cm.inhoud || 'Geen notitie'}</div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </Layer>
     </Tile>

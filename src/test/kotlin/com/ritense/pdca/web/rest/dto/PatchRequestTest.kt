@@ -42,13 +42,12 @@ class PatchRequestTest {
     fun `clearing the plan case type of a case configuration turns an intake back into a plan case type`() {
         val intake = PhaseConfig(
             caseDefinitionKey = "renovatie-intake",
-            evaluationTypes = "[\"INTAKE\"]",
             planStatussen = "[\"Concept\"]",
             prefillMapping = "{\"titel\":\"/planTitel\"}",
             planCaseDefinitionKey = "binnenhof-renovatie"
         )
         val request = objectMapper.readValue<UpdatePhaseConfigRequest>(
-            """{"evaluationTypes":"[\"INTAKE\"]","planCaseDefinitionKey":null,"prefillMapping":null,"voortgangStatussen":"[]"}"""
+            """{"planCaseDefinitionKey":null,"prefillMapping":null,"voortgangStatussen":"[]"}"""
         )
 
         val updated = request.applyTo(intake)
@@ -57,6 +56,5 @@ class PatchRequestTest {
         assertNull(updated.prefillMapping)
         assertEquals("[]", updated.voortgangStatussen)
         assertEquals("[\"Concept\"]", updated.planStatussen, "absent keeps")
-        assertEquals("[\"INTAKE\"]", updated.evaluationTypes)
     }
 }

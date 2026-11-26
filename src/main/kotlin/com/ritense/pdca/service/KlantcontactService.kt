@@ -41,7 +41,6 @@ import com.ritense.pdca.registers.openklant.Klantcontact as OpenKlantKlantcontac
 /** A contactmoment to record for a plan. */
 data class NewContactmoment(
     val planUuid: UUID,
-    val evaluatieType: String,
     val plaatsgevondenOp: OffsetDateTime,
     /** True for a contactmoment that took place, false for a planned one. */
     val afgerond: Boolean,
@@ -66,7 +65,7 @@ data class Klantcontact(
  * Contactmomenten are klantcontacten in Open Klant (Klantinteracties API).
  * A contactmoment of a plan is created in one call (`maak-klantcontact`):
  *
- *  - the klantcontact itself: kanaal "gesprek", onderwerp "<type>: <plan
+ *  - the klantcontact itself: kanaal "gesprek", onderwerp "Evaluatie: <plan
  *    titel>", the verslag as inhoud, confidential, in Dutch;
  *    `indicatieContactGelukt` true when it took place, null while planned;
  *  - an onderwerpobject pointing at the plan in Open Plan (codeRegister
@@ -95,14 +94,6 @@ class KlantcontactService(
         const val PLAN_CODE_REGISTER = "open-plan"
         const val PLAN_CODE_OBJECTTYPE = "plan"
         private const val ONDERWERP_MAX_LENGTH = 200
-
-        private val EVALUATIE_TYPE_LABELS = mapOf(
-            "INTAKE" to "Intake",
-            "PROGRESS" to "Voortgang",
-            "EVALUATION" to "Evaluatie",
-            "INSPECTION" to "Inspectie",
-            "CRISIS" to "Crisis"
-        )
     }
 
     /** Creates the klantcontact for a contactmoment of a plan; returns its uuid. */
@@ -115,7 +106,7 @@ class KlantcontactService(
             MaakKlantcontact(
                 klantcontact = NewKlantcontact(
                     kanaal = KANAAL,
-                    onderwerp = onderwerp(contact.evaluatieType, plan),
+                    onderwerp = onderwerp(plan),
                     inhoud = verslag,
                     indicatieContactGelukt = if (contact.afgerond) true else null,
                     taal = "nld",
@@ -153,12 +144,11 @@ class KlantcontactService(
     /**
      * Records a planned klantcontact of a plan as having taken place at
      * [plaatsgevondenOp], with the verslag as inhoud and the onderwerp of
-     * the evaluation type.
+     * the plan's current titel.
      */
     fun completePlanned(
         klantcontactUuid: UUID,
         planUuid: UUID,
-        evaluatieType: String,
         plaatsgevondenOp: OffsetDateTime,
         verslag: String?
     ) {
@@ -166,24 +156,12 @@ class KlantcontactService(
         openKlantGateway.updateKlantcontact(
             klantcontactUuid,
             KlantcontactUpdate(
-                onderwerp = onderwerp(evaluatieType, openPlanGateway.getPlan(planUuid)),
+                onderwerp = onderwerp(openPlanGateway.getPlan(planUuid)),
                 inhoud = inhoud,
                 indicatieContactGelukt = true,
                 plaatsgevondenOp = format(plaatsgevondenOp)
             )
         )
-    }
-
-    /**
-     * The evaluation type an onderwerp ("<label>: <plan titel>") was written
-     * with: the type of a built-in label, otherwise the label itself (a
-     * configured type without a built-in label is written under its own
-     * key, see [onderwerp]); null when the onderwerp carries no label.
-     */
-    fun evaluatieTypeOf(onderwerp: String?): String? {
-        if (onderwerp == null || ':' !in onderwerp) return null
-        val label = onderwerp.substringBefore(':').trim().takeIf { it.isNotEmpty() } ?: return null
-        return EVALUATIE_TYPE_LABELS.entries.firstOrNull { it.value == label }?.key ?: label
     }
 
     /** Checks a verslag against Open Klant's limit on a klantcontact's inhoud; returns it trimmed. */
@@ -205,11 +183,7 @@ class KlantcontactService(
         codeSoortObjectId = "uuid"
     )
 
-    private fun onderwerp(evaluatieType: String, plan: Plan): String {
-        val titel = plan.titel ?: "Plan"
-        val typeLabel = EVALUATIE_TYPE_LABELS[evaluatieType] ?: evaluatieType
-        return "$typeLabel: $titel".take(ONDERWERP_MAX_LENGTH)
-    }
+    private fun onderwerp(plan: Plan): String = "Evaluatie: ${plan.titel ?: "Plan"}".take(ONDERWERP_MAX_LENGTH)
 
     private fun format(moment: OffsetDateTime): String =
         moment.withOffsetSameInstant(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS)

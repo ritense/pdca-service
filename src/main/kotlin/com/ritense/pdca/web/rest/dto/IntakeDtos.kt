@@ -118,7 +118,6 @@ data class IntakeInstrument(
 
 data class IntakeContactmoment(
     val datum: String? = null,
-    val evaluatieType: String? = null,
     val notitie: String? = null,
     val status: String? = null,
     val deelnemers: String? = null,

@@ -73,7 +73,6 @@ class PhaseConfigService(
 
     fun updateByCaseDefinitionKey(caseDefinitionKey: String, updated: PhaseConfig): PhaseConfig {
         val existing = getByCaseDefinitionKey(caseDefinitionKey)
-        existing.evaluationTypes = updated.evaluationTypes
         existing.planStatussen = updated.planStatussen
         existing.voortgangStatussen = normalizeVoortgangStatussen(updated.voortgangStatussen)
         existing.positieTypen = updated.positieTypen
@@ -82,11 +81,6 @@ class PhaseConfigService(
         existing.planCaseDefinitionKey = updated.planCaseDefinitionKey
         existing.updatedAt = LocalDateTime.now()
         return phaseConfigRepository.save(existing)
-    }
-
-    fun getEvaluationTypes(caseDefinitionKey: String): List<String> {
-        val config = getByCaseDefinitionKey(caseDefinitionKey)
-        return parseJsonList(config.evaluationTypes)
     }
 
     /** Configured plan display statuses, or null when unconfigured (any value allowed). */

@@ -39,7 +39,6 @@ import com.ritense.pdca.repository.InvolvedPartyRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
 import com.ritense.pdca.repository.PlanIntakeRepository
 import com.ritense.pdca.web.rest.dto.IntakeBetrokkene
-import com.ritense.pdca.web.rest.dto.IntakeContactmoment
 import com.ritense.pdca.web.rest.dto.PlanIntakeRequest
 import com.ritense.pdca.web.rest.dto.PlanIntakeResponse
 import org.slf4j.LoggerFactory
@@ -66,9 +65,9 @@ import java.util.UUID
  *
  *  1. **Validate first.** Everything that can be checked is checked before
  *     the first write ([valideer]): doeltypen, dates, field lengths against
- *     Open Plan's and Open Klant's limits, statuses, evaluation types,
- *     betrokkenen, the subject and the one-active-plan rule. A refusal is a
- *     400 listing every problem.
+ *     Open Plan's and Open Klant's limits, statuses, betrokkenen, the
+ *     subject and the one-active-plan rule. A refusal is a 400 listing every
+ *     problem.
  *  2. **Reserve.** A [PlanIntake] row keyed by the intake dossier is
  *     reserved and claimed before any register write. A second request
  *     while one works on it gets 409 "Het plan wordt al aangemaakt". The
@@ -317,13 +316,7 @@ class PlanIntakeService(
             }
         }
 
-        val evaluatieTypen = phaseConfigService.findByCaseDefinitionKey(planCaseDefinitionKey)
-            ?.let { phaseConfigService.getEvaluationTypes(planCaseDefinitionKey) }.orEmpty()
         val contactmomentDatums = request.contactmomenten.map { cm ->
-            val type = evaluatieType(cm)
-            if (evaluatieTypen.isNotEmpty() && type !in evaluatieTypen) {
-                fouten += "evaluatietype '$type' is niet ingesteld voor '$planCaseDefinitionKey' (kies uit ${evaluatieTypen.joinToString()})"
-            }
             if (cm.status?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }?.let { it !in setOf("gepland", "afgerond") } == true) {
                 fouten += "onbekende status '${cm.status}' bij een evaluatie (verwacht: gepland of afgerond)"
             }
@@ -433,8 +426,6 @@ class PlanIntakeService(
         val value = status?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return IntakeStatus.GEPLAND
         return IntakeStatus.entries.firstOrNull { it.name.lowercase() == value }
     }
-
-    private fun evaluatieType(cm: IntakeContactmoment) = cm.evaluatieType?.takeIf { it.isNotBlank() } ?: "EVALUATION"
 
     private fun resolvePlantype(dienstverlening: String?, warnings: MutableList<String>): UUID {
         val plantypen = openPlanGateway.listPlantypen()
@@ -635,32 +626,22 @@ class PlanIntakeService(
 
     /**
      * Contactmomenten (klantcontacten in Open Klant) + their overlay rows.
-     * Those an earlier attempt created are recognised by date, type and
-     * whether they took place, and counted per that key. The type is the
-     * overlay row's, or (when the attempt failed before writing that row)
-     * the one the klantcontact's onderwerp was written with.
+     * Those an earlier attempt created are recognised by date and whether
+     * they took place, and counted per that key.
      */
     private fun ensureContactmomenten(intake: Intake, planUuid: UUID) {
         val request = intake.request
         if (request.contactmomenten.isEmpty()) return
-        val overlayTypes = contactmomentDetailsRepository.findByPlanUuid(planUuid)
-            .associate { it.contactmomentUuid to it.evaluatieType }
         val bestaand = klantcontactService.ofPlan(planUuid).groupBy { kc ->
-            Triple(
-                kc.plaatsgevondenOp?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDate(),
-                overlayTypes[kc.uuid] ?: klantcontactService.evaluatieTypeOf(kc.onderwerp),
-                !kc.gepland
-            )
+            kc.plaatsgevondenOp?.atZoneSameInstant(ZoneId.systemDefault())?.toLocalDate() to !kc.gepland
         }.mapValues { (_, lijst) -> lijst.toMutableList() }
         request.contactmomenten.forEachIndexed { index, cm ->
             val datum = intake.contactmomentDatums[index]
-            val evaluatieType = evaluatieType(cm)
             val afgerond = cm.status?.trim()?.lowercase() == "afgerond"
-            val uuid = bestaand[Triple(datum, evaluatieType, afgerond)]?.removeFirstOrNull()?.uuid
+            val uuid = bestaand[datum to afgerond]?.removeFirstOrNull()?.uuid
                 ?: klantcontactService.create(
                     NewContactmoment(
                         planUuid = planUuid,
-                        evaluatieType = evaluatieType,
                         plaatsgevondenOp = ContactmomentService.plaatsgevondenOp(datum),
                         afgerond = afgerond,
                         verslag = cm.notitie
@@ -671,7 +652,6 @@ class PlanIntakeService(
                     ContactmomentDetails(
                         contactmomentUuid = uuid,
                         planUuid = planUuid,
-                        evaluatieType = evaluatieType,
                         geplandeDatum = datum,
                         deelnemers = cm.deelnemers,
                         actiepunten = cm.actiepunten?.takeIf { it.isNotEmpty() }?.let { objectMapper.writeValueAsString(it) }

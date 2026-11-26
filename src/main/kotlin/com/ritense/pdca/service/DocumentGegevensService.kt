@@ -66,7 +66,6 @@ class DocumentGegevensService(
         "plan" to plan(session.planUuid, session.dossierId),
         "evaluatie" to linkedMapOf(
             "datum" to datum(session.startedAt.toLocalDate()),
-            "type" to session.evaluatieType?.let { EVALUATIE_TYPE_LABELS[it] ?: it }.orEmpty(),
             "uitgevoerdDoor" to session.userLogin,
             "deelnemers" to session.deelnemers.orEmpty(),
             "verslag" to session.verslag.orEmpty()
@@ -161,11 +160,6 @@ class DocumentGegevensService(
         // The labels below mirror frontend/src/shared/labels.ts, so the
         // document describes a change as the side panel and the Evaluaties
         // tab do.
-
-        private val EVALUATIE_TYPE_LABELS = mapOf(
-            "INTAKE" to "Intake", "PROGRESS" to "Voortgang", "EVALUATION" to "Evaluatie",
-            "INSPECTION" to "Inspectie", "CRISIS" to "Crisis"
-        )
 
         private val SUBJECT_TYPE_LABELS = mapOf(
             "PLAN" to "Plan", "HOOFDDOEL" to "Hoofddoel", "SUBDOEL" to "Subdoel", "INSTRUMENT" to "Instrument", "ACTIE" to "Actie"

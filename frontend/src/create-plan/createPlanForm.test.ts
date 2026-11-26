@@ -21,7 +21,6 @@ const REGISTERS: Registers = {
 };
 
 const CONFIG: CaseConfig = {
-  evaluatieTypen: ['INTAKE', 'EVALUATION', 'CRISIS'],
   planStatussen: [],
   positieTypen: ['Trede 1', 'Trede 2'],
   subdoelMapping: null,
@@ -81,21 +80,17 @@ describe('formReducer', () => {
   it('adds a row with a unique key and opens its section', () => {
     const dicht = doe(beginState(), { type: 'open', sectie: 'subdoelen', open: false });
     const state = doe(dicht,
-      { type: 'toevoegen', sectie: 'subdoelen', evaluatieTypen: [] },
-      { type: 'toevoegen', sectie: 'subdoelen', evaluatieTypen: [] });
+      { type: 'toevoegen', sectie: 'subdoelen' },
+      { type: 'toevoegen', sectie: 'subdoelen' });
     expect(state.open.subdoelen).toBe(true);
     expect(state.subdoelen).toHaveLength(2);
     expect(state.subdoelen[0]).toMatchObject({ doelType: '', beschrijving: '', status: 'gepland', extra: {} });
     expect(state.subdoelen[0].key).not.toBe(state.subdoelen[1].key);
   });
 
-  it('gives a new evaluation the EVALUATION type when the case type has it, else its first type', () => {
-    const metEvaluation = doe(beginState(), { type: 'toevoegen', sectie: 'evaluaties', evaluatieTypen: ['INTAKE', 'EVALUATION'] });
-    expect(metEvaluation.evaluaties[0]).toMatchObject({ evaluatieType: 'EVALUATION', status: 'gepland', auto: false, datum: '' });
-    const zonder = doe(beginState(), { type: 'toevoegen', sectie: 'evaluaties', evaluatieTypen: ['INTAKE'] });
-    expect(zonder.evaluaties[0].evaluatieType).toBe('INTAKE');
-    const leeg = doe(beginState(), { type: 'toevoegen', sectie: 'evaluaties', evaluatieTypen: [] });
-    expect(leeg.evaluaties[0].evaluatieType).toBe('EVALUATION');
+  it('adds a planned evaluation without a date', () => {
+    const state = doe(beginState(), { type: 'toevoegen', sectie: 'evaluaties' });
+    expect(state.evaluaties[0]).toMatchObject({ status: 'gepland', auto: false, datum: '', notitie: '' });
   });
 
   it('edits one row; editing an evaluation detaches it from the startdatum', () => {
@@ -110,8 +105,8 @@ describe('formReducer', () => {
 
   it('edits a row of another section without touching auto', () => {
     const state = doe(beginState(),
-      { type: 'toevoegen', sectie: 'instrumenten', evaluatieTypen: [] },
-      { type: 'toevoegen', sectie: 'instrumenten', evaluatieTypen: [] });
+      { type: 'toevoegen', sectie: 'instrumenten' },
+      { type: 'toevoegen', sectie: 'instrumenten' });
     const [eerste, tweede] = state.instrumenten;
     const na = doe(state, { type: 'wijzigRij', sectie: 'instrumenten', key: tweede.key, wijziging: { product: 'TAAL' } });
     expect(na.instrumenten).toEqual([eerste, { ...tweede, product: 'TAAL' }]);
@@ -119,16 +114,16 @@ describe('formReducer', () => {
 
   it('removes one row', () => {
     const state = doe(beginState(),
-      { type: 'toevoegen', sectie: 'betrokkenen', evaluatieTypen: [] },
-      { type: 'toevoegen', sectie: 'betrokkenen', evaluatieTypen: [] });
+      { type: 'toevoegen', sectie: 'betrokkenen' },
+      { type: 'toevoegen', sectie: 'betrokkenen' });
     const na = doe(state, { type: 'verwijderRij', sectie: 'betrokkenen', key: state.betrokkenen[0].key });
     expect(na.betrokkenen).toEqual([state.betrokkenen[1]]);
   });
 
   it('keeps exactly one procesbegeleider', () => {
     const state = doe(beginState(),
-      { type: 'toevoegen', sectie: 'betrokkenen', evaluatieTypen: [] },
-      { type: 'toevoegen', sectie: 'betrokkenen', evaluatieTypen: [] });
+      { type: 'toevoegen', sectie: 'betrokkenen' },
+      { type: 'toevoegen', sectie: 'betrokkenen' });
     const [a, b] = state.betrokkenen.map(r => r.key);
     const vlag = (s: FormState) => s.betrokkenen.map((r: BetrokkeneRij) => r.procesbegeleider);
 
@@ -142,7 +137,7 @@ describe('formReducer', () => {
 
   it('a submit attempt opens the sections with rows still missing their choice', () => {
     const state = doe(beginState(),
-      { type: 'toevoegen', sectie: 'subdoelen', evaluatieTypen: [] },
+      { type: 'toevoegen', sectie: 'subdoelen' },
       { type: 'open', sectie: 'subdoelen', open: false },
       { type: 'open', sectie: 'instrumenten', open: false },
       { type: 'open', sectie: 'evaluaties', open: false },
@@ -160,9 +155,9 @@ describe('formReducer', () => {
 describe('ontbreekt', () => {
   it('names every missing required field', () => {
     const state = doe(beginState(),
-      { type: 'toevoegen', sectie: 'subdoelen', evaluatieTypen: [] },
-      { type: 'toevoegen', sectie: 'instrumenten', evaluatieTypen: [] },
-      { type: 'toevoegen', sectie: 'instrumenten', evaluatieTypen: [] });
+      { type: 'toevoegen', sectie: 'subdoelen' },
+      { type: 'toevoegen', sectie: 'instrumenten' },
+      { type: 'toevoegen', sectie: 'instrumenten' });
     expect(ontbreekt(state)).toEqual(['BSN', 'titel', 'hoofddoel', 'doel bij 1 subdoel', 'instrumenttype bij 2 instrumenten']);
     expect(ontbreekt(doe(state, { type: 'subject', subjectType: 'OBJECT' }))[0]).toBe('object-ID');
   });
@@ -192,7 +187,7 @@ describe('vulVoor', () => {
     expect(state.startdatum).toBe('2026-01-15');
     expect(state.dienstverlening).toBe('Participatie');
     expect(state.evaluaties).toHaveLength(1);
-    expect(state.evaluaties[0]).toMatchObject({ datum: '2026-02-26', evaluatieType: 'EVALUATION', auto: true, status: 'gepland' });
+    expect(state.evaluaties[0]).toMatchObject({ datum: '2026-02-26', auto: true, status: 'gepland' });
     expect(state.open).toEqual({ subdoelen: true, instrumenten: true, evaluaties: false, betrokkenen: true });
   });
 
@@ -203,7 +198,7 @@ describe('vulVoor', () => {
       beginPositie: 'Trede 2', dienstverlening: 'Schulddienstverlening', hoofddoel: 'Werk vinden',
       doelen: [{ doelType: 'Cv maken', beschrijving: 'Cv af', status: 'gestart', voortgang: 50, toelichting: 'blijft' }],
       instrumenten: [{ product: 'TAAL', doel: 'Cv maken', titel: 'genegeerd' }],
-      contactmomenten: [{ datum: '2026-02-10T09:00:00', evaluatieType: 'INTAKE', status: 'afgerond', notitie: 'Gesprek', kanaal: 'telefoon' }],
+      contactmomenten: [{ datum: '2026-02-10T09:00:00', status: 'afgerond', notitie: 'Gesprek', kanaal: 'telefoon' }],
       betrokkenen: [{ naam: 'Piet', rol: 'Klantmanager', organisatie: 'Gemeente', email: 'p@example.org', procesbegeleider: true, telefoon: '06' }],
     }, REGISTERS, CONFIG);
 
@@ -217,7 +212,7 @@ describe('vulVoor', () => {
     })]);
     expect(state.instrumenten).toEqual([expect.objectContaining({ product: 'TAAL', doel: 'Cv maken', extra: {} })]);
     expect(state.evaluaties).toEqual([expect.objectContaining({
-      datum: '2026-02-10', evaluatieType: 'INTAKE', status: 'afgerond', notitie: 'Gesprek', auto: false, extra: { kanaal: 'telefoon' },
+      datum: '2026-02-10', status: 'afgerond', notitie: 'Gesprek', auto: false, extra: { kanaal: 'telefoon' },
     })]);
     expect(state.betrokkenen).toEqual([expect.objectContaining({
       naam: 'Piet', procesbegeleider: true, extra: { telefoon: '06' },
@@ -269,10 +264,10 @@ describe('vulVoor', () => {
     const { state } = vulVoor({
       doelen: [null, 'tekst', { doelType: 'Cv maken', status: 'onbekend' }] as unknown as Record<string, unknown>[],
       contactmomenten: [{ notitie: 'zonder datum' }],
-    }, { ...REGISTERS }, { ...CONFIG, evaluatieTypen: ['INTAKE'] });
+    }, REGISTERS, CONFIG);
     expect(state.subdoelen).toHaveLength(1);
     expect(state.subdoelen[0].status).toBe('gepland');
-    expect(state.evaluaties[0]).toMatchObject({ datum: '', evaluatieType: 'INTAKE' });
+    expect(state.evaluaties[0]).toMatchObject({ datum: '', notitie: 'zonder datum' });
   });
 
   it('starts the first evaluation six weeks after a prefilled startdatum', () => {
@@ -288,7 +283,7 @@ describe('maakRequest', () => {
       doelen: [{ doelType: 'Cv maken', beschrijving: 'Cv', toelichting: 'blijft', startdatum: '2027-07-01' }],
       betrokkenen: [{ naam: ' Piet ', email: ' p@example.org ' }, { naam: '  ' }],
     }, REGISTERS, CONFIG);
-    const zonderDatum = doe(state, { type: 'toevoegen', sectie: 'evaluaties', evaluatieTypen: CONFIG.evaluatieTypen });
+    const zonderDatum = doe(state, { type: 'toevoegen', sectie: 'evaluaties' });
 
     const request = maakRequest(zonderDatum, 'doc-1', 'Jan', 'Actief');
     expect(request).toMatchObject({
@@ -300,7 +295,7 @@ describe('maakRequest', () => {
       }],
       instrumenten: [],
     });
-    expect(request.contactmomenten).toEqual([{ datum: '2026-02-26', evaluatieType: 'EVALUATION', status: 'gepland', notitie: '' }]);
+    expect(request.contactmomenten).toEqual([{ datum: '2026-02-26', status: 'gepland', notitie: '' }]);
     expect(request.betrokkenen).toEqual([
       { naam: 'Piet', rol: '', organisatie: '', email: 'p@example.org', procesbegeleider: false },
     ]);

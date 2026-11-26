@@ -26,7 +26,6 @@ import org.mockito.Mockito.`when`
 import java.time.LocalDate
 import java.util.UUID
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import com.ritense.pdca.registers.openklant.Klantcontact as OpenKlantKlantcontact
 
 class KlantcontactServiceTest {
@@ -37,7 +36,7 @@ class KlantcontactServiceTest {
     private val planUuid = UUID.randomUUID()
 
     @Test
-    fun `the evaluation type reads back from the onderwerp it was written with, also a configured one`() {
+    fun `every contactmoment of a plan is written as an evaluation of that plan`() {
         `when`(openPlan.getPlan(planUuid)).thenReturn(Plan(uuid = planUuid, status = "actief", titel = "Plan: Erika"))
         val onderwerpen = mutableListOf<String>()
         `when`(openKlant.maakKlantcontact(anyValue())).thenAnswer {
@@ -45,18 +44,8 @@ class KlantcontactServiceTest {
             OpenKlantKlantcontact(uuid = UUID.randomUUID())
         }
 
-        listOf("PROGRESS", "NAZORG", "EVALUATION").forEach { type ->
-            service.create(NewContactmoment(planUuid, type, ContactmomentService.plaatsgevondenOp(LocalDate.now()), afgerond = false, verslag = null))
-        }
+        service.create(NewContactmoment(planUuid, ContactmomentService.plaatsgevondenOp(LocalDate.now()), afgerond = false, verslag = null))
 
-        assertEquals(listOf("Voortgang: Plan: Erika", "NAZORG: Plan: Erika", "Evaluatie: Plan: Erika"), onderwerpen)
-        assertEquals(listOf("PROGRESS", "NAZORG", "EVALUATION"), onderwerpen.map { service.evaluatieTypeOf(it) })
-    }
-
-    @Test
-    fun `an onderwerp without a type label has no evaluation type`() {
-        assertNull(service.evaluatieTypeOf(null))
-        assertNull(service.evaluatieTypeOf("Gesprek over werk"))
-        assertNull(service.evaluatieTypeOf(": Plan"))
+        assertEquals(listOf("Evaluatie: Plan: Erika"), onderwerpen)
     }
 }
