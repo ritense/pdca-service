@@ -89,8 +89,9 @@ data class EvaluationSession(
     /**
      * Whether a locked part of the plan was changed in this evaluation
      * (ARCHITECTURE §6.7): it can then no longer be cancelled. Set only by
-     * [com.ritense.pdca.repository.EvaluationSessionRepository.markeerVastgesteldGewijzigd],
-     * so saving the session never resets it.
+     * [com.ritense.pdca.repository.EvaluationSessionRepository.markVastgesteldGewijzigd]
+     * (and taken back by `unmarkVastgesteldGewijzigd` when that change is
+     * refused), so saving the session never resets it.
      */
     @Column(name = "vastgesteld_gewijzigd", nullable = false, updatable = false)
     val vastgesteldGewijzigd: Boolean = false

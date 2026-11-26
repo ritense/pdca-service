@@ -54,7 +54,7 @@ class EvaluationSessionRepositoryIntegrationTest : PostgresIntegrationTest() {
     fun `a session with a locked change is not cancelled`() {
         val sessie = sessie()
 
-        assertEquals(1, repository.markeerVastgesteldGewijzigd(sessie.id))
+        assertEquals(1, repository.markVastgesteldGewijzigd(sessie.id))
         assertEquals(0, repository.annuleer(sessie.id, LocalDateTime.now()))
 
         val gelezen = gelezen(sessie.id)
@@ -63,16 +63,34 @@ class EvaluationSessionRepositoryIntegrationTest : PostgresIntegrationTest() {
     }
 
     @Test
+    fun `a locked change is recorded once, and taking it back makes the session cancellable again`() {
+        val sessie = sessie()
+
+        assertEquals(1, repository.markVastgesteldGewijzigd(sessie.id))
+        assertEquals(0, repository.markVastgesteldGewijzigd(sessie.id))
+        assertEquals(1, repository.unmarkVastgesteldGewijzigd(sessie.id))
+
+        assertEquals(1, repository.annuleer(sessie.id, LocalDateTime.now()))
+    }
+
+    @Test
+    fun `the record of a locked change is not taken back on a session that ended`() {
+        val sessie = sessie(EvaluationSessionStatus.COMPLETED)
+
+        assertEquals(0, repository.unmarkVastgesteldGewijzigd(sessie.id))
+    }
+
+    @Test
     fun `a locked change is not recorded on a session that ended`() {
         val sessie = sessie(EvaluationSessionStatus.CANCELLED)
 
-        assertEquals(0, repository.markeerVastgesteldGewijzigd(sessie.id))
+        assertEquals(0, repository.markVastgesteldGewijzigd(sessie.id))
     }
 
     @Test
     fun `saving a session it was loaded before keeps the record of a locked change`() {
         val geladen = sessie()
-        repository.markeerVastgesteldGewijzigd(geladen.id)
+        repository.markVastgesteldGewijzigd(geladen.id)
 
         geladen.verslag = "Besproken: de nieuwe werkplek"
         repository.save(geladen)

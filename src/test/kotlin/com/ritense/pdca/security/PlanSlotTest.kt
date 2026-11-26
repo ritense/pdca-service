@@ -34,6 +34,7 @@ import java.util.Optional
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 
 class PlanSlotTest {
 
@@ -58,7 +59,7 @@ class PlanSlotTest {
     private fun evalueert(login: String, plan: UUID): EvaluationSession =
         EvaluationSession(dossierId = "d", planUuid = plan, userLogin = login, status = EvaluationSessionStatus.RUNNING).also {
             `when`(sessions.findByUserLoginAndStatus(login, EvaluationSessionStatus.RUNNING)).thenReturn(it)
-            `when`(sessions.markeerVastgesteldGewijzigd(it.id)).thenReturn(1)
+            `when`(sessions.markVastgesteldGewijzigd(it.id)).thenReturn(1)
         }
 
     private fun geweigerd(login: String, wijzigingen: List<SlotWijziging>) {
@@ -116,10 +117,34 @@ class PlanSlotTest {
         val sessie = evalueert("jan", planUuid)
 
         slot.controleer("jan", listOf(SlotWijziging(planUuid, weergaveStatus = "In uitvoering")))
-        verify(sessions, never()).markeerVastgesteldGewijzigd(sessie.id)
+        verify(sessions, never()).markVastgesteldGewijzigd(sessie.id)
 
         slot.controleer("jan", wijziging)
-        verify(sessions).markeerVastgesteldGewijzigd(sessie.id)
+        verify(sessions).markVastgesteldGewijzigd(sessie.id)
+    }
+
+    @Test
+    fun `the evaluation a call records its change on is returned for its release`() {
+        plan("Vastgesteld")
+        val sessie = evalueert("jan", planUuid)
+
+        assertEquals(sessie.id, slot.controleer("jan", wijziging))
+        assertNull(slot.controleer("jan", listOf(SlotWijziging(planUuid, weergaveStatus = "In uitvoering"))))
+
+        slot.release(sessie.id)
+        verify(sessions).unmarkVastgesteldGewijzigd(sessie.id)
+    }
+
+    @Test
+    fun `a locked change in an evaluation that recorded one already passes without its own record`() {
+        plan("Vastgesteld")
+        val sessie = evalueert("jan", planUuid)
+        `when`(sessions.markVastgesteldGewijzigd(sessie.id)).thenReturn(0)
+        `when`(sessions.findById(sessie.id)).thenReturn(
+            Optional.of(sessie.copy(vastgesteldGewijzigd = true))
+        )
+
+        assertNull(slot.controleer("jan", wijziging))
     }
 
     @Test
@@ -129,14 +154,14 @@ class PlanSlotTest {
 
         slot.controleer("jan", wijziging)
 
-        verify(sessions, never()).markeerVastgesteldGewijzigd(anyValue())
+        verify(sessions, never()).markVastgesteldGewijzigd(anyValue())
     }
 
     @Test
     fun `a locked change is refused when its evaluation ended just before`() {
         plan("Vastgesteld")
         val sessie = evalueert("jan", planUuid)
-        `when`(sessions.markeerVastgesteldGewijzigd(sessie.id)).thenReturn(0)
+        `when`(sessions.markVastgesteldGewijzigd(sessie.id)).thenReturn(0)
 
         geweigerd("jan", wijziging)
     }

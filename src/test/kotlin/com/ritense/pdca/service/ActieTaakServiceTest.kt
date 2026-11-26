@@ -37,6 +37,7 @@ import org.mockito.Mockito.`when`
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
 import java.time.LocalDate
+import java.util.Optional
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -54,13 +55,19 @@ class ActieTaakServiceTest {
     private val gzac = mock(GzacClient::class.java)
     private val gzacAccess = mock(GzacAccess::class.java)
 
-    /** recordTaak as the database does it: only while no process is recorded. */
+    /** recordTaak and deleteIfTaakUnrecorded as the database does them: only while no process is recorded. */
     private val actieRepository = acties.proxy(
         ActionRepository::class,
-        mapOf("recordTaak" to { args ->
-            val actie = acties.rows[args[0]]
-            if (actie == null || actie.taakProcessInstanceId != null) 0 else { actie.taakProcessInstanceId = args[1] as String; 1 }
-        })
+        mapOf(
+            "recordTaak" to { args ->
+                val actie = acties.rows[args[0]]
+                if (actie == null || actie.taakProcessInstanceId != null) 0 else { actie.taakProcessInstanceId = args[1] as String; 1 }
+            },
+            "deleteIfTaakUnrecorded" to { args ->
+                val actie = acties.rows[args[0]]
+                if (actie == null || actie.taakProcessInstanceId != null) 0 else { acties.rows.remove(args[0]); 1 }
+            }
+        )
     )
     private val service = ActieTaakService(
         actieRepository, doelDetails.proxy(DoelDetailsRepository::class), planDetails.proxy(PlanDetailsRepository::class),
@@ -203,6 +210,56 @@ class ActieTaakServiceTest {
         assertFailsWith<ResponseStatusException> { service.start(opgeslagen()) }
 
         assertTrue(acties.rows.isEmpty())
+    }
+
+    @Test
+    fun `a start GZAC refuses removes the actie also when its process reported itself, as GZAC rolled that back`() {
+        linkMapt(configId)
+        doAnswer { invocation ->
+            @Suppress("UNCHECKED_CAST")
+            val start = (invocation.arguments[2] as Map<String, Map<String, String>>)["bouwblokStart"]!!
+            service.taakGestart(mapOf("actieId" to start["actieId"]), "proces-1")
+            throw GzacClient.StartGeweigerdException("geweigerd")
+        }.`when`(gzac).startformulierIndienen(anyString(), anyString(), anyValue())
+
+        assertFailsWith<GzacClient.StartGeweigerdException> { service.start(opgeslagen()) }
+
+        assertTrue(acties.rows.isEmpty())
+    }
+
+    @Test
+    fun `a process that reports itself after its unanswered start removed the actie is refused`() {
+        linkMapt(configId)
+        doThrow(ResponseStatusException(HttpStatus.BAD_GATEWAY, "geen antwoord")).`when`(gzac).startformulierIndienen(anyString(), anyString(), anyValue())
+        val actie = opgeslagen()
+        assertFailsWith<ResponseStatusException> { service.start(actie) }
+
+        val fout = assertFailsWith<PluginActionException> { service.taakGestart(mapOf("actieId" to actie.id.toString()), "proces-laat") }
+
+        assertEquals("ACTIE_ONBEKEND", fout.errorCode)
+        assertTrue(acties.rows.isEmpty())
+    }
+
+    @Test
+    fun `a process whose report loses from the removal of its actie is refused`() {
+        val actie = Action(doelUuid = doelUuid, title = "Werkgever bellen")
+        var gelezen = false
+        // The actie is read just before its removal and recorded just after it.
+        val repository = acties.proxy(
+            ActionRepository::class,
+            mapOf(
+                "findById" to { _ -> if (gelezen) Optional.empty<Action>() else Optional.of(actie).also { gelezen = true } },
+                "recordTaak" to { _ -> 0 }
+            )
+        )
+        val service = ActieTaakService(
+            repository, doelDetails.proxy(DoelDetailsRepository::class), planDetails.proxy(PlanDetailsRepository::class),
+            mock(OpenPlanGateway::class.java), gzac, gzacAccess
+        )
+
+        val fout = assertFailsWith<PluginActionException> { service.taakGestart(mapOf("actieId" to actie.id.toString()), "proces-1") }
+
+        assertEquals("ACTIE_ONBEKEND", fout.errorCode)
     }
 
     @Test

@@ -123,7 +123,7 @@ class PluginDataController(
         val call = DataCall(method, path, data.query ?: emptyMap(), data.body?.takeUnless { it.isNull }, data.context ?: emptyMap())
         val allowed = accessPolicy.resolve(call)
         userVerifier.authorize(user, allowed.requirement)
-        planSlot.controleer(user.login, allowed.slot)
+        val recordedOn = planSlot.controleer(user.login, allowed.slot)
 
         // The forward runs inside this request's security filter pass, so the
         // verified user goes into the current context as well as the request.
@@ -134,6 +134,11 @@ class PluginDataController(
         val body = call.body?.let { objectMapper.writeValueAsBytes(it) } ?: ByteArray(0)
         request.getRequestDispatcher(call.path + queryString(call.query))
             .forward(DispatchedRequest(request, call.method, body), response)
+
+        // A locked change the handler refused changed nothing, so its record
+        // on the evaluation goes again. Any other failure may have changed
+        // part of the plan already and keeps it.
+        if (recordedOn != null && response.status in 400..499) planSlot.release(recordedOn)
     }
 
     private fun readRequest(request: HttpServletRequest): PluginDataRequest {

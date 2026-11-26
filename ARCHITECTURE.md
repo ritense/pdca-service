@@ -1037,8 +1037,9 @@ reason (§6.5). While the plan is still in concept anything goes.
   plan's toelichting bij het hoofddoel and beoogde einddatum (proxy
   `PATCH plan`, `streefEinddatum` in `PUT /plandetails`), the hoofddoel
   (`PUT /plannen/{uuid}/hoofddoel`) and instrument requests
-  (`POST /instrumenten/start`). Moving the display status back to concept
-  is locked too, else the lock would be one step away. Free: voortgang and
+  (`POST /instrumenten/start`). Moving the display status back to concept,
+  or clearing it (`weergaveStatus: null`), is locked too, else the lock
+  would be one step away. Free: voortgang and
   notes, starting a subdoel, instrument steps and registrations, acties,
   betrokkenen, contactmomenten, other display statuses, and closing or
   reopening the plan.
@@ -1060,7 +1061,12 @@ reason (§6.5). While the plan is still in concept anything goes.
   records the change with the conversation and the inwoner, cancelling
   would leave it without either. Cancelling is a conditional update as
   well, so a locked change let through at the same moment either keeps the
-  session running or is refused.
+  session running or is refused. When the handler then refuses the change
+  (4xx), nothing changed and `/data` takes the record back, unless an
+  earlier change had made it already; a 5xx keeps it, as part of the
+  change may have been made. Two locked changes of one evaluation at the
+  same moment of which the recording one is refused also take back the
+  other's record.
 - **The tabs** apply the same rule (`shared/planSlot.tsx`) and disable the
   locked actions with the hint *"Wijzig je tijdens een evaluatie"* (§13.3).
 
@@ -1123,11 +1129,17 @@ sequenceDiagram
   instance, so the building block's first service task,
   `actie-taak-gestart`, runs synchronously within it and records its
   process on the actie (`taakProcessInstanceId`, unique). When GZAC refuses
-  the start, or anything before it fails (no plan dossier: 409; the case
-  type does not link the building block, a missing grant, GZAC
-  unreachable: 502/503), the actie is removed again and the failure stands.
-  When the start's answer is lost, the actie is kept if its process
-  reported itself and removed otherwise.
+  the start (an error answer of its own, 4xx or 500, or errors in its
+  answer: it rolled the start back), the actie is removed again and the
+  failure stands. When the outcome is unknown (no answer, or 502/503/504
+  from a gateway in front of GZAC, which may still be starting), or
+  anything before the start fails (no plan dossier: 409; the case type
+  does not link the building block, a missing grant: 502), the actie is
+  kept if its process reported itself and removed otherwise. That removal
+  is conditional on no process being recorded, so it and the report
+  exclude each other: a report that comes in after the removal finds no
+  actie, `actie-taak-gestart` fails and GZAC rolls that start back, so no
+  task is left without its actie.
 - **Ending.** The user completes the task with its form
   (`pdca-taak-afronden`): an uitkomst — *uitgevoerd*, or *vervallen* when
   the task is no longer needed — and a required resultaat or reason. The
@@ -1215,7 +1227,7 @@ sequenceDiagram
   |---|---|
   | Plan from intake (§6.1) | validate-then-write, reservation with lease, resume per step, GEREED only when complete |
   | Doel removal (§6.3) | instruments first, doel last, each step skips what is done |
-  | Actie as GZAC task (§6.8) | the actie is saved first; a refused or failed start removes it again, a start whose answer is lost keeps it when its process reported itself; `actie-taak-gestart` and `actie-gereed` take only the actie's own process and leave an actie that has ended alone |
+  | Actie as GZAC task (§6.8) | the actie is saved first; a start GZAC refuses removes it again, a start with unknown outcome keeps it when its process reported itself and removes it otherwise, conditionally, so a later report is refused and GZAC rolls that start back; `actie-taak-gestart` and `actie-gereed` take only the actie's own process and leave an actie that has ended alone |
   | Hoofddoel switch (§6.3) | reuse the new hoofddoel of an interrupted switch, then close the old ones and re-point |
   | Instrument request (§6.2) | 409 while a verzoek for that doel and product is open |
   | `aanmaak-instrument` | returns the instrument this dossier already created |
@@ -1345,7 +1357,7 @@ path, query parameters) is a 403. *Caller*: **user** = any verified user;
 | Method | Path | Purpose | Caller |
 |---|---|---|---|
 | GET | `…/accent-colors` | GZAC's accent colour ramp for the bundles (§3.2) | any user |
-| PUT | `…/plandetails/{planUuid}` | edit the plan's overlay row (partial; 404 without row); `streefEinddatum`, and a display status back to concept, locked (§6.7) | plan |
+| PUT | `…/plandetails/{planUuid}` | edit the plan's overlay row (partial; 404 without row); `streefEinddatum`, and a display status back to concept or cleared, locked (§6.7) | plan |
 | GET | `…/voortgangstatussen[?planUuid]` | voortgangsstatussen of the plan's case type; without plan the standard list | user / plan |
 | GET | `…/doeldetails?planUuid` | overlay rows of the plan's doelen | plan |
 | PUT | `…/doeldetails/{doelUuid}` | create or partially update a doel's row; `streefEinddatum` locked (§6.7) | plan (of the doel and body `planUuid`) |
