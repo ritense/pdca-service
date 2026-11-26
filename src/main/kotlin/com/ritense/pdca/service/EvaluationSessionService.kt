@@ -77,7 +77,8 @@ data class EvaluationChangeRequest(
  * Klant — which is when colleagues get to see the evaluation. A session
  * started for a planned contactmoment carries that one out instead of
  * creating a new one. Cancelling ends the session without a contactmoment;
- * a cancelled evaluation is never shown to colleagues.
+ * a cancelled evaluation is never shown to colleagues, so one that changed a
+ * locked part of the plan cannot be cancelled.
  *
  * Starting and completing call Open Klant; those calls run outside any
  * transaction, and only the repository work around them is transactional.
@@ -293,14 +294,21 @@ class EvaluationSessionService(
      * Cancels the running evaluation. Nothing is written to Open Klant and a
      * planned contactmoment it carried out stays planned; the recorded
      * changes stay with the cancelled session. The plan changes themselves
-     * were made in the registers already and are not reverted.
+     * were made in the registers already and are not reverted. An
+     * evaluation that changed a locked part of the plan (ARCHITECTURE §6.7)
+     * is not cancelled (409): completing it records that change with the
+     * conversation.
      */
-    @Transactional
     fun cancel(userLogin: String): EvaluationSession {
         val session = running(userLogin)
-        session.status = EvaluationSessionStatus.CANCELLED
-        session.endedAt = LocalDateTime.now()
-        return repository.save(session)
+        if (!session.vastgesteldGewijzigd && repository.annuleer(session.id, LocalDateTime.now()) == 1) {
+            return repository.findById(session.id).orElseThrow()
+        }
+        val nu = repository.findById(session.id).orElse(null)
+        if (nu?.status == EvaluationSessionStatus.RUNNING && nu.vastgesteldGewijzigd) {
+            throw ResponseStatusException(HttpStatus.CONFLICT, NIET_TE_ANNULEREN)
+        }
+        throw ResponseStatusException(HttpStatus.NOT_FOUND, "Er loopt geen evaluatie")
     }
 
     /** Completed evaluations of a plan with their changes, for every colleague. */
@@ -365,5 +373,9 @@ class EvaluationSessionService(
 
     private companion object {
         const val DEFAULT_EVALUATION_TYPE = "EVALUATION"
+
+        const val NIET_TE_ANNULEREN =
+            "In deze evaluatie zijn vastgestelde delen van het plan gewijzigd; rond de evaluatie af, " +
+                "zodat de inwoner op de hoogte is en de wijzigingen met het gesprek worden vastgelegd"
     }
 }

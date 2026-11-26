@@ -5,6 +5,7 @@ import type { Doel, Instrument, OpenVerzoek, ProductType } from '../shared/api';
 import { formatDate, isVerlopen } from '../shared/dates';
 import { aantal, doelBalkKleur, doelStatus } from '../shared/labels';
 import { NietGeladen } from '../shared/Meldingen';
+import { VERGRENDELD_HINT } from '../shared/planSlot';
 import type { Resource } from '../shared/useResource';
 import type { ActieContext, Notities, RegistratieInvoer, VoortgangInvoer } from './doelenActies';
 import type { AfbreekTarget } from './DoelenModals';
@@ -16,6 +17,8 @@ import { DoelVoortgangNotities, VoortgangTag } from './VoortgangNotities';
 export interface DoelenHandlers {
   /** A state action is under way; the state buttons wait for it. */
   busy: boolean;
+  /** The plan is past concept and not in the user's evaluation: subdoelen and instrument requests cannot change. */
+  vergrendeld: boolean;
   startDoel: (doel: Doel) => void;
   rondDoelAf: (doel: Doel) => void;
   bewerkDoel: (doel: Doel) => void;
@@ -115,6 +118,7 @@ export function SubdoelCard({ doel, model, producttypen, verzoeken, handlers }: 
             </span>
           )}
           {openVerzoeken.length > 0 && <Tag size="sm" type="blue">{aantal(openVerzoeken.length, 'aanvraag', 'aanvragen')} loopt</Tag>}
+          {doel.startdatum && <span className="pdca-muted-count">Start: {formatDate(doel.startdatum)}</span>}
           <BeoogdDatum datum={details?.streefEinddatum} lopend={model.plan.status === 'actief' && actief} />
           {actief && details?.voortgangStatus && <VoortgangTag code={details.voortgangStatus} opties={model.voortgangOpties} />}
           <Tag size="sm" type={status.tag}>{status.label}</Tag>
@@ -133,18 +137,20 @@ export function SubdoelCard({ doel, model, producttypen, verzoeken, handlers }: 
               <Button size="sm" kind="primary" disabled={handlers.busy} onClick={() => handlers.startDoel(doel)}>Starten</Button>
             )}
             {actief && gestart && (
-              <Button size="sm" kind="primary" renderIcon={Checkmark} disabled={handlers.busy}
+              <Button size="sm" kind="primary" renderIcon={Checkmark} disabled={handlers.busy || handlers.vergrendeld}
+                title={handlers.vergrendeld ? VERGRENDELD_HINT : undefined}
                 onClick={() => handlers.rondDoelAf(doel)}>Afronden</Button>
             )}
             <OverflowMenu size="sm" aria-label={`Meer acties voor ${doel.titel}`} iconDescription="Meer acties">
-              <OverflowMenuItem itemText="Bewerken" onClick={() => handlers.bewerkDoel(doel)} />
+              <OverflowMenuItem itemText="Bewerken" disabled={handlers.vergrendeld} onClick={() => handlers.bewerkDoel(doel)} />
               {actief && (
-                <OverflowMenuItem itemText="Afbreken" isDelete hasDivider
+                <OverflowMenuItem itemText="Afbreken" isDelete hasDivider disabled={handlers.vergrendeld}
                   onClick={() => handlers.breekAf({
-                    kind: 'doel', uuid: doel.uuid, titel: doel.titel, openDossiers: model.openDossiersVan(doel.uuid),
+                    kind: 'doel', uuid: doel.uuid, titel: doel.titel, lopendWerk: model.lopendWerkVan(doel.uuid, verzoeken.data, 'afbreken'),
                   })} />
               )}
-              <OverflowMenuItem itemText="Verwijderen" isDelete hasDivider={!actief} onClick={() => handlers.verwijderDoel(doel)} />
+              <OverflowMenuItem itemText="Verwijderen" isDelete hasDivider={!actief} disabled={handlers.vergrendeld}
+                onClick={() => handlers.verwijderDoel(doel)} />
             </OverflowMenu>
           </div>
 
@@ -167,7 +173,8 @@ export function SubdoelCard({ doel, model, producttypen, verzoeken, handlers }: 
                     this subdoel: choosing one files a verzoek. The instrument appears
                     in the plan once GZAC's instrument dossier has created it. */}
                 {aanvraagbaar && aanvraagbaar.length > 0 && (
-                  <ProductMenu producttypen={aanvraagbaar} disabled={!actief}
+                  <ProductMenu producttypen={aanvraagbaar}
+                    disabled={!actief ? 'Alleen bij een actief doel' : handlers.vergrendeld ? VERGRENDELD_HINT : null}
                     bezigMet={handlers.aanvraag?.doelUuid === doel.uuid ? handlers.aanvraag.producttypeUuid : null}
                     onKies={p => handlers.vraagProductAan(p, doel.uuid)} />
                 )}

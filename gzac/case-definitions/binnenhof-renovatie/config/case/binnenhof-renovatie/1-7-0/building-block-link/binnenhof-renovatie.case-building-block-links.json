@@ -1,0 +1,17 @@
+[
+    {
+        "buildingBlockDefinitionKey": "pdca-taak",
+        "buildingBlockDefinitionVersionTag": "1.0.0",
+        "inputMappings": [
+            { "source": "doc:/bouwblokStart/actieId", "target": "/actieId" },
+            { "source": "doc:/bouwblokStart/titel", "target": "/titel" },
+            { "source": "doc:/bouwblokStart/omschrijving", "target": "/omschrijving" },
+            { "source": "doc:/bouwblokStart/deadline", "target": "/deadline" },
+            { "source": "doc:/bouwblokStart/planUuid", "target": "/planUuid" },
+            { "source": "doc:/bouwblokStart/doelUuid", "target": "/doelUuid" }
+        ],
+        "outputMappings": [],
+        "pluginConfigurationMappings": {},
+        "startableByUser": false
+    }
+]

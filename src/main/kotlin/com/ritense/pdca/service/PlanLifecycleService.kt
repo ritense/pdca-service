@@ -19,6 +19,7 @@ package com.ritense.pdca.service
 import com.ritense.pdca.domain.DoelDetails
 import com.ritense.pdca.domain.PdcaUrn
 import com.ritense.pdca.domain.UitvoeringsStatus
+import com.ritense.pdca.domain.heeftOpenTaak
 import com.ritense.pdca.registers.RegisterException
 import com.ritense.pdca.registers.openplan.Doel
 import com.ritense.pdca.registers.openplan.DoelStatusUpdate
@@ -29,6 +30,7 @@ import com.ritense.pdca.registers.openplan.PlanStatusUpdate
 import com.ritense.pdca.registers.openplan.STATUS_ACTIEF
 import com.ritense.pdca.registers.openplan.STATUS_AFGEROND
 import com.ritense.pdca.registers.openplan.STATUS_GEANNULEERD
+import com.ritense.pdca.repository.ActionRepository
 import com.ritense.pdca.repository.DoelDetailsRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
 import org.slf4j.LoggerFactory
@@ -52,7 +54,8 @@ class PlanLifecycleService(
     private val openPlanGateway: OpenPlanGateway,
     private val planDetailsRepository: PlanDetailsRepository,
     private val doelDetailsRepository: DoelDetailsRepository,
-    private val instrumentAanvraagService: InstrumentAanvraagService
+    private val instrumentAanvraagService: InstrumentAanvraagService,
+    private val actionRepository: ActionRepository
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
@@ -69,7 +72,9 @@ class PlanLifecycleService(
         /** Titles of actief instruments managed by an instrument dossier; closing waits for these. */
         val openInstrumentdossiers: List<String>,
         /** Verzoeken whose instrument has not appeared yet; null when the Objecten API could not be read. */
-        val openVerzoeken: Int?
+        val openVerzoeken: Int?,
+        /** Acties whose GZAC task is still open; closing leaves the task in the plan dossier's task list. */
+        val openTaken: Int = 0
     )
 
     /**
@@ -146,7 +151,8 @@ class PlanLifecycleService(
             openSubdoelen = doelen.count { it.doeltype?.uuid !in hoofddoelTypen && it.status == STATUS_ACTIEF },
             openInstrumenten = instrumenten.count { !it.isDossierManaged },
             openInstrumentdossiers = instrumenten.filter { it.isDossierManaged }.map { it.titel ?: it.uuid.toString() },
-            openVerzoeken = verzoeken
+            openVerzoeken = verzoeken,
+            openTaken = actionRepository.findByDoelUuidIn(doelen.map { it.uuid }).count { it.heeftOpenTaak }
         )
     }
 

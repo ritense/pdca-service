@@ -31,19 +31,24 @@ data class DataCall(
     val context: Map<String, Any?>
 )
 
-/** A call the policy allowed: the route it matched and what the user must be allowed. */
-data class AllowedCall(val route: DataRoute, val requirement: Requirement)
+/**
+ * A call the policy allowed: the route it matched, what the user must be
+ * allowed and the locked plan parts it changes ([PlanSlot]).
+ */
+data class AllowedCall(val route: DataRoute, val requirement: Requirement, val slot: List<SlotWijziging> = emptyList())
 
 /**
  * One API operation the bundles may reach through `/data`: method, path
  * (`{}` is one path segment), the query parameters it accepts and how it
- * maps to a [Requirement]. [register] marks the register proxy routes.
+ * maps to a [Requirement]. [register] marks the register proxy routes;
+ * [slot] names the plans whose locked parts the call changes ([PlanSlot]).
  */
 class DataRoute(
     val method: String,
     val pattern: String,
     val queryKeys: Set<String>,
     val register: Boolean,
+    val slot: (DataCall, List<String>) -> List<SlotWijziging> = { _, _ -> emptyList() },
     val requirement: (DataCall, List<String>) -> Requirement
 ) {
     private val regex = Regex(
@@ -72,6 +77,11 @@ class DataRoute(
  *   of its request or of the evaluation it is about.
  * - PDCA Beheer (case configuration writes, the case-type lists): GZAC
  *   administrators.
+ *
+ * Routes that change a locked part of a plan (its subdoelen, their texts
+ * and dates, the plan's toelichting and beoogde einddatum, the hoofddoel,
+ * instrument requests) say so with their `slot`; `/data` lets them through
+ * only while the plan is in concept or the user evaluates it ([PlanSlot]).
  */
 @Component
 class DataAccessPolicy(private val scope: PlanScope) {
@@ -84,11 +94,24 @@ class DataAccessPolicy(private val scope: PlanScope) {
         val openKlant = "/openklant/klantinteracties/api/v1"
         val page = arrayOf("page", "pageSize")
 
-        fun api(method: String, pattern: String, vararg query: String, requirement: (DataCall, List<String>) -> Requirement) =
-            add(DataRoute(method, pattern, query.toSet(), register = false, requirement = requirement))
+        val vrij: (DataCall, List<String>) -> List<SlotWijziging> = { _, _ -> emptyList() }
 
-        fun proxy(method: String, pattern: String, vararg query: String, requirement: (DataCall, List<String>) -> Requirement) =
-            add(DataRoute(method, pattern, query.toSet(), register = true, requirement = requirement))
+        fun api(
+            method: String, pattern: String, vararg query: String,
+            slot: (DataCall, List<String>) -> List<SlotWijziging> = vrij,
+            requirement: (DataCall, List<String>) -> Requirement
+        ) = add(DataRoute(method, pattern, query.toSet(), register = false, slot = slot, requirement = requirement))
+
+        fun proxy(
+            method: String, pattern: String, vararg query: String,
+            slot: (DataCall, List<String>) -> List<SlotWijziging> = vrij,
+            requirement: (DataCall, List<String>) -> Requirement
+        ) = add(DataRoute(method, pattern, query.toSet(), register = true, slot = slot, requirement = requirement))
+
+        // ---- the plan lock: which plans' locked parts a call changes
+        fun vast(plannen: Collection<UUID>) = plannen.distinct().map { SlotWijziging(it) }
+        val planInPathVast: (DataCall, List<String>) -> List<SlotWijziging> = { _, v -> vast(listOf(uuid(v[0]))) }
+        val doelInPathVast: (DataCall, List<String>) -> List<SlotWijziging> = { _, v -> vast(scope.plansOfDoelen(listOf(uuid(v[0])))) }
 
         val anyUser: (DataCall, List<String>) -> Requirement = { _, _ -> Requirement.AnyUser }
         val admin: (DataCall, List<String>) -> Requirement = { _, _ -> Requirement.Admin }
@@ -106,12 +129,12 @@ class DataAccessPolicy(private val scope: PlanScope) {
 
         // ---- register proxy: plan data
         proxy("GET", "$openPlan/plan/{}", requirement = planInPath)
-        proxy("PATCH", "$openPlan/plan/{}") { c, v ->
+        proxy("PATCH", "$openPlan/plan/{}", slot = planInPathVast) { c, v ->
             onlyFields(c.body, PLAN_FIELDS)
             scope.plans(listOf(uuid(v[0])))
         }
         proxy("GET", "$openPlan/doel", "plannen__uuid", *page) { c, _ -> scope.plans(listOf(uuid(c.query["plannen__uuid"]))) }
-        proxy("POST", "$openPlan/doel") { c, _ ->
+        proxy("POST", "$openPlan/doel", slot = { c, _ -> vast(listOf(uuid(c.body?.get("plannenUuids")?.get(0)?.asText()))) }) { c, _ ->
             // A new doel of exactly one plan, for that plan's persoon and
             // (when it is a subdoel) under a doel of the same plan.
             onlyFields(c.body, NEW_DOEL_FIELDS)
@@ -120,7 +143,7 @@ class DataAccessPolicy(private val scope: PlanScope) {
             scope.requireNewDoelFits(planUuid, uuid(c.body.text("persoonUuid")), c.body.optionalText("hoofdDoel")?.let { uuid(it) })
             scope.plans(listOf(planUuid))
         }
-        proxy("PATCH", "$openPlan/doel/{}") { c, v ->
+        proxy("PATCH", "$openPlan/doel/{}", slot = doelInPathVast) { c, v ->
             onlyFields(c.body, DOEL_FIELDS)
             c.body.optionalText("status", nullAllowed = false)?.let { if (it !in DOEL_STATUSES) throw PlanScope.denied() }
             scope.plans(scope.plansOfDoelen(listOf(uuid(v[0]))))
@@ -149,12 +172,23 @@ class DataAccessPolicy(private val scope: PlanScope) {
         // around it; the same ramp every viewer of that GZAC sees, and no
         // plan data, so any verified user may read it.
         api("GET", "$pdca/accent-colors", requirement = anyUser)
-        api("PUT", "$pdca/plandetails/{}", requirement = planInPath)
+        api("PUT", "$pdca/plandetails/{}", slot = { c, v ->
+            val plan = uuid(v[0])
+            when {
+                c.body?.has("streefEinddatum") == true -> vast(listOf(plan))
+                // Clearing the display status puts the plan back in concept
+                // as much as choosing the concept status does.
+                c.body?.get("weergaveStatus")?.isNull == true -> vast(listOf(plan))
+                else -> listOfNotNull(c.body.optionalText("weergaveStatus")?.let { SlotWijziging(plan, weergaveStatus = it) })
+            }
+        }, requirement = planInPath)
         api("GET", "$pdca/voortgangstatussen", "planUuid") { c, _ ->
             if (c.query["planUuid"] == null) Requirement.AnyUser else scope.plans(listOf(uuid(c.query["planUuid"])))
         }
         api("GET", "$pdca/doeldetails", "planUuid", requirement = planInQuery)
-        api("PUT", "$pdca/doeldetails/{}") { c, v ->
+        api("PUT", "$pdca/doeldetails/{}", slot = { c, v ->
+            if (c.body?.has("streefEinddatum") == true) vast(scope.plansOfDoelen(listOf(uuid(v[0])))) else emptyList()
+        }) { c, v ->
             scope.plans(scope.plansOfDoelen(listOf(uuid(v[0]))) + optionalUuids(c.body.optionalText("planUuid")))
         }
         api("GET", "$pdca/instrumentdetails", "planUuid", requirement = planInQuery)
@@ -187,14 +221,16 @@ class DataAccessPolicy(private val scope: PlanScope) {
         api("GET", "$pdca/dossiers/{}/plan-prefill") { _, v -> scope.dossier(v[0]) }
         api("POST", "$pdca/plan-intake") { c, _ -> scope.dossier(c.body.text("documentId")) }
 
-        api("POST", "$pdca/instrumenten/start") { c, _ -> scope.plans(scope.plansOfDoelen(listOf(uuid(c.body.text("doelUuid"))))) }
+        api("POST", "$pdca/instrumenten/start", slot = { c, _ -> vast(scope.plansOfDoelen(listOf(uuid(c.body.text("doelUuid")))))}) { c, _ ->
+            scope.plans(scope.plansOfDoelen(listOf(uuid(c.body.text("doelUuid")))))
+        }
         api("GET", "$pdca/instrumenten/verzoeken", "planUuid", requirement = planInQuery)
         api("POST", "$pdca/instrumenten/{}/starten", requirement = instrumentInPath)
         api("POST", "$pdca/instrumenten/{}/afronden", requirement = instrumentInPath)
         api("POST", "$pdca/instrumenten/{}/afbreken", requirement = instrumentInPath)
-        api("DELETE", "$pdca/doelen/{}", requirement = doelInPath)
-        api("POST", "$pdca/doelen/{}/afbreken", requirement = doelInPath)
-        api("PUT", "$pdca/plannen/{}/hoofddoel", requirement = planInPath)
+        api("DELETE", "$pdca/doelen/{}", slot = doelInPathVast, requirement = doelInPath)
+        api("POST", "$pdca/doelen/{}/afbreken", slot = doelInPathVast, requirement = doelInPath)
+        api("PUT", "$pdca/plannen/{}/hoofddoel", slot = planInPathVast, requirement = planInPath)
         api("GET", "$pdca/plannen/{}/afsluitcheck", requirement = planInPath)
         api("POST", "$pdca/plannen/{}/afronden", requirement = planInPath)
         api("POST", "$pdca/plannen/{}/afbreken", requirement = planInPath)
@@ -235,7 +271,7 @@ class DataAccessPolicy(private val scope: PlanScope) {
         for (route in routes) {
             val vars = route.match(call) ?: continue
             if (!route.queryKeys.containsAll(call.query.keys)) throw PlanScope.denied()
-            return AllowedCall(route, route.requirement(call, vars))
+            return AllowedCall(route, route.requirement(call, vars), route.slot(call, vars))
         }
         throw PlanScope.denied()
     }
@@ -253,8 +289,12 @@ class DataAccessPolicy(private val scope: PlanScope) {
         /** The fields of a doel the bundles create (a subdoel under the plan's hoofddoel). */
         val NEW_DOEL_FIELDS = setOf("plannenUuids", "persoonUuid", "doeltypeUuid", "titel", "beschrijving", "startdatum", "hoofdDoel")
 
-        /** The doel fields the bundles edit directly: its texts, its doeltype and completing it; never its plan, persoon or hoofddoel. */
-        val DOEL_FIELDS = setOf("titel", "beschrijving", "doeltypeUuid", "status", "resultaat", "einddatum", "toelichtingResultaat")
+        /**
+         * The doel fields the bundles edit directly: its texts, its doeltype,
+         * its planned startdatum and completing it; never its plan, persoon
+         * or hoofddoel.
+         */
+        val DOEL_FIELDS = setOf("titel", "beschrijving", "doeltypeUuid", "startdatum", "status", "resultaat", "einddatum", "toelichtingResultaat")
         val DOEL_STATUSES = setOf("afgerond")
 
         private fun onlyFields(body: JsonNode?, allowed: Set<String>) {

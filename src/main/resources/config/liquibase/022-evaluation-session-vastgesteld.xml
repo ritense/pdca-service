@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Whether an evaluation changed a locked part of its plan (the plan lock):
+  such an evaluation can only be completed, so the change is recorded with
+  the conversation and does not disappear with a cancelled evaluation.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="022-01-evaluation-session-vastgesteld-gewijzigd" author="pdca">
+        <addColumn tableName="evaluation_session">
+            <column name="vastgesteld_gewijzigd" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

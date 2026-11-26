@@ -61,6 +61,11 @@
                 {"method": "GET", "pattern": "/api/management/v1/case/*"},
                 {"method": "POST", "pattern": "/api/v1/document-search"},
                 {"method": "POST", "pattern": "/api/v1/process-document/operation/modify-document-and-start-process"},
+                {"method": "GET", "pattern": "/api/management/v1/case-definition/*/version/*/startable-item"},
+                {"method": "GET", "pattern": "/api/management/v1/case-definition/*/version/*/startable-item/*/version/*/properties"},
+                {"method": "PUT", "pattern": "/api/management/v1/case-definition/*/version/*/startable-item/*/version/*"},
+                {"method": "GET", "pattern": "/api/v1/process-definition/*/start-form"},
+                {"method": "POST", "pattern": "/api/v1/process-link/*/form/submission"},
                 {"method": "GET", "pattern": "/api/v1/admin-settings/accent-colors"}
             ],
             "contractBindings": [
@@ -80,6 +85,9 @@
         "tenantId": "${PDCA_EPISTOLA_TENANT:demo}",
         "apiKey": "${PDCA_EPISTOLA_API_KEY:epk_demo_000000000000000000000000000000000000}",
         "catalogs": ["pdca-documenten"]
+    },
+    "buildingBlocks": {
+        "zips": ["pdca-taak"]
     },
     "systemProcesses": {
         "epistolaPlaceholderConfigurationId": "00000000-0000-4000-8000-0000dca00005",

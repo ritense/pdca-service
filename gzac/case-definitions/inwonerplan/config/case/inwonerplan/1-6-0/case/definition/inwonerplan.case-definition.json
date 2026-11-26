@@ -1,8 +1,0 @@
-{
-    "key": "inwonerplan",
-    "name": "Inwonerplan (PDCA)",
-    "versionTag": "1.6.0",
-    "final": true,
-    "canHaveAssignee": true,
-    "autoAssignTasks": false
-}

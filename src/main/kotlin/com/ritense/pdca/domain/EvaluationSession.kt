@@ -33,7 +33,9 @@ import java.util.UUID
  * plus the contactmoment information below. It ends explicitly: completed
  * (it becomes a contactmoment) or cancelled (nothing is recorded in Open
  * Klant; its changes stay with the cancelled session, the plan changes
- * themselves remain in the registers). Hiding the panel does not touch it.
+ * themselves remain in the registers). One that changed a locked part of
+ * the plan ([vastgesteldGewijzigd]) can only be completed. Hiding the panel
+ * does not touch it.
  */
 @Entity
 @Table(name = "evaluation_session")
@@ -86,7 +88,17 @@ data class EvaluationSession(
 
     /** The contactmoment (klantcontact in Open Klant) this evaluation became on completion. */
     @Column(name = "contactmoment_uuid")
-    var contactmomentUuid: UUID? = null
+    var contactmomentUuid: UUID? = null,
+
+    /**
+     * Whether a locked part of the plan was changed in this evaluation
+     * (ARCHITECTURE §6.7): it can then no longer be cancelled. Set only by
+     * [com.ritense.pdca.repository.EvaluationSessionRepository.markVastgesteldGewijzigd]
+     * (and taken back by `unmarkVastgesteldGewijzigd` when that change is
+     * refused), so saving the session never resets it.
+     */
+    @Column(name = "vastgesteld_gewijzigd", nullable = false, updatable = false)
+    val vastgesteldGewijzigd: Boolean = false
 )
 
 enum class EvaluationSessionStatus { RUNNING, COMPLETED, CANCELLED }

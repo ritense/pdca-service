@@ -15,6 +15,8 @@
  */
 package com.ritense.pdca.service
 
+import com.ritense.pdca.domain.Action
+import com.ritense.pdca.domain.ActionStatus
 import com.ritense.pdca.domain.DoelDetails
 import com.ritense.pdca.domain.InstrumentDetails
 import com.ritense.pdca.domain.PlanDetails
@@ -29,6 +31,7 @@ import com.ritense.pdca.registers.openplan.NewDoel
 import com.ritense.pdca.registers.openplan.OpenPlanGateway
 import com.ritense.pdca.registers.openplan.Plan
 import com.ritense.pdca.registers.openplan.PlanStatusUpdate
+import com.ritense.pdca.repository.ActionRepository
 import com.ritense.pdca.repository.DoelDetailsRepository
 import com.ritense.pdca.repository.InstrumentDetailsRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
@@ -56,6 +59,7 @@ class LifecycleServicesTest {
     private val instrumentDetails = InMemoryRepository(InstrumentDetails::class, "instrumentUuid")
     private val doelDetails = InMemoryRepository(DoelDetails::class, "doelUuid")
     private val planDetails = InMemoryRepository(PlanDetails::class, "planUuid")
+    private val acties = InMemoryRepository(Action::class, "id")
     private val instrumentLifecycle = InstrumentLifecycleService(
         openPlan, instrumentDetails.proxy(InstrumentDetailsRepository::class), doelDetails.proxy(DoelDetailsRepository::class), noOpTransactions()
     )
@@ -69,12 +73,21 @@ class LifecycleServicesTest {
 
     @Nested
     inner class Doelen {
-        private val service = DoelLifecycleService(openPlan, instrumentDetails.proxy(InstrumentDetailsRepository::class), instrumentLifecycle, planOverlayService)
+        private val aanvragen = mock(InstrumentAanvraagService::class.java)
+        private val service = DoelLifecycleService(
+            openPlan, instrumentDetails.proxy(InstrumentDetailsRepository::class), aanvragen, acties.proxy(ActionRepository::class), planOverlayService
+        )
 
         init {
             `when`(openPlan.findDoel(doelUuid)).thenReturn(Doel(uuid = doelUuid, status = "actief", titel = "Werk"))
+            `when`(aanvragen.openVerzoekenVoor(doelUuid)).thenReturn(emptyList())
             doelDetails.rows[doelUuid] = DoelDetails(doelUuid = doelUuid, planUuid = planUuid)
         }
+
+        private fun openVerzoek(titel: String) = InstrumentAanvraagService.OpenVerzoek(
+            objectUrl = null, planUuid = planUuid, doelUuid = doelUuid, productUrn = "urn:pdca:openproduct:producttype:WF",
+            productTitel = titel, aangevraagdOp = null, minutenOpen = null
+        )
 
         @Test
         fun `removing a doel is refused while an instrument dossier of it is open`() {
@@ -83,18 +96,19 @@ class LifecycleServicesTest {
             val fout = assertFailsWith<ResponseStatusException> { service.verwijderen(doelUuid) }
 
             assertEquals(HttpStatus.CONFLICT, fout.statusCode)
-            assertEquals("Sluit eerst de instrumentdossiers af: Jobcoaching", fout.reason)
+            assertEquals("Sluit eerst af wat nog loopt onder dit doel: Jobcoaching (instrumentdossier)", fout.reason)
             verify(openPlan, never()).deleteDoel(anyValue())
         }
 
         @Test
-        fun `aborting a doel is refused while an instrument dossier of it is open`() {
-            `when`(openPlan.listInstrumenten(doelUuid)).thenReturn(listOf(instrument(zaak = dossierZaak)))
+        fun `removing a doel is refused while a verzoek of it waits for its instrument dossier`() {
+            `when`(openPlan.listInstrumenten(doelUuid)).thenReturn(emptyList())
+            `when`(aanvragen.openVerzoekenVoor(doelUuid)).thenReturn(listOf(openVerzoek("Werkfit")))
 
-            val fout = assertFailsWith<ResponseStatusException> { service.afbreken(doelUuid, "Niet meer nodig") }
+            val fout = assertFailsWith<ResponseStatusException> { service.verwijderen(doelUuid) }
 
-            assertEquals("Sluit eerst de instrumentdossiers af: Jobcoaching", fout.reason)
-            verify(openPlan, never()).updateDoelStatus(anyValue(), anyValue())
+            assertEquals("Sluit eerst af wat nog loopt onder dit doel: Werkfit (aanvraag)", fout.reason)
+            verify(openPlan, never()).deleteDoel(anyValue())
         }
 
         @Test
@@ -113,18 +127,57 @@ class LifecycleServicesTest {
         }
 
         @Test
-        fun `aborting a doel cancels its running instruments with the reason, then the doel`() {
-            val lopend = instrument()
-            `when`(openPlan.listInstrumenten(doelUuid)).thenReturn(listOf(lopend, instrument(status = "afgerond")))
-            `when`(openPlan.findInstrument(lopend.uuid)).thenReturn(lopend)
+        fun `aborting a doel is refused while any instrument or verzoek of it still runs`() {
+            `when`(openPlan.listInstrumenten(doelUuid)).thenReturn(
+                listOf(instrument(zaak = dossierZaak), instrument(titel = "Taalcursus"), instrument(status = "afgerond", titel = "Klaar"))
+            )
+            `when`(aanvragen.openVerzoekenVoor(doelUuid)).thenReturn(listOf(openVerzoek("Werkfit")))
 
-            val resultaat = service.afbreken(doelUuid, "Niet meer nodig")
+            val fout = assertFailsWith<ResponseStatusException> { service.afbreken(doelUuid, "Niet meer nodig") }
 
-            assertEquals(1, resultaat.instrumenten)
-            assertEquals("Afgebroken met doel: Niet meer nodig", instrumentDetails.rows[lopend.uuid]!!.afbreekReden)
-            val volgorde = inOrder(openPlan)
-            volgorde.verify(openPlan).closeInstrument(eq(lopend.uuid) ?: lopend.uuid, anyValue())
-            volgorde.verify(openPlan).updateDoelStatus(eq(doelUuid) ?: doelUuid, anyValue())
+            assertEquals(HttpStatus.CONFLICT, fout.statusCode)
+            assertEquals(
+                "Sluit eerst af wat nog loopt onder dit doel: Jobcoaching (instrumentdossier), Taalcursus (instrument), Werkfit (aanvraag)",
+                fout.reason
+            )
+            verify(openPlan, never()).updateDoelStatus(anyValue(), anyValue())
+            verify(openPlan, never()).closeInstrument(anyValue(), anyValue())
+        }
+
+        @Test
+        fun `aborting or removing a doel is refused while the GZAC task of an actie of it is open`() {
+            `when`(openPlan.listInstrumenten(doelUuid)).thenReturn(emptyList())
+            listOf(
+                Action(doelUuid = doelUuid, title = "Werkgever bellen", taakProcessInstanceId = "p1"),
+                Action(doelUuid = doelUuid, title = "Klaar", taakProcessInstanceId = "p2", status = ActionStatus.COMPLETED),
+                Action(doelUuid = doelUuid, title = "Niet meer nodig", taakProcessInstanceId = "p3", status = ActionStatus.CANCELLED),
+                Action(doelUuid = doelUuid, title = "Zonder taak")
+            ).forEach { acties.rows[it.id] = it }
+
+            val afbreken = assertFailsWith<ResponseStatusException> { service.afbreken(doelUuid, "Niet meer nodig") }
+            val verwijderen = assertFailsWith<ResponseStatusException> { service.verwijderen(doelUuid) }
+
+            assertEquals("Sluit eerst af wat nog loopt onder dit doel: Werkgever bellen (taak)", afbreken.reason)
+            assertEquals(afbreken.reason, verwijderen.reason)
+        }
+
+        @Test
+        fun `aborting a doel without running work sets it geannuleerd with the reason`() {
+            `when`(openPlan.listInstrumenten(doelUuid)).thenReturn(listOf(instrument(status = "geannuleerd")))
+
+            service.afbreken(doelUuid, " Niet meer nodig ")
+
+            verify(openPlan).updateDoelStatus(eq(doelUuid) ?: doelUuid, anyValue())
+            verify(openPlan, never()).closeInstrument(anyValue(), anyValue())
+        }
+
+        @Test
+        fun `aborting a doel that is geannuleerd already changes nothing`() {
+            `when`(openPlan.findDoel(doelUuid)).thenReturn(Doel(uuid = doelUuid, status = "geannuleerd", titel = "Werk"))
+
+            service.afbreken(doelUuid, "Niet meer nodig")
+
+            verify(openPlan, never()).updateDoelStatus(anyValue(), anyValue())
         }
     }
 
@@ -176,7 +229,8 @@ class LifecycleServicesTest {
     inner class Plannen {
         private val instrumentAanvraagService = mock(InstrumentAanvraagService::class.java)
         private val service = PlanLifecycleService(
-            openPlan, planDetails.proxy(PlanDetailsRepository::class), doelDetails.proxy(DoelDetailsRepository::class), instrumentAanvraagService
+            openPlan, planDetails.proxy(PlanDetailsRepository::class), doelDetails.proxy(DoelDetailsRepository::class), instrumentAanvraagService,
+            acties.proxy(ActionRepository::class)
         )
         private val persoonUuid = UUID.randomUUID()
         private val werken = DoelType(UUID.randomUUID(), "Werken", listOf(DoelCategorie(naam = "Hoofddoel")))

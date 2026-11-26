@@ -74,18 +74,21 @@ database for the overlay: only what the registers do not model.
    objects or carries a rule is a backend use case; the browser writes only
    the single-object edits the access policy allows (§9.2).
 6. **One owner per lifecycle.** An instrument with an instrument dossier is
-   ended by that dossier only; a subdoel is started by the backend rule; the
+   ended by that dossier only; an actie with a GZAC task is completed by
+   that task only (§6.8); a subdoel is started by the backend rule; the
    plan's hoofddoel and status live in Open Plan only (§6.3).
 7. **GZAC dossiers drive processes.** Plan = plan dossier (1:1, created
    together, §6.1); every requested product runs in its own instrument
-   dossier (§6.2); a document is made by a GZAC system process the app
+   dossier (§6.2); every actie is a task of a building block on the plan
+   dossier (§6.8); a document is made by a GZAC system process the app
    starts on the plan dossier (§6.6). The app runs no process of its own.
 8. **Trust is explicit**: a request is signed by GZAC, a user's call through
    `/data`, or a public file; everything else is refused (§4).
 9. **No outbound HTTP inside a database transaction; every multi-step use
    case is safe to repeat** (§7).
-10. **Configuration as code, without environment values**: case definitions
-    and system processes are versioned zips in `gzac/`, the document
+10. **Configuration as code, without environment values**: case
+    definitions, building blocks and system processes are versioned zips
+    in `gzac/`, the document
     templates an Epistola catalog; configuration UUIDs and objecttype URLs
     are resolved at import or read from the registers (§12).
 
@@ -143,8 +146,8 @@ flowchart LR
 | `plugin/` | The URL-app contract towards GZAC: manifest and host API (`PluginHostController`), bundle files (`BundleController`), pushed configurations (`ConfigurationStore`), the active configuration (`GzacAccess`), plugin actions (`PluginActionController`) and the `/data` entry (`PluginDataController`) |
 | `registers/` | The register descriptions (`Register`), the contract transport (`RegisterContractRequestFactory`) with its limiter (`ContractCallLimiter`), the pager (`RegisterPager`), the error mapping (`RegisterException`), the typed gateways per register (`openplan/`, `openproduct/`, `openklant/`, `objecten/` on `RegisterGateway`), the register proxy (`RegisterProxyController`) and the display-only stubs (`RegisterStubController`, `StubRegisterService`) |
 | `repository/` | Spring Data repositories, including the atomic reserve/claim of `PlanIntakeRepository` |
-| `security/` | The trust boundary (§4): `HostSignatureVerifier`/`HostSignatureFilter`, `GzacInstances`, `UserVerifier`, `PdcaUser`, `DataRateLimiter`, `DataAccessPolicy`, `PlanScope`, `DataDispatch` |
-| `service/` | The use cases: `PlanIntakeService` (plan from intake) and `IntakeService` (prefill), `DossierLinkService`, `InstrumentAanvraagService` (verzoeken) and `InstrumentActionService` (plugin actions), `PlanLifecycleService`, `DoelLifecycleService`, `InstrumentLifecycleService`, `PlanOverlayService`, `ContactmomentService` and `KlantcontactService`, `EvaluationSessionService`, `DocumentAanvraagService` (document requests and their plugin actions) and `DocumentGegevensService` (the data snapshot of a document), `BetrokkeneService`, `ActionService`, `PhaseConfigService`, and `GzacClient` (all GZAC calls) |
+| `security/` | The trust boundary (§4): `HostSignatureVerifier`/`HostSignatureFilter`, `GzacInstances`, `UserVerifier`, `PdcaUser`, `DataRateLimiter`, `DataAccessPolicy`, `PlanScope`, `PlanSlot` (the plan lock, §6.7), `DataDispatch` |
+| `service/` | The use cases: `PlanIntakeService` (plan from intake) and `IntakeService` (prefill), `DossierLinkService`, `InstrumentAanvraagService` (verzoeken) and `InstrumentActionService` (plugin actions), `PlanLifecycleService`, `DoelLifecycleService`, `InstrumentLifecycleService`, `PlanOverlayService`, `ContactmomentService` and `KlantcontactService`, `EvaluationSessionService`, `DocumentAanvraagService` (document requests and their plugin actions) and `DocumentGegevensService` (the data snapshot of a document), `BetrokkeneService`, `ActionService` and `ActieTaakService` (an actie as GZAC task), `PhaseConfigService`, and `GzacClient` (all GZAC calls) |
 | `web/rest/` | REST resources under `/api/v1/pdca/*` and `/api/v1/admin/*` (§9) and `ErrorResponseAdvice` (§7) |
 
 Controllers only map HTTP to service calls; the rules live in the services.
@@ -236,10 +239,12 @@ Inside the app:
   in `gzac/` (§12) run the intake, the plan dossier and the instrument
   dossier, which calls back with the plugin actions `aanmaak-instrument` and
   `update-instrument`; GZAC's Verzoek plugin turns a verzoek into an
-  instrument dossier (§6.2). The global system process `pdca-document`
-  (§12), started by the app on a plan dossier, makes a document with GZAC's
-  Epistola plugin and calls back with `document-aanvraag-ophalen` and
-  `document-gereed` (§6.6).
+  instrument dossier (§6.2). The building block `pdca-taak` (§12), started
+  by the app on a plan dossier for every new actie, is its task and calls
+  back with `actie-taak-gestart` and `actie-gereed` (§6.8). The global
+  system process `pdca-document` (§12), started by the app on a plan
+  dossier, makes a document with GZAC's Epistola plugin and calls back with
+  `document-aanvraag-ophalen` and `document-gereed` (§6.6).
 - **Configuration properties.** The PDCA configuration in GZAC has one
   property of its own (manifest `configurationSchema`, pushed with the
   configuration, §4.3): `documentProces` ("Documentproces"), the key of the
@@ -258,19 +263,28 @@ Inside the app:
   | `GET /api/management/v1/case/*` | the dossier content when `/api/v1/document/*` omits it (GZAC without `valtimo.includeDocumentContentInResponse`) |
   | `POST /api/v1/document-search` | find the plan dossier of a plan (case type + `planId`) before creating one |
   | `POST /api/v1/process-document/operation/modify-document-and-start-process` | start the document process on the plan dossier (§6.6) |
+  | `GET /api/management/v1/case-definition/*/version/*/startable-item` | the task building block a plan case type links, with its process definition (§6.8) |
+  | `GET /api/management/v1/case-definition/*/version/*/startable-item/*/version/*/properties` | that building-block link's mappings |
+  | `PUT /api/management/v1/case-definition/*/version/*/startable-item/*/version/*` | map the PDCA plugin to the active configuration on that link |
+  | `GET /api/v1/process-definition/*/start-form` | the building block's start-form link |
+  | `POST /api/v1/process-link/*/form/submission` | start the building block on the plan dossier through its start form |
 
   The dev values of the local GZAC setup (`gzac/dev-setup/dev-values.json`)
   repeat these grants and the configuration properties;
   `GzacConfigurationTest` fails when its grants, properties, contract
   bindings or register plugin properties and capabilities differ from what
-  the app and the plugins declare, and when the case definitions or system
-  processes drift from the manifest: a process link's action, properties or
-  result mapping not declared (or the action not handled by
-  `PluginActionController`), a tab or process link naming another plugin,
-  plugin version, configuration or an undeclared bundle, a PDCA action of a
-  system process not run as an asynchronous job with retries, a system
-  process zip that differs from its source, or a case definition whose
-  directory, `versionTag` and BPMN version tag disagree on its version.
+  the app and the plugins declare, and when the case definitions, building
+  blocks or system processes drift from the manifest: a process link's
+  action, properties or result mapping not declared (or the action not
+  handled by `PluginActionController`), a tab or process link naming
+  another plugin, plugin version, configuration or an undeclared bundle, a
+  building block's PDCA link naming a configuration, a PDCA action of a
+  system process not run as an asynchronous job with retries, a building
+  block or system process zip that differs from its source, a case
+  definition or building block whose directory, `versionTag` and BPMN
+  version tag disagree on its version, or a plan case type whose link to
+  the task building block or `/bouwblokStart` does not carry the start
+  data the app submits.
 - **Manifest versioning.** The manifest keeps version `0.2.0` when its
   footprint changes: GZAC pins a hash of the manifest and asks the
   administrator to review and accept the change, after which the existing
@@ -391,7 +405,9 @@ while it is in use.
    path of plain segments (no `.`/`..`, nothing encoded) and only that
    route's query parameters. No match is a 403. The route resolves to a
    requirement — any user, admin, or "can read these dossiers"
-   (`PlanScope`) — which `UserVerifier` checks (§4.5).
+   (`PlanScope`) — which `UserVerifier` checks (§4.5). A route that changes
+   a locked part of a plan names that plan, and `PlanSlot` refuses the call
+   (409) unless the plan is in concept or the user evaluates it (§6.7).
 6. The controller forwards the call inside the servlet container to its
    path, with the call's method and JSON body and none of the browser's
    headers, as the verified user (`PdcaUserAuthentication`, read by handlers
@@ -449,6 +465,8 @@ The complete route table is in §9.2. In short:
 - **Register proxy** — only the reads the bundles make and three
   field-checked single-object edits; every write with a business rule is a
   backend use case without proxy route.
+- **Plan lock** — on top of plan access, the locked parts of a plan past
+  its concept status change only in the user's own evaluation of it (§6.7).
 
 ### 4.6 Browser headers
 
@@ -497,7 +515,7 @@ signature or GZAC's answers about a user.
 | Uitvoeringsstatus, hours, effectiveness, notes, abort reason of an instrument | overlay `InstrumentDetails` | |
 | Evaluation type, planned date, deelnemers, actiepunten, originating evaluation of a contactmoment | overlay `ContactmomentDetails` | keyed by klantcontact uuid |
 | Betrokkenen and which one is procesbegeleider | overlay `InvolvedParty` | procesbegeleider mirrored to Open Plan `plan.medewerker` |
-| Acties | overlay `Action` | |
+| Acties | overlay `Action` | each one a task of the building block `pdca-taak` on the plan dossier, which ends it (§6.8) |
 | Evaluation sessions and the plan changes recorded in them | overlay `EvaluationSession`, `EvaluationChange` | |
 | Generated documents (the evaluatieverslag PDF) and their requests | overlay `DocumentAanvraag` | the data snapshot only while the request is open (§6.6) |
 | Document templates (catalog `pdca-documenten`, template `evaluatieverslag`) | Epistola Suite | authored in `gzac/epistola/` (§12) |
@@ -518,7 +536,7 @@ the same words everywhere (`frontend/src/shared/labels.ts`):
 | Subdoel | register `actief` + overlay GEPLAND | `actief` + GESTART | `afgerond` (resultaat `gefaald`: *Niet behaald*) | `geannuleerd` |
 | Hoofddoel | `actief` + overlay GEPLAND | `actief` otherwise | `afgerond` | `geannuleerd` |
 | Instrument | `actief` + overlay GEPLAND | `actief` otherwise (also without overlay row) | `afgerond` | `geannuleerd` |
-| Actie | PLANNED | IN_PROGRESS | COMPLETED | — (plus *Ter beoordeling* PENDING_REVIEW, *Afgekeurd* REJECTED) |
+| Actie | PLANNED | IN_PROGRESS | COMPLETED | — (plus *Ter beoordeling* PENDING_REVIEW, *Afgekeurd* REJECTED, and *Vervallen* CANCELLED for a task ended as not needed) |
 | Plan | — (the configured display status while `actief`) | — | `afgerond` | `geannuleerd` |
 
 A contactmoment is *Afgerond* when `indicatieContactGelukt` is true,
@@ -572,8 +590,9 @@ as done**:
 1. **Validate first.** Everything that can be checked is checked before the
    first write, and every problem is reported in one 400: doeltypen,
    statuses and resultaten, dates (a subdoel's beoogde einddatum against
-   the rules of §6.3, except for an afgerond subdoel; form.io date values
-   are read by their date part), lengths (titel ≤ 255, toelichtingen and
+   the rules of §6.3, except for an afgerond subdoel, and its own
+   startdatum not after it — without one a subdoel starts on the plan's
+   startdatum; form.io date values are read by their date part), lengths (titel ≤ 255, toelichtingen and
    evaluation notes ≤ 1000, the registers' limits), evaluation types,
    positie and display status against the plan case type, betrokkenen, the
    subject and the one-active-plan rule (plans of this intake excepted).
@@ -766,13 +785,27 @@ registers itself.
 - **Doel** (`DoelLifecycleService`): remove (`DELETE /doelen/{uuid}`: its
   own instruments — those under no other doel — and their overlay rows,
   then the doel, its overlay row and acties) or abort with a reason
-  (`POST /doelen/{uuid}/afbreken`: its actief instruments geannuleerd with
-  "Afgebroken met doel: <reden>", then the doel geannuleerd). Both refuse
-  with 409 *"Sluit eerst de instrumentdossiers af: …"* while one of its
-  instruments is actief and dossier-managed. Instruments go first and the
-  doel last, so a retry completes an interrupted cascade. Completing a
-  subdoel and editing its toelichting are single-object proxy edits; its
-  doeltype (and so its title) is fixed once it exists.
+  (`POST /doelen/{uuid}/afbreken`: the doel geannuleerd, the reason as
+  `toelichtingResultaat`). Neither leaves work running without its doel,
+  so the inwoner has no loose instruments: aborting is refused (409
+  *"Sluit eerst af wat nog loopt onder dit doel: …"*, naming each item)
+  while any instrument of the doel is actief — whether its instrument
+  dossier or the plan page manages it —, a verzoek of it waits for its
+  instrument (§6.2) or an actie of it has an open GZAC task (§6.8);
+  removing is refused the same way for an actief dossier-managed
+  instrument, an open verzoek or an open task. Nothing is cancelled along
+  with the doel: what runs is ended first, where it is managed. Removal
+  takes the instruments first and the doel last, so a retry completes an
+  interrupted removal. When the verzoeken cannot be read the refusal
+  stands (fail closed). Completing a subdoel and editing its toelichting
+  are single-object proxy edits; its doeltype (and so its title) is fixed
+  once it exists.
+- **Startdatum of a subdoel** (Open Plan's `doel.startdatum`, required):
+  when work on the subdoel is planned to start — today unless chosen
+  otherwise when it is added, the date the intake gives it, and editable
+  with the subdoel (proxy `PATCH doel`) — not after its beoogde einddatum
+  (checked by the forms and the intake). Starting the subdoel leaves it as
+  it is; the overlay's uitvoeringsstatus records that it started.
 - **Beoogde einddatum of a subdoel** (`DoelDetails.streefEinddatum`,
   optional): the order in which the subdoelen come up. Open Plan's
   `doel.einddatum` is the actual end date, so the target lives in the
@@ -795,7 +828,8 @@ registers itself.
   optional resp. required) sets the register status with today as
   `einddatum` and the text as `redenEinde`. `GET /plannen/{uuid}/afsluitcheck`
   reports what is still open: actief subdoelen, actief instruments the
-  plan page manages and open verzoeken only warn — closing leaves them —
+  plan page manages, open verzoeken and open actie tasks only warn —
+  closing leaves them —
   but an actief dossier-managed instrument blocks closing (409): its
   dossier has to end it first. A verzoek whose dossier only appears after
   the plan closed fails in `aanmaak-instrument`.
@@ -838,8 +872,10 @@ filtered on the plan's onderwerpobject.
 An evaluation is the set of changes made to the plan while it runs, plus the
 contactmoment information (type, deelnemers, gespreksverslag). Changes are
 made in the plan tabs as always and take effect immediately: an evaluation
-is no transaction and cannot be rolled back. It runs in GZAC's app-wide side
-panel (bundle `evaluation`, offered with `offerPanel`), which survives
+is no transaction and cannot be rolled back. Once the plan has left its
+concept status, its substance (subdoelen, their texts and dates,
+instrument requests) changes only in an evaluation (§6.7). It runs in
+GZAC's app-wide side panel (bundle `evaluation`, offered with `offerPanel`), which survives
 navigation; closing the panel only hides it.
 
 - **Session = user + plan** (`EvaluationSessionService`). The session
@@ -870,7 +906,11 @@ navigation; closing the panel only hides it.
   being made. Document generation never fails the completion.
   **Cancel** (`…/current/cancel`) writes nothing to Open Klant; the recorded
   changes stay with the cancelled session, which is never shown, and the
-  plan changes themselves stay.
+  plan changes themselves stay. A session that changed a locked part of the
+  plan (`vastgesteldGewijzigd`, §6.7) is not cancelled (409 *"In deze
+  evaluatie zijn vastgestelde delen van het plan gewijzigd; rond de
+  evaluatie af, …"*); the panel then offers only completing it and says
+  why, following the flag with its poll.
 - **History** — `GET /evaluaties?planUuid=` lists completed evaluations with
   their changes and reasons; running ones never appear there. The Evaluaties
   tab shows each one's evaluatieverslag with it.
@@ -982,6 +1022,145 @@ sequenceDiagram
   whose body the app accepts up to 1 MB (§4.2), and in the `/data` response
   of `…/inhoud`; that bounds a document to roughly 750 KB.
 
+### 6.7 Plan lock
+
+Once a plan is established, its substance changes only in an evaluation, so
+the inwoner is informed of a change and the evaluation records it with its
+reason (§6.5). While the plan is still in concept anything goes.
+
+- **Concept** is the first display status of the plan's case type
+  (`planStatussen`, §10.2; the status plan creation gives a new plan),
+  "Concept" for a case type without display statuses; a plan without
+  display status is in concept.
+- **Locked parts**: adding, removing, aborting and completing a subdoel
+  (proxy `POST`/`PATCH doel`, `DELETE /doelen/{uuid}`,
+  `POST /doelen/{uuid}/afbreken`), a subdoel's toelichting, startdatum and
+  beoogde einddatum (`PATCH doel`, `streefEinddatum` in
+  `PUT /doeldetails`), the
+  plan's toelichting bij het hoofddoel and beoogde einddatum (proxy
+  `PATCH plan`, `streefEinddatum` in `PUT /plandetails`), the hoofddoel
+  (`PUT /plannen/{uuid}/hoofddoel`) and instrument requests
+  (`POST /instrumenten/start`). Moving the display status back to concept,
+  or clearing it (`weergaveStatus: null`), is locked too, else the lock
+  would be one step away. Free: voortgang and
+  notes, starting a subdoel, instrument steps and registrations, acties,
+  betrokkenen, contactmomenten, other display statuses, and closing or
+  reopening the plan.
+- **Who may change them**: a user with a running evaluation session on
+  that plan (§6.5) — sessions are per user, so a colleague's evaluation
+  unlocks nothing.
+- **Enforcement**: each locked route of `DataAccessPolicy` names the plan
+  it changes (`slot`, from its path or body), and `/data` checks it with
+  `PlanSlot` after authorization: 409 *"Dit deel van het plan is
+  vastgesteld en verandert alleen tijdens een evaluatie; …"*. One place
+  covers the use cases and the register proxy alike. Plan creation and the
+  plugin actions do not pass `/data` and are not locked: an instrument
+  dossier still ends its instrument.
+- **Such an evaluation is completed.** When `PlanSlot` lets a locked
+  change through for an evaluation, it first records that on the session
+  (`vastgesteldGewijzigd`, set only by a conditional update while the
+  session runs); a session that has just ended refuses the change after
+  all. That evaluation can no longer be cancelled (§6.5): completing it
+  records the change with the conversation and the inwoner, cancelling
+  would leave it without either. Cancelling is a conditional update as
+  well, so a locked change let through at the same moment either keeps the
+  session running or is refused. When the handler then refuses the change
+  (4xx), nothing changed and `/data` takes the record back, unless an
+  earlier change had made it already; a 5xx keeps it, as part of the
+  change may have been made. Two locked changes of one evaluation at the
+  same moment of which the recording one is refused also take back the
+  other's record.
+- **The tabs** apply the same rule (`shared/planSlot.tsx`) and disable the
+  locked actions with the hint *"Wijzig je tijdens een evaluatie"* (§13.3).
+
+### 6.8 Acties as GZAC tasks
+
+Every actie added to a plan — on the Doelen tab or from an actiepunt of an
+evaluation, both `POST /acties` — becomes a task in GZAC: the building block
+`pdca-taak` (§12) on the plan dossier, whose one user task carries the
+actie's title, description and deadline. It shows in the dossier's task
+list and GZAC's task sidebar and lists, with the deadline as its due date,
+and GZAC's task functions apply to it. The task owns the actie's status
+(`ActieTaakService`, `ActionService`):
+
+```mermaid
+sequenceDiagram
+    participant UI as Doelen tab / Evaluaties tab
+    participant APP as pdca-app
+    participant G as GZAC (plan dossier, building block pdca-taak)
+
+    UI->>APP: POST /api/v1/pdca/acties
+    APP->>APP: save the actie
+    APP->>G: startable items of the plan case type (pdca-taak, process definition)
+    APP->>G: link properties; map external-plugin:pdca@0.2.0 if missing
+    APP->>G: start-form link, then submit it on the plan dossier (bouwblokStart)
+    G->>APP: actie-taak-gestart (synchronous, records the process on the actie)
+    G-->>APP: submission answered
+    APP-->>UI: 201 actie (taakProcessInstanceId)
+    Note over G: user task "<titel>", due <deadline>, form pdca-taak-afronden
+    G->>APP: actie-gereed {actieId, uitkomst, resultaat} (async, retried)
+    APP->>APP: actie COMPLETED (uitgevoerd) or CANCELLED (vervallen)
+```
+
+- **The building block is a task of its own.** Its start data — `titel`,
+  `omschrijving`, `deadline` — lands in its document, and the user task
+  takes its name and due date from there (a deadline is a date or a
+  date-time; an empty one sets none). Only when the start data names an
+  actie (`actieId`) does it report to the plan: a gateway runs
+  `actie-taak-gestart` before the task and `actie-gereed` after it.
+  Without one it is an ordinary task with a title given at its start; the
+  plan case types do not offer it to users (`startableByUser` false), so
+  there it is always the task of an actie.
+- **Starting.** After saving the actie, outside any transaction, the app
+  looks up the task building block among the plan case type's startable
+  items (also those not startable by users) and its main process
+  definition. GZAC's case import keeps a building-block link's plugin
+  configuration mappings as they are in the zip, so the zips ship them
+  empty and the app maps `external-plugin:pdca@0.2.0` to the active
+  configuration on the link when it is not (resending the link's input and
+  output mappings, which GZAC replaces as a whole). It then submits the
+  building block's start form on the plan dossier — the only way to start a
+  building block on a dossier; GZAC's start-by-key endpoints cannot find a
+  building block's process — with `bouwblokStart` = `actieId`, `titel`,
+  `omschrijving`, `deadline` (`yyyy-MM-dd`), `planUuid`, `doelUuid`, every
+  field also when empty: the form writes them to the plan dossier document,
+  which keeps what the previous start left there. The case type's
+  building-block link copies them into the building block's own document.
+  The title holds at most 255 characters, the length of a GZAC task name
+  (400 otherwise).
+- **No actie without its task.** The submission answers no process
+  instance, so the building block's first service task,
+  `actie-taak-gestart`, runs synchronously within it and records its
+  process on the actie (`taakProcessInstanceId`, unique). When GZAC refuses
+  the start (an error answer of its own, 4xx or 500, or errors in its
+  answer: it rolled the start back), the actie is removed again and the
+  failure stands. When the outcome is unknown (no answer, or 502/503/504
+  from a gateway in front of GZAC, which may still be starting), or
+  anything before the start fails (no plan dossier: 409; the case type
+  does not link the building block, a missing grant: 502), the actie is
+  kept if its process reported itself and removed otherwise. That removal
+  is conditional on no process being recorded, so it and the report
+  exclude each other: a report that comes in after the removal finds no
+  actie, `actie-taak-gestart` fails and GZAC rolls that start back, so no
+  task is left without its actie.
+- **Ending.** The user completes the task with its form
+  (`pdca-taak-afronden`): an uitkomst — *uitgevoerd*, or *vervallen* when
+  the task is no longer needed — and a required resultaat or reason. The
+  asynchronous `actie-gereed` (retried like the instrument dossier's
+  actions, §7.4) sets the actie COMPLETED or CANCELLED with that resultaat
+  and today as end date. It is taken only from the process recorded on the
+  actie; an actie that has ended already stays as it is.
+- **One owner.** An actie with a task keeps its status, result and what
+  its task shows: `PATCH /acties/{id}` changing its title, description,
+  deadline, status, end date or result, and `…/approve|reject`, are refused
+  (409) — GZAC cannot rename a task. Its uitvoerder and priority stay
+  editable. The Doelen tab shows such an actie's status with *Taak in
+  GZAC* while the task is open and no status buttons (§13.3). An actie from
+  before has no task and keeps the plan page's status steps.
+- **No loose tasks.** A subdoel with an open actie task cannot be aborted or
+  removed (§6.3); ending the task as *vervallen* clears the way. The
+  close-plan check warns about open tasks.
+
 ## 7. Failure and idempotency model
 
 ### 7.1 Error responses
@@ -1050,7 +1229,8 @@ sequenceDiagram
   | Use case | How it resumes |
   |---|---|
   | Plan from intake (§6.1) | validate-then-write, reservation with lease, resume per step, GEREED only when complete |
-  | Doel removal/abort (§6.3) | instruments first, doel last, each step skips what is done |
+  | Doel removal (§6.3) | instruments first, doel last, each step skips what is done |
+  | Actie as GZAC task (§6.8) | the actie is saved first; a start GZAC refuses removes it again, a start with unknown outcome keeps it when its process reported itself and removes it otherwise, conditionally, so a later report is refused and GZAC rolls that start back; `actie-taak-gestart` and `actie-gereed` take only the actie's own process and leave an actie that has ended alone |
   | Hoofddoel switch (§6.3) | reuse the new hoofddoel of an interrupted switch, then close the old ones and re-point |
   | Instrument request (§6.2) | 409 while a verzoek for that doel and product is open |
   | `aanmaak-instrument` | returns the instrument this dossier already created |
@@ -1065,7 +1245,7 @@ non-2xx answer into a failed job carrying `errorCode` and `errorMessage`.
 | Answer | When | What GZAC does |
 |---|---|---|
 | 200 `{status: "completed", result?, variables?}` | done, also a retry that finds the work done | continues; `result` (declared outputs, `aanmaak-instrument`) goes through the result mapping, `variables` (`document-aanvraag-ophalen`) become process variables |
-| 422 `{status: "error", errorCode, errorMessage}` | a refusal a retry does not change: `DOEL_NIET_ACTIEF`, `PLAN_NIET_ACTIEF`, `INSTRUMENT_NIET_ACTIEF`, `DOEL_ONBEKEND`, `INSTRUMENT_ONBEKEND`, invalid properties, `REGISTER_WEIGERT`, `GEWEIGERD`, `CONFIGURATIE_NIET_ACTIEF`; for the document actions `GEEN_AANVRAAG` (no request for this process, or it already ended), `AANVRAAG_HOORT_NIET_BIJ_PROCES` (the request belongs to another process or dossier), `AANVRAAGID_ONTBREEKT`, `AANVRAAG_ONBEKEND`, `UITKOMST_ONGELDIG`, `INHOUD_ONTBREEKT`, `INHOUD_ONGELDIG` (not base64 or not a PDF) | the job fails; after its retries an incident |
+| 422 `{status: "error", errorCode, errorMessage}` | a refusal a retry does not change: `DOEL_NIET_ACTIEF`, `PLAN_NIET_ACTIEF`, `INSTRUMENT_NIET_ACTIEF`, `DOEL_ONBEKEND`, `INSTRUMENT_ONBEKEND`, invalid properties, `REGISTER_WEIGERT`, `GEWEIGERD`, `CONFIGURATIE_NIET_ACTIEF`; for the document actions `GEEN_AANVRAAG` (no request for this process, or it already ended), `AANVRAAG_HOORT_NIET_BIJ_PROCES` (the request belongs to another process or dossier), `AANVRAAGID_ONTBREEKT`, `AANVRAAG_ONBEKEND`, `UITKOMST_ONGELDIG`, `INHOUD_ONTBREEKT`, `INHOUD_ONGELDIG` (not base64 or not a PDF); for the actie actions `GEEN_PROCES`, `ACTIEID_ONTBREEKT`, `ACTIE_ONBEKEND` (the actie is gone), `ACTIE_HEEFT_AL_EEN_TAAK` (another process carries it), `ACTIE_HOORT_NIET_BIJ_PROCES`, `UITKOMST_ONGELDIG` (neither uitgevoerd nor vervallen) | the job fails; after its retries an incident |
 | 503 `{status: "error", errorCode, errorMessage}` | temporary: `REGISTER_ONBEREIKBAAR`, `DOSSIER_ONBEREIKBAAR`, `TIJDELIJK_NIET_BESCHIKBAAR` (also while no configuration is active) | the job is retried; after its retries an incident an administrator retries |
 
 The instrument dossier runs every plugin action — `aanmaak-instrument` and
@@ -1079,7 +1259,11 @@ administrator retries once the cause is fixed; both actions are safe to
 repeat. The system process `pdca-document` runs its PDCA tasks the same way
 (`asyncBefore`, `R5/PT1M`); an incident there leaves the request open,
 which the document listing reports as not made in time after ten minutes
-(§6.6).
+(§6.6). The building block `pdca-taak` runs `actie-gereed` the same way, so
+completing the task always succeeds for the user; its
+`actie-taak-gestart` runs synchronously within the app's start on purpose
+(§6.8), so a failure there fails that start instead of becoming an
+incident.
 
 ### 7.5 Frontend
 
@@ -1095,6 +1279,15 @@ state; a failure is never turned into an empty list (§13.2).
   exist on Valtimo's `feature/external-plugin-contracts` branch and are not
   in a released Valtimo version yet. Without them the app starts, but every
   register call and every `/data` call fails (503).
+- **Building block tasks and GZAC's Epistola plugin (pending upstream).**
+  Completing the task of an actie (§6.8) — like any building block's user
+  task — fails (500, the task stays open) while GZAC runs an Epistola
+  plugin whose letter-composer write-back looks up the active case
+  definition of the task's document on every task completion: a building
+  block document has none, and the failed lookup inside a transactional
+  service rolls the task submission back although the plugin catches it.
+  Seen with Epistola plugin 0.21.0; it needs a plugin version that skips
+  documents without case definition. Starting the task is not affected.
 - **Iframe navigation (optional, pending upstream).** Navigating GZAC from a
   bundle (the instrument's Dossier button, the jump after plan creation)
   needs a `navigate` handler in GZAC's frontend that is not part of Valtimo
@@ -1150,7 +1343,7 @@ state; a failure is never turned into an empty list (§13.2).
 | POST | `/api/host/configurations/{configId}` | configuration push (§4.3) | GZAC-signed, allowed base URL |
 | DELETE | `/api/host/configurations/{configId}` | remove a configuration | GZAC-signed |
 | PUT | `/api/host/gzac-instances` | announce frontend origins | GZAC-signed, allowed base URL |
-| POST | `/plugins/pdca/{version}/actions/{actionKey}` | `aanmaak-instrument`, `update-instrument` (§6.2); `document-aanvraag-ophalen`, `document-gereed` (§6.6) | GZAC-signed, active configuration |
+| POST | `/plugins/pdca/{version}/actions/{actionKey}` | `aanmaak-instrument`, `update-instrument` (§6.2); `document-aanvraag-ophalen`, `document-gereed` (§6.6); `actie-taak-gestart`, `actie-gereed` (§6.8) | GZAC-signed, active configuration |
 | POST | `/plugins/pdca/{version}/data` | the bundles' only API entry (§4.4) | user token via GZAC's frontend |
 
 ### 9.2 Routes reachable through `/data`
@@ -1167,10 +1360,10 @@ path, query parameters) is a 403. *Caller*: **user** = any verified user;
 | Method | Path | Purpose | Caller |
 |---|---|---|---|
 | GET | `…/accent-colors` | GZAC's accent colour ramp for the bundles (§3.2) | any user |
-| PUT | `…/plandetails/{planUuid}` | edit the plan's overlay row (partial; 404 without row) | plan |
+| PUT | `…/plandetails/{planUuid}` | edit the plan's overlay row (partial; 404 without row); `streefEinddatum`, and a display status back to concept or cleared, locked (§6.7) | plan |
 | GET | `…/voortgangstatussen[?planUuid]` | voortgangsstatussen of the plan's case type; without plan the standard list | user / plan |
 | GET | `…/doeldetails?planUuid` | overlay rows of the plan's doelen | plan |
-| PUT | `…/doeldetails/{doelUuid}` | create or partially update a doel's row | plan (of the doel and body `planUuid`) |
+| PUT | `…/doeldetails/{doelUuid}` | create or partially update a doel's row; `streefEinddatum` locked (§6.7) | plan (of the doel and body `planUuid`) |
 | GET | `…/instrumentdetails?planUuid` | overlay rows of the plan's instruments | plan |
 | PUT | `…/instrumentdetails/{instrumentUuid}` | create or partially update an instrument's row | plan (of the instrument and body `planUuid`) |
 | GET | `…/contactmomentdetails?planUuid` | overlay rows of the plan's contactmomenten | plan |
@@ -1182,9 +1375,9 @@ path, query parameters) is a 403. *Caller*: **user** = any verified user;
 | GET | `…/documenten/{id}/inhoud` | a finished document, base64 (404 until GEREED) | plan (of the request) |
 | POST | `…/documenten` | make an evaluatieverslag (again) from the current data, or the request still being made; 422 when document generation is off | plan (of the evaluation session in body `bronUuid`) |
 | GET | `…/acties?planUuid` | acties of the plan | plan |
-| POST | `…/acties` | create an actie under a doel; an `instrumentUuid` it supports must be an instrument of that doel (400 otherwise) | plan (of body `doelUuid`) |
-| PATCH | `…/acties/{id}` | edit an actie; status only forward up to PENDING_REVIEW (409 otherwise) | plan |
-| POST | `…/acties/{id}/approve`, `…/acties/{id}/reject` | leave PENDING_REVIEW | plan |
+| POST | `…/acties` | create an actie under a doel and start its GZAC task (§6.8); an `instrumentUuid` it supports must be an instrument of that doel, the title at most 255 characters (400 otherwise) | plan (of body `doelUuid`) |
+| PATCH | `…/acties/{id}` | edit an actie; status only forward up to PENDING_REVIEW; for an actie with a GZAC task only uitvoerder, priority and start date (409 otherwise) | plan |
+| POST | `…/acties/{id}/approve`, `…/acties/{id}/reject` | leave PENDING_REVIEW; 409 for an actie with a GZAC task | plan |
 | GET | `…/betrokkenen?planUuid` | betrokkenen of the plan | plan |
 | POST | `…/betrokkenen` | add a betrokkene (primary = procesbegeleider) | plan (body `planUuid`) |
 | PUT | `…/betrokkenen/{id}/procesbegeleider` | make it the procesbegeleider | plan |
@@ -1192,12 +1385,12 @@ path, query parameters) is a 403. *Caller*: **user** = any verified user;
 | GET | `…/dossiers/{documentId}/plan` | the plan of a plan dossier (404: none) | dossier |
 | GET | `…/dossiers/{documentId}/plan-prefill` | create-plan prefill from an intake dossier | dossier |
 | POST | `…/plan-intake` | create plan + plan dossier from an intake (§6.1) | dossier (body `documentId`) |
-| POST | `…/instrumenten/start` | file a verzoek for a doel and producttype (202) | plan (of body `doelUuid`) |
+| POST | `…/instrumenten/start` | file a verzoek for a doel and producttype (202); locked (§6.7) | plan (of body `doelUuid`) |
 | GET | `…/instrumenten/verzoeken?planUuid` | the plan's open verzoeken | plan |
 | POST | `…/instrumenten/{uuid}/starten`, `…/afronden`, `…/afbreken` | instrument lifecycle (§6.3) | plan (of the instrument) |
-| DELETE | `…/doelen/{uuid}` | remove a doel with its instruments | plan (of the doel) |
-| POST | `…/doelen/{uuid}/afbreken` | abort a doel with its instruments | plan (of the doel) |
-| PUT | `…/plannen/{uuid}/hoofddoel` | switch the hoofddoel | plan |
+| DELETE | `…/doelen/{uuid}` | remove a doel with its instruments; 409 while something of it still runs (§6.3); locked (§6.7) | plan (of the doel) |
+| POST | `…/doelen/{uuid}/afbreken` | abort a doel; 409 while something under it still runs (§6.3); locked (§6.7) | plan (of the doel) |
+| PUT | `…/plannen/{uuid}/hoofddoel` | switch the hoofddoel; locked (§6.7) | plan |
 | GET | `…/plannen/{uuid}/afsluitcheck` | what is still open before closing | plan |
 | POST | `…/plannen/{uuid}/afronden`, `…/afbreken`, `…/heractiveren` | close or reopen the plan | plan |
 | POST | `…/evaluation-sessions` | start an evaluation (§6.5) | dossier (`context.documentId`) |
@@ -1236,10 +1429,10 @@ through; `page` and `pageSize` are accepted on every listing)
 | GET | `/openplan/plannen/api/v0/{doeltype,relatietype,plantype}` | — | user |
 | GET | `/openproduct/producttypen/api/v1/producttypen` | — | user |
 | GET | `/openplan/plannen/api/v0/plan/{uuid}` | — | plan |
-| PATCH | `/openplan/plannen/api/v0/plan/{uuid}` | — | plan; only `notitie` |
+| PATCH | `/openplan/plannen/api/v0/plan/{uuid}` | — | plan; only `notitie`; locked (§6.7) |
 | GET | `/openplan/plannen/api/v0/doel` | `plannen__uuid` (required) | plan |
-| POST | `/openplan/plannen/api/v0/doel` | — | plan; `plannenUuids` names exactly one plan, `persoonUuid` is that plan's persoon, `hoofdDoel` (if any) a doel of the same plan; only `plannenUuids`, `persoonUuid`, `doeltypeUuid`, `titel`, `beschrijving`, `startdatum`, `hoofdDoel` |
-| PATCH | `/openplan/plannen/api/v0/doel/{uuid}` | — | plan; only `titel`, `beschrijving`, `doeltypeUuid`, `resultaat`, `einddatum`, `toelichtingResultaat` and `status: afgerond` |
+| POST | `/openplan/plannen/api/v0/doel` | — | plan; `plannenUuids` names exactly one plan, `persoonUuid` is that plan's persoon, `hoofdDoel` (if any) a doel of the same plan; only `plannenUuids`, `persoonUuid`, `doeltypeUuid`, `titel`, `beschrijving`, `startdatum`, `hoofdDoel`; locked (§6.7) |
+| PATCH | `/openplan/plannen/api/v0/doel/{uuid}` | — | plan; only `titel`, `beschrijving`, `doeltypeUuid`, `startdatum`, `resultaat`, `einddatum`, `toelichtingResultaat` and `status: afgerond`; locked (§6.7) |
 | GET | `/openplan/plannen/api/v0/instrument` | `doelen__uuid__in` (required) | the plans of those doelen |
 | GET | `/openklant/klantinteracties/api/v1/klantcontacten` | the plan's onderwerpobject (`…ObjectId`, `…CodeObjecttype=plan`, `…CodeRegister=open-plan`) | plan |
 
@@ -1270,8 +1463,8 @@ the demo case types.
 | `InstrumentDetails` (`instrument_details`) | `instrumentUuid` | `planUuid`, `uitvoeringsStatus` (default GESTART), `urenBesteed`, `effectiviteitScore` (1–5) and `effectiviteitToelichting`, `afbreekReden`, `interneNotitie`, `externeNotitie` |
 | `ContactmomentDetails` (`contactmoment_details`) | `contactmomentUuid` (= klantcontact uuid) | `planUuid`, `evaluatieType`, `geplandeDatum`, `deelnemers`, `actiepunten`, `evaluationSessionId` |
 | `InvolvedParty` (`involved_party`) | id | `planUuid`, name, role, contact details, `isPrimary` (the procesbegeleider; at most one per plan, partial unique index) |
-| `Action` (`action`) | id | `doelUuid`, optional `instrumentUuid` and `contactmomentUuid`, title, description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED), assignee name, priority, dates, result |
-| `EvaluationSession` (`evaluation_session`) | id | `dossierId`, `planUuid`, `caseDefinitionKey`, `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED/CANCELLED; at most one RUNNING per user), start/end, `evaluatieType`, `deelnemers`, `verslag`, `geplandContactmomentUuid`, `contactmomentUuid` |
+| `Action` (`action`) | id | `doelUuid`, optional `instrumentUuid` and `contactmomentUuid`, title, description, `ActionStatus` (PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED; with a task only → COMPLETED or CANCELLED by the task), assignee name, priority, dates, result, `taakProcessInstanceId` (the GZAC process of its task, §6.8; unique) |
+| `EvaluationSession` (`evaluation_session`) | id | `dossierId`, `planUuid`, `caseDefinitionKey`, `userLogin`, `EvaluationSessionStatus` (RUNNING → COMPLETED/CANCELLED; at most one RUNNING per user), start/end, `evaluatieType`, `deelnemers`, `verslag`, `geplandContactmomentUuid`, `contactmomentUuid`, `vastgesteldGewijzigd` (a locked part of the plan was changed in it, §6.7; never written by a save) |
 | `EvaluationChange` (`evaluation_change`) | id | `sessionId`, `subjectType` (PLAN, HOOFDDOEL, SUBDOEL, INSTRUMENT, ACTIE), `subjectUuid`, `subjectTitel`, `soort`, `vanWaarde`, `naarWaarde`, `toelichting` |
 | `DocumentAanvraag` (`document_aanvraag`) | id | a document made by the document process (§6.6): `planUuid`, `dossierId` (the plan dossier the process runs on), `soort` (EVALUATIEVERSLAG), `bronUuid` (the evaluation session), `status` (AANGEVRAAGD → BEZIG → GEREED/MISLUKT), `processInstanceId` (its GZAC process; unique), `gegevens` (JSON data snapshot, cleared when the request ends), `bestandsnaam`, `mediatype`, `inhoud` (the PDF, GEREED only), `foutmelding` (MISLUKT only), `aangevraagdDoor`, `aangevraagdOp`, `bijgewerktOp`; at most one open request per (`soort`, `bronUuid`) |
 | `PhaseConfig` (`phase_config`) | id, unique `caseDefinitionKey` | the case configuration (§10.2) |
@@ -1295,7 +1488,9 @@ Beheer; the name is historical and it holds no phases. Its fields (JSON
 text columns):
 
 - `evaluationTypes` — the evaluation types of a plan case type;
-- `planStatussen` — the plan display statuses (e.g. Concept, Vastgesteld);
+- `planStatussen` — the plan display statuses in order (e.g. Concept,
+  Vastgesteld); the first is the concept status a new plan gets and under
+  which the plan lock does not apply (§6.7);
 - `voortgangStatussen` — `[{code, naam, betekenis}]` in display order;
   empty = the standard list (`VoortgangStatusOptie.STANDAARD`).
   `PhaseConfigService` validates on save (every status named, names unique
@@ -1345,15 +1540,29 @@ Epistola settings.
   `binnenhof-renovatie`, the intake case types `intake-werk-participatie`
   and `renovatie-intake`, and the instrument dossier `instrument-verzoek`;
   `gzac/objecttypen/` holds the verzoek objecttype's JSON schema. Plan
-  dossiers have no tasks: their process is start → end, the app creates
-  them and `startableByUser` is false.
+  dossiers have no tasks of their own: their process is start → end, the
+  app creates them and `startableByUser` is false. The plan case types
+  link the task building block (below) with input mappings from
+  `/bouwblokStart`, which their schemas declare.
+- **`gzac/bouwblokken/`** — building blocks as importable zips, built by
+  `./gradlew buildGzacZips` like the case zips: `pdca-taak.zip`, one task
+  with a title, description and deadline given at its start, the task of
+  an actie when its start data names one (§6.8;
+  `config/building-block/pdca-taak/1-0-0/`, final): its document, the
+  process `pdca-taak` (`BB:pdca-taak:1.0.0`), the start form and the task's
+  form (uitkomst and resultaat), and its two PDCA links, which name the
+  plugin but no configuration (GZAC resolves it through the case type's
+  building-block link, which the app maps). A case type that links it maps
+  the start data from `/bouwblokStart` into its document. It is imported
+  before the case types that link it.
 - **The PDCA couplings ship in the zips** (the plan case tabs, the
   `create-plan` task-form link, the instrument dossier's three
   plugin-action links) with the fixed placeholder configuration id
   `00000000-0000-4000-8000-00000000dca0`, which GZAC's import maps to the
   real "PDCA Planbeheer" configuration.
 - **Released versions are immutable** (`"final": true`); every change goes
-  into a new version directory `config/case/<key>/<x-y-z>/`.
+  into a new version directory `config/case/<key>/<x-y-z>/` (for a building
+  block `config/building-block/<key>/<x-y-z>/`).
 - **`gzac/system-processes/`** — global processes outside any case
   definition, imported through Process management: `pdca-document.zip`
   (`config/global/bpmn/pdca-document.bpmn` and its process links, built by
@@ -1377,7 +1586,8 @@ Epistola settings.
   verzoek route (objecttype, object management, Verzoek plugin, Notificaties
   callback), the Epistola templates (the catalog imported and released in
   the Suite tenant, called directly with the tenant's API key), the app's
-  registration and, once GZAC has discovered the running app, its
+  registration, the task building block and, once GZAC has discovered the
+  running app, its
   configuration with grants, properties and contract bindings, the case zips
   (placeholder mapped, `instrument-verzoek` with the stack's zaak type link)
   and the document process (both placeholders mapped, the Epistola one to
@@ -1465,9 +1675,31 @@ bundles, so nothing is loaded from third parties.
 ### 13.3 Behaviour that matters for correctness
 
 - **Dossier-managed instruments** show their status and the **Dossier**
-  button, never Afronden or Afbreken (§6.2); a subdoel with an actief
-  dossier-managed instrument cannot be aborted or removed (its modal names
-  the dossiers to close), and the close-plan modal blocks while one runs.
+  button, never Afronden or Afbreken (§6.2), and the close-plan modal
+  blocks while one runs.
+- **Subdoel abort and removal** follow the backend rule (§6.3): the modal
+  names what still runs under the subdoel — each actief instrument (and
+  whether its dossier manages it), open aanvraag and open actie task — and
+  says how to end it, and offers no confirm until nothing runs.
+- **Subdoelen order** — above the list a *Sorteren op* choice: startdatum
+  (the default, oldest first), beoogde einddatum or title, each ascending
+  or descending; a subdoel without the date goes last, ties keep the order
+  the subdoelen were added in (`sortering`, `plan-goals/subdoelVolgorde.ts`). The choice is the
+  viewer's own and lasts while the tab is open: the sandboxed iframe has no
+  storage of its own. Each subdoel card shows both dates (*Start* and
+  *Beoogd*), and adding or editing a subdoel sets both.
+- **Plan lock** (§6.7) — past concept and outside the user's evaluation of
+  the plan, the tabs disable what is locked, with the hint *"Wijzig je
+  tijdens een evaluatie"*: on the Doelen tab "Subdoel toevoegen", a
+  subdoel's Afronden, Bewerken, Afbreken and Verwijderen and "Instrument
+  aanvragen", with a *Plan vastgesteld* notice; on the Planoverzicht the
+  toelichting bij het hoofddoel and the status menu's way back to concept.
+- **Acties** (§6.8) — the actie modal says the actie becomes a task in the
+  dossier's task list with its title, description and deadline, which are
+  fixed from then on. An actie with a task shows its status and *Taak in
+  GZAC* while the task is open, never the status buttons, and once ended
+  *Afgerond* or *Vervallen* with its resultaat; an older actie keeps
+  Starten, Ter beoordeling and Goedkeuren/Afkeuren.
 - **Instruments enter only through "Instrument aanvragen"**, which appears
   only when the subdoel has requestable producttypen; the empty list says
   which of the two applies.

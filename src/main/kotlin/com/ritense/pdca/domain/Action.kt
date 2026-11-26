@@ -27,9 +27,11 @@ import java.time.LocalDateTime
 import java.util.UUID
 
 /**
- * Local PDCA workflow item under a doel in Open Plan. Open Plan does not model
+ * PDCA workflow item under a doel in Open Plan. Open Plan does not model
  * actions; they exist only in this app. [doelUuid] references an Open Plan
  * doel, [contactmomentUuid] the contactmoment (evaluation) it originated from.
+ * A new actie becomes a task in GZAC ([taakProcessInstanceId], ARCHITECTURE
+ * §6.8), which then owns its status and the texts it shows.
  */
 @Entity
 @Table(name = "action")
@@ -76,6 +78,14 @@ data class Action(
     @Column(columnDefinition = "TEXT")
     var result: String? = null,
 
+    /**
+     * The GZAC process (building block pdca-taak on the plan dossier) whose
+     * task carries this actie; null for an actie from before acties became
+     * tasks. Recorded by that process itself (actie-taak-gestart).
+     */
+    @Column(name = "taak_process_instance_id", unique = true)
+    var taakProcessInstanceId: String? = null,
+
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
 
@@ -83,5 +93,21 @@ data class Action(
     var updatedAt: LocalDateTime = LocalDateTime.now()
 )
 
-enum class ActionStatus { PLANNED, IN_PROGRESS, PENDING_REVIEW, COMPLETED, REJECTED }
+/**
+ * PLANNED → IN_PROGRESS → PENDING_REVIEW → COMPLETED/REJECTED for an actie
+ * without task; an actie with a GZAC task goes from PLANNED to COMPLETED
+ * (uitgevoerd) or CANCELLED (vervallen) when its task is done.
+ */
+enum class ActionStatus {
+    PLANNED, IN_PROGRESS, PENDING_REVIEW, COMPLETED, REJECTED, CANCELLED;
+
+    /** Whether the actie has ended and its status no longer changes. */
+    val isAfgesloten: Boolean get() = this == COMPLETED || this == REJECTED || this == CANCELLED
+}
+
+/** Whether this actie's status belongs to its GZAC task. */
+val Action.isTaakBeheerd: Boolean get() = taakProcessInstanceId != null
+
+/** Whether this actie's GZAC task is still open. */
+val Action.heeftOpenTaak: Boolean get() = isTaakBeheerd && !status.isAfgesloten
 enum class Priority { HIGH, NORMAL, LOW }

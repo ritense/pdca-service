@@ -36,7 +36,8 @@ const DEFAULT_EVALUATIE_TYPE = 'EVALUATION';
  * a contactmoment (the planned one it carries out, if any), after which the
  * panel shows its evaluatieverslag as it is being made and the next
  * evaluation can be planned; cancelling records nothing and leaves the plan
- * changes made during it in place.
+ * changes made during it in place. Once a locked part of the plan has been
+ * changed in it, the evaluation can only be completed.
  */
 export function EvaluationPanel() {
   const [loading, setLoading] = useState(true);
@@ -53,6 +54,8 @@ export function EvaluationPanel() {
   const [draft, setDraft] = useState<Draft>({ evaluatieType: '', deelnemers: '', verslag: '' });
   const [saving, setSaving] = useState<'idle' | 'pending' | 'saved' | 'failed'>('idle');
   const [wijzigingen, setWijzigingen] = useState<EvaluationChange[]>([]);
+  /** A locked part of the plan was changed in this evaluation (the backend refuses to cancel it then). */
+  const [vastgesteld, setVastgesteld] = useState(false);
   const [ended, setEnded] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [cancelled, setCancelled] = useState(false);
@@ -75,12 +78,20 @@ export function EvaluationPanel() {
     catch (e) { setError(foutmelding(e)); }
   }, []);
 
+  /** Whether the tabs changed a locked part of the plan meanwhile; best effort, a failed read leaves it as it was. */
+  const loadVastgesteld = useCallback(async (sessieId: string) => {
+    try {
+      const current = await currentEvaluationSession();
+      if (current?.id === sessieId) setVastgesteld(current.vastgesteldGewijzigd);
+    } catch { /* the next poll tries again */ }
+  }, []);
+
   // The tabs record changes in the backend and cannot message the panel, so the panel polls.
   useEffect(() => {
     if (!session || completed || cancelled) return;
-    const timer = setInterval(loadWijzigingen, EVALUATION_POLL_MS);
+    const timer = setInterval(() => { loadWijzigingen(); loadVastgesteld(session.id); }, EVALUATION_POLL_MS);
     return () => clearInterval(timer);
-  }, [session, completed, cancelled, loadWijzigingen]);
+  }, [session, completed, cancelled, loadWijzigingen, loadVastgesteld]);
 
   /** The plan's title and the case type's evaluation types; each says so in the panel when it fails. */
   const loadDetails = useCallback((current: EvaluationSession) => {
@@ -109,6 +120,7 @@ export function EvaluationPanel() {
         return;
       }
       setSession(current);
+      setVastgesteld(current.vastgesteldGewijzigd);
       setDraft({
         evaluatieType: current.evaluatieType ?? '',
         deelnemers: current.deelnemers ?? '',
@@ -334,9 +346,17 @@ export function EvaluationPanel() {
         )}
         <div className="pdca-panel-actions">
           <Button size="sm" disabled={busy || verslagLeeg} onClick={() => setConfirm('complete')}>Evaluatie afronden</Button>
-          <Button size="sm" kind="danger--ghost" disabled={busy} onClick={() => setConfirm('cancel')}>Evaluatie annuleren</Button>
+          {!vastgesteld && (
+            <Button size="sm" kind="danger--ghost" disabled={busy} onClick={() => setConfirm('cancel')}>Evaluatie annuleren</Button>
+          )}
         </div>
         {verslagLeeg && <p className="pdca-panel-hint">Vul het gespreksverslag in om af te ronden.</p>}
+        {vastgesteld && (
+          <p className="pdca-panel-hint">
+            Je hebt vastgestelde delen van het plan gewijzigd. Rond de evaluatie af, zodat de inwoner op de hoogte is en
+            de wijzigingen met het gesprek worden vastgelegd; annuleren kan niet meer.
+          </p>
+        )}
       </>}
     </>}
   </>);

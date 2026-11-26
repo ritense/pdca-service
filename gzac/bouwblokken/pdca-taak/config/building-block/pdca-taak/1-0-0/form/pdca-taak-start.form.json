@@ -1,0 +1,65 @@
+{
+    "display": "form",
+    "components": [
+        {
+            "label": "Titel",
+            "key": "bouwblokStart.titel",
+            "type": "textfield",
+            "input": true,
+            "tableView": false,
+            "description": "De naam van de taak in de takenlijst.",
+            "validate": {
+                "required": true,
+                "maxLength": 255
+            }
+        },
+        {
+            "label": "Omschrijving",
+            "key": "bouwblokStart.omschrijving",
+            "type": "textarea",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "label": "Deadline",
+            "key": "bouwblokStart.deadline",
+            "type": "datetime",
+            "input": true,
+            "tableView": false,
+            "format": "dd-MM-yyyy",
+            "enableTime": false,
+            "datePicker": {
+                "disableWeekends": false
+            }
+        },
+        {
+            "label": "Actie-id",
+            "key": "bouwblokStart.actieId",
+            "type": "hidden",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "label": "Plan-uuid",
+            "key": "bouwblokStart.planUuid",
+            "type": "hidden",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "label": "Doel-uuid",
+            "key": "bouwblokStart.doelUuid",
+            "type": "hidden",
+            "input": true,
+            "tableView": false
+        },
+        {
+            "type": "button",
+            "label": "Taak aanmaken",
+            "key": "submit",
+            "disableOnInvalid": true,
+            "input": true,
+            "tableView": false
+        }
+    ]
+}

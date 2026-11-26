@@ -257,6 +257,13 @@ class InstrumentAanvraagService(
     /** All verzoeken ever filed for a doel (open or not), as read back from the Objecten API. */
     fun verzoekenVoor(doelUuid: UUID): List<VerzoekRecord> = verzoeken(mapOf("data__doelUuid" to doelUuid.toString()))
 
+    /** The open verzoeken of one doel, oldest first. */
+    fun openVerzoekenVoor(doelUuid: UUID): List<OpenVerzoek> {
+        val verzoeken = verzoekenVoor(doelUuid)
+        if (verzoeken.isEmpty()) return emptyList()
+        return open(verzoeken, openPlanGateway.listInstrumenten(doelUuid))
+    }
+
     /** The oldest open verzoek for this doel and product, or null. */
     fun openVerzoekVoor(doelUuid: UUID, productUrn: String): OpenVerzoek? {
         val verzoeken = verzoekenVoor(doelUuid).filter { it.productUrn == productUrn }

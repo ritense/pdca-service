@@ -88,8 +88,10 @@ data class PlanIntakeRequest(
 
 /**
  * [status]: gepland (the default), gestart or afgerond.
- * [streefEinddatum]: the beoogde einddatum, `yyyy-MM-dd` (a form.io date
- * value with time and offset is read by its date part).
+ * [startdatum]: when work on the subdoel starts, `yyyy-MM-dd`; the plan's
+ * startdatum when absent. [streefEinddatum]: the beoogde einddatum, on or
+ * after the startdatum. A form.io date value with time and offset is read
+ * by its date part.
  */
 data class IntakeDoel(
     @field:NotBlank(message = "Elk subdoel heeft een doeltype")
@@ -98,6 +100,7 @@ data class IntakeDoel(
     val status: String? = null,
     val resultaat: String? = null,
     val toelichting: String? = null,
+    val startdatum: String? = null,
     val streefEinddatum: String? = null
 )
 

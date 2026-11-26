@@ -68,6 +68,7 @@ class DevSetup(private val repoDir: File, private val settings: Settings) {
         step("Verzoek route") { VerzoekRoute(api, values).apply() }
         step("Epistola templates") { EpistolaCatalogs(values, repoDir).apply() }
         step("PDCA app as external app") { PdcaApp(api, values).registerHost() }
+        step("Building blocks") { BuildingBlocks(api, values, repoDir).apply() }
     }
 
     private fun appSteps(app: PdcaApp, values: DevValues) {

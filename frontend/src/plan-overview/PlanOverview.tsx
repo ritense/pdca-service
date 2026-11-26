@@ -4,6 +4,7 @@ import { EvaluatieBanner } from '../shared/EvaluatieBanner';
 import { foutmelding } from '../shared/http';
 import { LaadFout, NietGeladen } from '../shared/Meldingen';
 import { PlanDossierPagina, PlanPaginaProps } from '../shared/PlanDossierPagina';
+import { isVergrendeld } from '../shared/planSlot';
 import { OverzichtSkeleton } from '../shared/Skeletons';
 import { useEvaluatieSessie } from '../shared/useEvaluatieSessie';
 import { eersteFout } from '../shared/useResource';
@@ -39,6 +40,7 @@ function OverzichtPagina({ documentId, plan, details, setPlan, setDetails }: Pla
   const { betrokkenen } = model.data;
   const procesbegeleider = betrokkenen.find(b => b.isPrimary) ?? null;
   const acties = overzichtActies(plan, details, betrokkenen);
+  const vergrendeld = isVergrendeld(plan.uuid, details, model.planStatusOpties, evaluatie.session);
   const setBetrokkenen = (lijst: typeof betrokkenen) => overzicht.planData.mutate(d => ({ ...d!, betrokkenen: lijst }));
 
   const showSuccess = (msg: string) => {
@@ -70,13 +72,13 @@ function OverzichtPagina({ documentId, plan, details, setPlan, setDetails }: Pla
       {evaluatie.fout != null && <NietGeladen wat="Je lopende evaluatie" error={evaluatie.fout} onRetry={evaluatie.opnieuw} />}
 
       <PlanKop plan={plan} details={details} procesbegeleider={procesbegeleider} planStatusOpties={model.planStatusOpties}
-        onWeergaveStatus={weergaveStatus} onPlanActie={setPlanActie} />
+        vergrendeld={vergrendeld} onWeergaveStatus={weergaveStatus} onPlanActie={setPlanActie} />
       <SubjectKaart plan={plan} subject={overzicht.subject} />
       <KpiTegels model={model} />
 
       <div className="pdca-content-grid">
         <div>
-          <PlanGegevens plan={plan} details={details} model={model} procesbegeleider={procesbegeleider}
+          <PlanGegevens plan={plan} details={details} model={model} procesbegeleider={procesbegeleider} vergrendeld={vergrendeld}
             onSave={async (veld, waarde) => {
               const resultaat = await acties.bewaarVeld(veld, waarde);
               if ('plan' in resultaat) setPlan(resultaat.plan);

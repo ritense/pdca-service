@@ -204,11 +204,10 @@ export const pdca = {
       send<LevenscyclusResultaat>('POST', `${PDCA}/instrumenten/${uuid}/afbreken`, { reden }),
   },
   doelen: {
-    /** Removes a doel with its own instruments and its acties; 409 while one of its instrument dossiers is open. */
+    /** Removes a doel with its own instruments and its acties; 409 while one of its instrument dossiers, aanvragen or actie tasks is open. */
     verwijderen: (uuid: string) => send<{ instrumenten: number }>('DELETE', `${PDCA}/doelen/${uuid}`),
-    /** Aborts a doel and its running instruments; 409 while one of its instrument dossiers is open. */
-    afbreken: (uuid: string, reden: string) =>
-      send<{ instrumenten: number }>('POST', `${PDCA}/doelen/${uuid}/afbreken`, { reden }),
+    /** Aborts a doel; 409 while an instrument, aanvraag or actie task under it still runs. */
+    afbreken: (uuid: string, reden: string) => send<void>('POST', `${PDCA}/doelen/${uuid}/afbreken`, { reden }),
   },
   plannen: {
     /** Makes a doel of this hoofddoeltype the plan's one active hoofddoel. */

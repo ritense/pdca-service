@@ -133,6 +133,8 @@ class PlanIntakeService(
         val hoofddoelType: DoelType?,
         val subdoelTypen: List<DoelType>,
         val doelStatussen: List<IntakeStatus>,
+        /** Per subdoel: its own startdatum, or null for the plan's. */
+        val doelStartdata: List<LocalDate?>,
         /** Per subdoel: its beoogde einddatum, or null. */
         val doelEinddata: List<LocalDate?>,
         val startdatum: LocalDate,
@@ -306,6 +308,14 @@ class PlanIntakeService(
                 }
             }
         }
+        val doelStartdata = request.doelen.mapIndexed { index, doel ->
+            datum(doel.startdatum, "startdatum bij subdoel '${doel.doelType}'", fouten)?.also { start ->
+                val einde = doelEinddata[index]
+                if (einde != null && start.isAfter(einde)) {
+                    fouten += "de startdatum ligt na de beoogde einddatum (subdoel '${doel.doelType}')"
+                }
+            }
+        }
 
         val evaluatieTypen = phaseConfigService.findByCaseDefinitionKey(planCaseDefinitionKey)
             ?.let { phaseConfigService.getEvaluationTypes(planCaseDefinitionKey) }.orEmpty()
@@ -378,6 +388,7 @@ class PlanIntakeService(
             hoofddoelType = hoofddoelType,
             subdoelTypen = subdoelTypen,
             doelStatussen = doelStatussen,
+            doelStartdata = doelStartdata,
             doelEinddata = doelEinddata,
             startdatum = startdatum,
             streefEinddatum = streefEinddatum,
@@ -573,9 +584,10 @@ class PlanIntakeService(
     }
 
     /**
-     * The subdoelen in request order (titel = name of the doeltype), linked
-     * to the hoofddoel. Doelen an earlier attempt created are taken per
-     * doeltype in creation order, so two subdoelen of one doeltype stay two.
+     * The subdoelen in request order (titel = name of the doeltype, startdatum
+     * its own or else the plan's), linked to the hoofddoel. Doelen an earlier
+     * attempt created are taken per doeltype in creation order, so two
+     * subdoelen of one doeltype stay two.
      */
     private fun ensureSubdoelen(
         intake: Intake,
@@ -598,7 +610,7 @@ class PlanIntakeService(
                         doeltypeUuid = type.uuid,
                         titel = doel.doelType,
                         beschrijving = doel.beschrijving ?: "",
-                        startdatum = "${intake.startdatum}T00:00:00Z",
+                        startdatum = "${intake.doelStartdata[index] ?: intake.startdatum}T00:00:00Z",
                         status = status.registerStatus,
                         hoofdDoel = hoofddoelUuid,
                         resultaat = if (afgerond) doel.resultaat?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: "behaald" else null,

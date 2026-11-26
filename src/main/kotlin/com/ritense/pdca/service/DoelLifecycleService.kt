@@ -16,12 +16,13 @@
 
 package com.ritense.pdca.service
 
+import com.ritense.pdca.domain.heeftOpenTaak
 import com.ritense.pdca.registers.openplan.DoelStatusUpdate
 import com.ritense.pdca.registers.openplan.Instrument
-import com.ritense.pdca.registers.openplan.InstrumentEinde
 import com.ritense.pdca.registers.openplan.OpenPlanGateway
 import com.ritense.pdca.registers.openplan.STATUS_ACTIEF
 import com.ritense.pdca.registers.openplan.STATUS_GEANNULEERD
+import com.ritense.pdca.repository.ActionRepository
 import com.ritense.pdca.repository.InstrumentDetailsRepository
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -33,26 +34,31 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 /**
- * Removing and aborting a doel with what hangs under it (ARCHITECTURE §6.3).
- * Both refuse (409) while the doel has an actief instrument managed by its
- * instrument dossier: that dossier owns the instrument, so it has to be
- * closed there first.
+ * Removing and aborting a doel (ARCHITECTURE §6.3). Neither leaves work
+ * behind without its doel: aborting is refused (409) while anything still
+ * runs under the doel — an actief instrument, managed by its instrument
+ * dossier or by the plan page, a verzoek whose instrument dossier has not
+ * created its instrument yet, or an actie whose GZAC task is open — and
+ * removing while an instrument dossier, a verzoek or a task of it is open.
+ * What runs has to be ended (or have its dossier or task ended) first;
+ * nothing is cancelled along with the doel.
  *
- * The steps run instruments first and the doel last, each skipping what is
- * already done, so a failure halfway leaves a doel that still exists with
- * part of its instruments handled, and a retry finishes it.
+ * Removal runs instruments first and the doel last, each step skipping
+ * what is already done, so a failure halfway leaves a doel that still
+ * exists with part of its instruments removed, and a retry finishes it.
  */
 @Service
 class DoelLifecycleService(
     private val openPlanGateway: OpenPlanGateway,
     private val instrumentDetailsRepository: InstrumentDetailsRepository,
-    private val instrumentLifecycleService: InstrumentLifecycleService,
+    private val instrumentAanvraagService: InstrumentAanvraagService,
+    private val actionRepository: ActionRepository,
     private val planOverlayService: PlanOverlayService
 ) {
 
     private val log = LoggerFactory.getLogger(javaClass)
 
-    /** What an abort or removal took along. */
+    /** What a removal took along. */
     data class Resultaat(val instrumenten: Int)
 
     /**
@@ -66,7 +72,7 @@ class DoelLifecycleService(
             return Resultaat(0)
         }
         val instrumenten = openPlanGateway.listInstrumenten(doelUuid)
-        refuseOpenDossiers(instrumenten)
+        weigerBijLopendWerk(doelUuid, instrumenten.filter { it.isDossierManaged })
         val eigen = instrumenten.filter { inst -> inst.doelen.all { it.uuid == doelUuid } }
         eigen.forEach { inst ->
             openPlanGateway.deleteInstrument(inst.uuid)
@@ -79,44 +85,49 @@ class DoelLifecycleService(
     }
 
     /**
-     * Aborts a doel with its required reason: its actief instruments are
-     * cancelled with "Afgebroken met doel: <reden>", then the doel becomes
-     * geannuleerd with the reason as toelichting. A doel that is geannuleerd
-     * already is left as it is; one that ended otherwise is refused.
+     * Aborts a doel with its required reason: the doel becomes geannuleerd
+     * with the reason as toelichting. Refused while anything still runs
+     * under it. A doel that is geannuleerd already is left as it is; one
+     * that ended otherwise is refused.
      */
-    fun afbreken(doelUuid: UUID, reden: String): Resultaat {
+    fun afbreken(doelUuid: UUID, reden: String) {
         val tekst = reden.trim().takeIf { it.isNotEmpty() }
             ?: throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Geef een reden op voor het afbreken")
         val doel = openPlanGateway.findDoel(doelUuid)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Doel niet gevonden in Open Plan")
-        if (doel.status != STATUS_ACTIEF && doel.status != STATUS_GEANNULEERD) {
+        if (doel.status == STATUS_GEANNULEERD) return
+        if (doel.status != STATUS_ACTIEF) {
             throw ResponseStatusException(HttpStatus.CONFLICT, "Alleen een lopend doel kan worden afgebroken (status: ${doel.status})")
         }
-        val instrumenten = openPlanGateway.listInstrumenten(doelUuid)
-        refuseOpenDossiers(instrumenten)
-        val lopend = instrumenten.filter { it.isActief }
-        lopend.forEach { instrumentLifecycleService.afbreken(it.uuid, "Afgebroken met doel: $tekst") }
-        if (doel.status != STATUS_GEANNULEERD) {
-            openPlanGateway.updateDoelStatus(
-                doelUuid,
-                DoelStatusUpdate(
-                    status = STATUS_GEANNULEERD,
-                    einddatum = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS).toString(),
-                    toelichtingResultaat = tekst
-                )
+        weigerBijLopendWerk(doelUuid, openPlanGateway.listInstrumenten(doelUuid))
+        openPlanGateway.updateDoelStatus(
+            doelUuid,
+            DoelStatusUpdate(
+                status = STATUS_GEANNULEERD,
+                einddatum = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(ChronoUnit.SECONDS).toString(),
+                toelichtingResultaat = tekst
             )
-        }
-        log.info("Doel {} aborted with {} instrumenten", doelUuid, lopend.size)
-        return Resultaat(lopend.size)
+        )
+        log.info("Doel {} aborted", doelUuid)
     }
 
-    private fun refuseOpenDossiers(instrumenten: List<Instrument>) {
-        val open = instrumenten.filter { it.isActief && it.isDossierManaged }
-        if (open.isNotEmpty()) {
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "Sluit eerst de instrumentdossiers af: ${open.joinToString { it.titel ?: it.uuid.toString() }}"
-            )
+    /**
+     * 409 naming what still runs under the doel: the actief ones among
+     * [instrumenten], the doel's open verzoeken and the acties whose GZAC
+     * task is open. Fails closed: when the verzoeken cannot be read, the
+     * register error stands.
+     */
+    private fun weigerBijLopendWerk(doelUuid: UUID, instrumenten: List<Instrument>) {
+        val lopend = buildList {
+            instrumenten.filter { it.isActief }.forEach { inst ->
+                add("${inst.titel ?: inst.uuid} (${if (inst.isDossierManaged) "instrumentdossier" else "instrument"})")
+            }
+            instrumentAanvraagService.openVerzoekenVoor(doelUuid).forEach { add("${it.productTitel ?: "instrument"} (aanvraag)") }
+            actionRepository.findByDoelUuid(doelUuid).filter { it.heeftOpenTaak }
+                .forEach { add("${it.title} (taak)") }
+        }
+        if (lopend.isNotEmpty()) {
+            throw ResponseStatusException(HttpStatus.CONFLICT, "Sluit eerst af wat nog loopt onder dit doel: ${lopend.joinToString()}")
         }
     }
 }

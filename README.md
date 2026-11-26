@@ -42,6 +42,8 @@ This file covers setup, configuration, operation and development.
   `feature/epistola-dev-app` provides both (the plugin, the Suite on
   <http://localhost:4000> and its plugin configuration); without them
   evaluations still complete, but their verslag fails (ARCHITECTURE §8).
+  Epistola plugin 0.21.0 also stops the task of an actie from being
+  completed, as it does any building block task (ARCHITECTURE §8).
 
 ## Getting started
 
@@ -137,11 +139,13 @@ A few steps in the GZAC admin; the PDCA side provisions itself.
    `nl.ritense.openklant@2` and `nl.ritense.objecten@2` under *Required
    plugins*. GZAC then pushes the serviceToken and the bound contracts to the
    app.
-3. **Import the case zips** from `gzac/case-definitions/`, mapping the
-   placeholder configuration to your "PDCA Planbeheer" configuration in the
-   import wizard, and activate the imported versions
+3. **Import the task building block, then the case zips** — first
+   `gzac/bouwblokken/pdca-taak.zip` in *Admin → Building blocks* (every
+   actie becomes a task of it), then the zips from `gzac/case-definitions/`,
+   mapping the placeholder configuration to your "PDCA Planbeheer"
+   configuration in the import wizard, and activate the imported versions
    ([`gzac/case-definitions/README.md`](./gzac/case-definitions/README.md),
-   "Importing" and "PDCA connected at import").
+   "The task building block", "Importing" and "PDCA connected at import").
 4. **Menu** — add the plugin page "PDCA Beheer" (`pdca-admin`).
 5. **Verzoek route** — once per GZAC stack: the `InstrumentVerzoek`
    objecttype (schema in [`gzac/objecttypen/`](./gzac/objecttypen/)),
@@ -319,6 +323,18 @@ Rerunning the Open Product seed with the variable updates the existing
 - **Instrument dossier 1.2.0** — import `instrument-verzoek.zip` 1.2.0 (all
   three plugin actions asynchronous with retries). Dossiers already running
   keep the process version they started with; new dossiers start on 1.2.0.
+- **Intakes 1.3.0 and 1.5.0** — import `intake-werk-participatie.zip`
+  1.3.0 and `renovatie-intake.zip` 1.5.0: a startdatum per subdoel, which
+  plan creation takes over, and demo defaults with every subdoel's dates in
+  the second half of 2027. Running intakes keep the version they started
+  with.
+- **Acties as GZAC tasks** — import `gzac/bouwblokken/pdca-taak.zip`, then
+  `inwonerplan.zip` and `binnenhof-renovatie.zip` 1.7.0 (they link the
+  building block), and accept the changed footprint of the manifest: five
+  new grants to look up and start the building block on a plan dossier
+  (ARCHITECTURE §3.4). Until then adding an actie fails with the reason and
+  adds nothing. Acties from before keep their status buttons on the plan
+  page.
 
 ## Development
 
@@ -327,7 +343,7 @@ Rerunning the Open Product seed with the variable updates the existing
 ./gradlew build -PskipFrontend   # no frontend tasks; the jar packages whatever bundles exist
 ./gradlew test -PskipIntegrationTests   # backend unit tests only
 ./gradlew frontendCheck          # frontend typecheck, lint and tests
-./gradlew buildGzacZips          # rebuild the GZAC case-definition and system process zips (commit source and zips together)
+./gradlew buildGzacZips          # rebuild the GZAC case-definition, building block and system process zips (commit source and zips together)
 ./gradlew buildPlugins           # register plugins -> plugins/<name>/dist/<name>-2.0.0.zip
 ./gradlew buildOpenPlanPlugin    # one plugin (also OpenProduct, OpenKlant, Objecten)
 ./gradlew testPlugins            # tests of the register plugins and their core

@@ -3,18 +3,24 @@ import { MenuButton, MenuItem, MenuItemDivider, Tag } from '@carbon/react';
 import type { Betrokkene, Plan, PlanDetails } from '../shared/api';
 import { formatDate, isVerlopen } from '../shared/dates';
 import { dienstverleningLabel, planStatus } from '../shared/labels';
+import { conceptStatus, VERGRENDELD_HINT } from '../shared/planSlot';
 import { NietGeladen } from '../shared/Meldingen';
 import type { Resource } from '../shared/useResource';
 import { parseSubject } from '../shared/urn';
 import type { PlanActie } from './overzichtActies';
 import type { SubjectData } from './useOverzicht';
 
-/** The plan's title, status with the plan actions, and its key facts. */
-export function PlanKop({ plan, details, procesbegeleider, planStatusOpties, onWeergaveStatus, onPlanActie }: {
+/**
+ * The plan's title, status with the plan actions, and its key facts. While
+ * the plan is locked it cannot go back to its concept status: that would
+ * lift the lock outside an evaluation.
+ */
+export function PlanKop({ plan, details, procesbegeleider, planStatusOpties, vergrendeld, onWeergaveStatus, onPlanActie }: {
   plan: Plan;
   details: PlanDetails;
   procesbegeleider: Betrokkene | null;
   planStatusOpties: string[];
+  vergrendeld: boolean;
   onWeergaveStatus: (status: string) => void;
   onPlanActie: (actie: PlanActie) => void;
 }) {
@@ -32,7 +38,9 @@ export function PlanKop({ plan, details, procesbegeleider, planStatusOpties, onW
           <MenuButton label="Planacties" size="sm" kind="ghost" menuAlignment="bottom-start">
             {actief ? <>
               {planStatusOpties.map(s => (
-                <MenuItem key={s} label={`Status: ${s}`} disabled={s === huidigeWeergave} onClick={() => onWeergaveStatus(s)} />
+                <MenuItem key={s} disabled={s === huidigeWeergave || (vergrendeld && s === conceptStatus(planStatusOpties))}
+                  label={vergrendeld && s === conceptStatus(planStatusOpties) ? `Status: ${s} (${VERGRENDELD_HINT.toLowerCase()})` : `Status: ${s}`}
+                  onClick={() => onWeergaveStatus(s)} />
               ))}
               <MenuItemDivider />
               <MenuItem label="Plan afronden" onClick={() => onPlanActie('afronden')} />

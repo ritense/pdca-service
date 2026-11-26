@@ -83,6 +83,7 @@ step.
 | Verzoek route | an Objecttypen API configuration at `host.docker.internal:8011` and an Objecten API configuration at `host.docker.internal:8010` (below), the object management `InstrumentVerzoek`, the Verzoek plugin configuration (type `instrument` → case and process `instrument-verzoek`, copy strategy full) and the callback URL of the dev app's Notificaties API configuration | `/api/v1/plugin/configuration`, `/api/v1/object/management/configuration` |
 | Epistola templates | imports each catalog of `../epistola/catalogs/` (`pdca-documenten`, zipped from its `catalog.json` and `resources/`) into the Epistola Suite tenant as authored catalog (mode merge) and releases it with the version of its `catalog.json`; a catalog whose release the Suite has is left alone | Epistola Suite: `GET /tenants/{tenant}/catalogs`, `POST …/catalogs/import`, `POST …/catalogs/{slug}/release` |
 | PDCA app | registers the app as external app (URL app) with its secret, callback URL and frontend origin, or re-applies them | `POST …/host`, `PATCH …/host/{id}/connection` |
+| Building blocks | imports the task building block `../bouwblokken/pdca-taak.zip` when GZAC does not hold its version yet, before the case definitions that link it; its PDCA links name no configuration (the app maps the plan case types' links itself) | `POST …/building-block/import`, `GET …/building-block/{key}/version/{tag}` |
 | PDCA configuration *(needs the app)* | waits until GZAC has discovered the app's manifest (accepting a changed manifest of the same version), then creates or updates the configuration with exactly the manifest's grants and the four contract bindings | `GET …/definition`, `POST`/`PUT …/configuration` |
 | Case definitions *(needs the app)* | imports the five zips of `../case-definitions/` that GZAC does not hold yet, mapping their placeholder configuration id to the PDCA configuration, activates them, and gives `instrument-verzoek` its zaak type link | `POST /api/management/v1/case/import`, `POST …/case-definition/{key}/version/{tag}/active` |
 | Document process *(needs the app)* | imports `../system-processes/pdca-document.zip`, mapping its PDCA placeholder to the PDCA configuration and its Epistola placeholder to the dev app's Epistola plugin configuration (looked up, not assumed by id; without one the step fails: the Valtimo dev app only has it on the Epistola branch) | `POST …/process-definition/import`, `GET …/process-definition/key/{key}` |
@@ -190,8 +191,9 @@ on the plugin host creates verzoeken at `host.docker.internal:8010`). Hence:
   packages and creates configurations for the new version, and rebinds the
   PDCA configuration to them; the previous version's configurations stay
   until you delete them in the admin.
-- **Case definitions** are final releases: a version GZAC already holds is
-  left alone (`../case-definitions/README.md`, "Versions").
+- **Case definitions** and **building blocks** are final releases: a
+  version GZAC already holds is left alone (`../case-definitions/README.md`,
+  "Versions").
 - **The system process** is imported on every run: GZAC deploys no new
   version for a BPMN equal to its latest one and replaces that version's
   process links with the imported ones, so a run only re-links them; a

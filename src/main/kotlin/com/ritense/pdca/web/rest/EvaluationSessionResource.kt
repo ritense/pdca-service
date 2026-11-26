@@ -53,7 +53,9 @@ data class EvaluationSessionDto(
     val deelnemers: String?,
     val verslag: String?,
     val geplandContactmomentUuid: UUID?,
-    val contactmomentUuid: UUID?
+    val contactmomentUuid: UUID?,
+    /** A locked part of the plan was changed in this evaluation: it can only be completed. */
+    val vastgesteldGewijzigd: Boolean
 )
 
 data class EvaluationChangeDto(
@@ -81,7 +83,8 @@ fun EvaluationSession.toDto() = EvaluationSessionDto(
     deelnemers = deelnemers,
     verslag = verslag,
     geplandContactmomentUuid = geplandContactmomentUuid,
-    contactmomentUuid = contactmomentUuid
+    contactmomentUuid = contactmomentUuid,
+    vastgesteldGewijzigd = vastgesteldGewijzigd
 )
 
 fun EvaluationChange.toDto() = EvaluationChangeDto(

@@ -244,6 +244,13 @@ export interface Actie {
   contactmomentUuid?: string;
   completedDate?: string;
   result?: string;
+  /**
+   * The GZAC process whose task carries this actie (building block
+   * pdca-taak on the plan dossier): its task ends it, and its title,
+   * description and deadline are fixed. Absent for an actie from before
+   * acties became tasks.
+   */
+  taakProcessInstanceId?: string;
 }
 
 /** Outcome of a product request: the verzoek object in the Objecten API and the product it asks for. */
@@ -316,6 +323,8 @@ export interface AfsluitCheck {
   openInstrumentdossiers: string[];
   /** null: the Objecten API could not be read. */
   openVerzoeken: number | null;
+  /** Acties whose GZAC task is still open. */
+  openTaken: number;
 }
 
 export interface Betrokkene {

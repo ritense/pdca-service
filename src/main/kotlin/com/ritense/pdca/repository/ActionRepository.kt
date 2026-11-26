@@ -18,6 +18,10 @@ package com.ritense.pdca.repository
 
 import com.ritense.pdca.domain.Action
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
+import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 interface ActionRepository : JpaRepository<Action, UUID> {
@@ -25,4 +29,23 @@ interface ActionRepository : JpaRepository<Action, UUID> {
     fun findByDoelUuid(doelUuid: UUID): List<Action>
 
     fun findByDoelUuidIn(doelUuids: Collection<UUID>): List<Action>
+
+    /**
+     * Records [processInstanceId] as the process carrying actie [id]'s task,
+     * unless a process was recorded already; 1 when recorded.
+     */
+    @Transactional
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE Action a SET a.taakProcessInstanceId = :processInstanceId WHERE a.id = :id AND a.taakProcessInstanceId IS NULL")
+    fun recordTaak(@Param("id") id: UUID, @Param("processInstanceId") processInstanceId: String): Int
+
+    /**
+     * Removes actie [id] unless a process was recorded as carrying its task
+     * ([recordTaak]); 1 when removed. Of a removal and a recording at the
+     * same moment, exactly one succeeds.
+     */
+    @Transactional
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM Action a WHERE a.id = :id AND a.taakProcessInstanceId IS NULL")
+    fun deleteIfTaakUnrecorded(@Param("id") id: UUID): Int
 }

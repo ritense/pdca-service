@@ -22,6 +22,7 @@ import com.ritense.pdca.domain.Priority
 import com.ritense.pdca.service.ActionService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -102,6 +103,7 @@ data class CreateActieRequest(
     /** Optional instrument the actie supports (shown in the instrument block); it must belong to [doelUuid]. */
     val instrumentUuid: UUID? = null,
     @field:NotBlank(message = "Vul een titel voor de actie in")
+    @field:Size(max = 255, message = "De titel van een actie is maximaal 255 tekens: de naam van haar taak in GZAC")
     val title: String,
     val description: String? = null,
     val assigneeName: String? = null,

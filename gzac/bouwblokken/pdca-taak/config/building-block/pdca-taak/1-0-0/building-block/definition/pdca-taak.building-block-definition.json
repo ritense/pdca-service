@@ -1,0 +1,7 @@
+{
+    "key": "pdca-taak",
+    "name": "Taak",
+    "description": "Eén taak waarvan de titel, omschrijving en deadline bij het starten worden opgegeven; afronden legt vast of ze is uitgevoerd of vervallen. Gestart vanuit een actie in een PDCA-plan rondt het afronden van de taak die actie af.",
+    "versionTag": "1.0.0",
+    "final": true
+}

@@ -1,33 +1,36 @@
 import React, { useEffect, useState } from 'react';
 import { InlineNotification, Modal, Select, SelectItem, TextArea, TextInput } from '@carbon/react';
 import type { Doel, DoelType } from '../shared/api';
-import { formatDate, vandaag } from '../shared/dates';
+import { datumDeel, formatDate, vandaag } from '../shared/dates';
 import { aantal, doelTypeNaam, subdoelTypen, subdoelTypenVoorHoofddoel } from '../shared/labels';
 import { useSubmit } from '../shared/useSubmit';
 import type { ActieContext, ActieInvoer, DoelInvoer } from './doelenActies';
 
-/** Doel or instrument awaiting its abort reason; `openDossiers` names the instrument dossiers that block a doel. */
-export type AfbreekTarget = { kind: 'doel' | 'instrument'; uuid: string; titel: string; openDossiers?: string[] } | null;
-/** Subdoel awaiting confirmation of its removal, with what goes with it and the instrument dossiers that block it. */
-export type VerwijderTarget = { uuid: string; titel: string; instrumenten: number; acties: number; openDossiers: string[] } | null;
+/** An actie's title is the name of its GZAC task, which holds at most 255 characters. */
+const ACTIE_TITEL_MAX = 255;
 
-/** "X wordt beheerd door een eigen instrumentdossier; …": why a doel cannot be aborted or removed yet. */
-function OpenDossiers({ titels }: { titels: string[] }) {
+/** Doel or instrument awaiting its abort reason; `lopendWerk` names what still runs under a doel and blocks it. */
+export type AfbreekTarget = { kind: 'doel' | 'instrument'; uuid: string; titel: string; lopendWerk?: string[] } | null;
+/** Subdoel awaiting confirmation of its removal, with what goes with it and what still runs under it and blocks it. */
+export type VerwijderTarget = { uuid: string; titel: string; instrumenten: number; acties: number; lopendWerk: string[] } | null;
+
+/** Why a subdoel cannot be aborted or removed yet: what still runs under it, and how to end each kind. */
+function LopendWerk({ items }: { items: string[] }) {
   return (
-    <InlineNotification kind="warning" title="Sluit eerst de instrumentdossiers af"
-      subtitle={`${titels.join(', ')} ${titels.length === 1 ? 'wordt' : 'worden'} beheerd door een eigen instrumentdossier; rond ze daar af of annuleer ze daar.`}
+    <InlineNotification kind="warning" title="Sluit eerst af wat nog loopt"
+      subtitle={`Onder dit subdoel loopt nog: ${items.join(', ')}. Rond een instrument af of breek het af (een instrumentdossier in het dossier zelf) en rond een taak af in de takenlijst: uitgevoerd, of vervallen als ze niet meer nodig is.`}
       lowContrast hideCloseButton />
   );
 }
 
-/** Aborting always requires a reason (doel: cascades to linked instruments). */
+/** Aborting always requires a reason; a subdoel only once nothing runs under it any more. */
 export function AfbreekModal({ target, onClose, onSubmit }: {
   target: AfbreekTarget; onClose: () => void; onSubmit: (reden: string) => Promise<void>;
 }) {
   const [reden, setReden] = useState('');
   const { saving, fout, submit, reset } = useSubmit();
   useEffect(() => { if (target) { setReden(''); reset(); } }, [target, reset]);
-  const geblokkeerd = (target?.openDossiers?.length ?? 0) > 0;
+  const geblokkeerd = (target?.lopendWerk?.length ?? 0) > 0;
   return (
     <Modal open={!!target} danger modalHeading={`${target?.kind === 'doel' ? 'Subdoel' : 'Instrument'} afbreken`}
       primaryButtonText={saving ? 'Afbreken…' : 'Afbreken'} secondaryButtonText="Annuleren"
@@ -35,11 +38,8 @@ export function AfbreekModal({ target, onClose, onSubmit }: {
       onRequestClose={onClose} onRequestSubmit={() => reden.trim() && !geblokkeerd && submit(() => onSubmit(reden.trim()))}>
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Afbreken mislukt" subtitle={fout} lowContrast hideCloseButton />}
-        {geblokkeerd && <OpenDossiers titels={target!.openDossiers!} />}
-        <p>
-          Je staat op het punt <strong>{target?.titel}</strong> af te breken.
-          {target?.kind === 'doel' && ' Gekoppelde actieve instrumenten worden ook afgebroken.'}
-        </p>
+        {geblokkeerd && <LopendWerk items={target!.lopendWerk!} />}
+        <p>Je staat op het punt <strong>{target?.titel}</strong> af te breken.</p>
         <TextArea id="afbreek-reden" labelText="Reden (verplicht)" value={reden}
           onChange={e => setReden(e.target.value)} placeholder="Waarom wordt dit afgebroken?" />
       </div>
@@ -53,7 +53,7 @@ export function VerwijderModal({ target, onClose, onSubmit }: {
 }) {
   const { saving, fout, submit, reset } = useSubmit();
   useEffect(() => { if (target) reset(); }, [target, reset]);
-  const geblokkeerd = (target?.openDossiers.length ?? 0) > 0;
+  const geblokkeerd = (target?.lopendWerk.length ?? 0) > 0;
   const mee = target
     ? [
         target.instrumenten > 0 ? aantal(target.instrumenten, 'instrument', 'instrumenten') : null,
@@ -67,7 +67,7 @@ export function VerwijderModal({ target, onClose, onSubmit }: {
       onRequestClose={onClose} onRequestSubmit={() => !geblokkeerd && submit(onSubmit)}>
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Verwijderen mislukt" subtitle={fout} lowContrast hideCloseButton />}
-        {geblokkeerd && <OpenDossiers titels={target!.openDossiers} />}
+        {geblokkeerd && <LopendWerk items={target!.lopendWerk} />}
         <p>
           <strong>{target?.titel}</strong> wordt verwijderd{mee ? `, inclusief ${mee}` : ''}. Dit kan niet ongedaan worden gemaakt.
         </p>
@@ -109,30 +109,34 @@ export function DoelModal({ open, doel, doeltypen, hoofddoelNaam, subdoelMapping
 }) {
   const [toelichting, setToelichting] = useState('');
   const [doeltypeUuid, setDoeltypeUuid] = useState('');
+  const [startdatum, setStartdatum] = useState('');
   const [streefEinddatum, setStreefEinddatum] = useState('');
   const { saving, fout, submit, reset } = useSubmit();
   useEffect(() => {
     if (open) {
       setToelichting(doel?.beschrijving || '');
       setDoeltypeUuid(doel?.doeltype?.uuid || '');
+      setStartdatum(doel?.startdatum ? datumDeel(doel.startdatum) : vandaag());
       setStreefEinddatum(huidigeEinddatum?.slice(0, 10) || '');
       reset();
     }
   }, [open, doel, huidigeEinddatum, reset]);
   const datumFout = einddatumFout(streefEinddatum, huidigeEinddatum?.slice(0, 10) || '', planEinddatum);
+  const startFout = !startdatum ? 'Vul een startdatum in'
+    : streefEinddatum && startdatum > streefEinddatum ? 'Na de beoogde einddatum' : null;
 
   const opties = subdoelTypenVoorHoofddoel(doeltypen, hoofddoelNaam, subdoelMapping);
   const gescoped = opties.length < subdoelTypen(doeltypen).length;
   const gekozen = opties.find(t => t.uuid === doeltypeUuid);
   const titel = doel ? doel.titel : gekozen ? doelTypeNaam(gekozen) : '';
-  const kanOpslaan = !!titel && (!!doel || !!doeltypeUuid) && !datumFout;
+  const kanOpslaan = !!titel && (!!doel || !!doeltypeUuid) && !datumFout && !startFout;
 
   return (
     <Modal open={open} modalHeading={doel ? 'Subdoel bewerken' : 'Subdoel toevoegen'}
       primaryButtonText={saving ? 'Opslaan…' : 'Opslaan'} secondaryButtonText="Annuleren"
       primaryButtonDisabled={saving || !kanOpslaan}
       onRequestClose={onClose}
-      onRequestSubmit={() => kanOpslaan && submit(() => onSave({ titel, toelichting, doeltypeUuid, streefEinddatum }))}>
+      onRequestSubmit={() => kanOpslaan && submit(() => onSave({ titel, toelichting, doeltypeUuid, startdatum, streefEinddatum }))}>
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
         {doel ? (
@@ -151,6 +155,11 @@ export function DoelModal({ open, doel, doeltypen, hoofddoelNaam, subdoelMapping
         )}
         <TextArea id="doel-toelichting" labelText="Toelichting" helperText="Uitleg voor de inwoner" value={toelichting}
           onChange={e => setToelichting(e.target.value)} />
+        <TextInput id="doel-startdatum" type="date" labelText="Startdatum"
+          helperText="Wanneer het werken aan dit subdoel begint"
+          max={streefEinddatum || planEinddatum?.slice(0, 10) || undefined}
+          value={startdatum} onChange={e => setStartdatum(e.target.value)}
+          invalid={!!startFout} invalidText={startFout || undefined} />
         <TextInput id="doel-einddatum" type="date" labelText="Beoogde einddatum (optioneel)"
           helperText={planEinddatum
             ? `Uiterlijk de beoogde einddatum van het plan (${formatDate(planEinddatum)})`
@@ -189,7 +198,9 @@ export function ActieModal({ open, ctx, onClose, onSave }: {
       onRequestClose={onClose} onRequestSubmit={opslaan}>
       <div className="pdca-modal-form">
         {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
-        <TextInput id="actie-title" labelText="Titel (verplicht)" value={title} onChange={e => setTitle(e.target.value)} />
+        <TextInput id="actie-title" labelText="Titel (verplicht)" value={title} onChange={e => setTitle(e.target.value)}
+          maxLength={ACTIE_TITEL_MAX}
+          helperText="De actie wordt een taak in de takenlijst van dit dossier, met deze titel, beschrijving en deadline; daar rond je haar af. Die drie liggen daarna vast." />
         <TextArea id="actie-desc" labelText="Beschrijving" value={desc} onChange={e => setDesc(e.target.value)} />
         <TextInput id="actie-assignee" labelText="Naam uitvoerder" value={assigneeName} onChange={e => setAssigneeName(e.target.value)} />
         <Select id="actie-priority" labelText="Prioriteit" value={priority} onChange={e => setPriority(e.target.value)}>

@@ -67,6 +67,8 @@ tasks.withType<Test> {
         .withPropertyName("gzacCaseDefinitions")
     inputs.dir("gzac/system-processes").withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("gzacSystemProcesses")
+    inputs.dir("gzac/bouwblokken").withPathSensitivity(PathSensitivity.RELATIVE)
+        .withPropertyName("gzacBouwblokken")
     inputs.dir("gzac/epistola").withPathSensitivity(PathSensitivity.RELATIVE)
         .withPropertyName("gzacEpistola")
     inputs.file("gzac/dev-setup/dev-values.json").withPathSensitivity(PathSensitivity.RELATIVE)
@@ -223,10 +225,28 @@ val systemProcessZipTasks = systemProcessKeys.map { processKey ->
     }
 }
 
+// Importable GZAC building block zips (config/building-block/<key>/<version>/,
+// see gzac/case-definitions/README.md), imported through Building blocks
+// before the case definitions that link them. Same reproducible output.
+val buildingBlockKeys = listOf("pdca-taak")
+val buildingBlockZipTasks = buildingBlockKeys.map { key ->
+    tasks.register<Zip>("buildingBlockZip-$key") {
+        group = "gzac"
+        description = "Build the importable GZAC building block zip for '$key'"
+        from(layout.projectDirectory.dir("gzac/bouwblokken/$key"))
+        include("config/**")
+        exclude("**/.DS_Store")
+        archiveFileName = "$key.zip"
+        destinationDirectory = layout.projectDirectory.dir("gzac/bouwblokken")
+        isPreserveFileTimestamps = false
+        isReproducibleFileOrder = true
+    }
+}
+
 tasks.register("buildGzacZips") {
     group = "gzac"
-    description = "Build all importable GZAC case-definition and system process zips"
-    dependsOn(caseZipTasks, systemProcessZipTasks)
+    description = "Build all importable GZAC case-definition, building block and system process zips"
+    dependsOn(caseZipTasks, buildingBlockZipTasks, systemProcessZipTasks)
 }
 
 // ---------------------------------------------------------------------------

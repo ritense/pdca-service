@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, InlineNotification, Tag } from '@carbon/react';
+import { Button, InlineNotification, Select, SelectItem, Tag } from '@carbon/react';
 import { Add } from '@carbon/react/icons';
 import { Doel } from '../shared/api';
 import { EvaluatieBanner } from '../shared/EvaluatieBanner';
@@ -7,6 +7,7 @@ import { foutmelding } from '../shared/http';
 import { doelStatus } from '../shared/labels';
 import { LaadFout, NietGeladen } from '../shared/Meldingen';
 import { PlanDossierPagina, PlanPaginaProps } from '../shared/PlanDossierPagina';
+import { isVergrendeld, PlanSlotMelding, VERGRENDELD_HINT } from '../shared/planSlot';
 import { DoelenSkeleton } from '../shared/Skeletons';
 import { useEvaluatieSessie } from '../shared/useEvaluatieSessie';
 import { eersteFout } from '../shared/useResource';
@@ -14,6 +15,7 @@ import { formatUrn } from '../shared/urn';
 import { ActieContext, doelenActies } from './doelenActies';
 import { ActieModal, AfbreekModal, AfbreekTarget, DoelModal, VerwijderModal, VerwijderTarget } from './DoelenModals';
 import { DoelenHandlers, HoofddoelCard, SubdoelCard } from './SubdoelCard';
+import { sorteerSubdoelen, STANDAARD_VOLGORDE, SUBDOEL_VOLGORDES, SubdoelVolgorde } from './subdoelVolgorde';
 import { useDoelenData } from './useDoelenModel';
 
 /** The "Doelen" case tab. */
@@ -36,6 +38,8 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
   const [verwijderTarget, setVerwijderTarget] = useState<VerwijderTarget>(null);
   /** Key of the state action (starten, afronden, actiestatus) under way; one at a time. */
   const [busy, setBusy] = useState<string | null>(null);
+  /** The order the subdoelen show in; the viewer's own, for as long as the tab is open. */
+  const [volgorde, setVolgorde] = useState<SubdoelVolgorde>(STANDAARD_VOLGORDE);
 
   const fout = eersteFout(...data.vereist);
   const model = data.model;
@@ -46,6 +50,7 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
   }
 
   const acties = doelenActies(model);
+  const vergrendeld = isVergrendeld(plan.uuid, details, model.caseConfig.planStatussen, evaluatie.session);
 
   /** Runs a state action from a button, one at a time, then reloads; a failure shows as the page error. */
   const run = (key: string, melding: string, action: () => Promise<unknown>) => async () => {
@@ -70,6 +75,7 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
 
   const handlers: DoelenHandlers = {
     busy: !!busy,
+    vergrendeld,
     aanvraag,
     startDoel: doel => run(`doel-${doel.uuid}`, 'Subdoel starten mislukt', () => acties.startDoel(doel))(),
     rondDoelAf: doel => run(`doel-${doel.uuid}`, 'Subdoel afronden mislukt', () => acties.rondDoelAf(doel))(),
@@ -81,7 +87,7 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
       // Removing a doel takes only the instruments that belong to this doel alone.
       instrumenten: model.instrumentenVan(doel.uuid).filter(i => i.doelen.every(d => d.uuid === doel.uuid)).length,
       acties: model.alleActiesVan(doel.uuid).length,
-      openDossiers: model.openDossiersVan(doel.uuid),
+      lopendWerk: model.lopendWerkVan(doel.uuid, data.verzoeken.data, 'verwijderen'),
     }),
     nieuweActie: setActieModal,
     actieStatus: (id, actie) => run(`actie-${id}`, 'Actiestatus wijzigen mislukt', () => acties.wijzigActieStatus(id, actie))(),
@@ -119,6 +125,7 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
       {fout && <LaadFout titel="De doelen konden niet worden bijgewerkt" error={fout.error} context="dossier" onRetry={fout.reload} />}
       {evaluatie.session?.planUuid === plan.uuid && <EvaluatieBanner />}
       {evaluatie.fout != null && <NietGeladen wat="Je lopende evaluatie" error={evaluatie.fout} onRetry={evaluatie.opnieuw} />}
+      {vergrendeld && plan.status === 'actief' && <PlanSlotMelding wat="Subdoelen en instrumentaanvragen" />}
       {productStarted && (
         <InlineNotification className="pdca-notification" kind="success" title="Instrument aangevraagd" subtitle={productStarted}
           lowContrast onCloseButtonClick={() => setProductStarted(null)} />
@@ -135,12 +142,19 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
       })}
 
       <div className="pdca-phase-bar">
+        {model.subdoelen.length > 1 && (
+          <Select id="subdoel-volgorde" className="pdca-volgorde" inline size="sm" labelText="Sorteren op" value={volgorde}
+            onChange={e => setVolgorde(e.target.value as SubdoelVolgorde)}>
+            {SUBDOEL_VOLGORDES.map(v => <SelectItem key={v.key} value={v.key} text={v.label} />)}
+          </Select>
+        )}
         <div className="pdca-spacer" />
-        <Button size="sm" renderIcon={Add} onClick={() => setDoelModal({ doel: null })}>Subdoel toevoegen</Button>
+        <Button size="sm" renderIcon={Add} disabled={vergrendeld} title={vergrendeld ? VERGRENDELD_HINT : undefined}
+          onClick={() => setDoelModal({ doel: null })}>Subdoel toevoegen</Button>
       </div>
 
       {model.subdoelen.length === 0 && <div className="pdca-empty"><p>Geen subdoelen gevonden</p></div>}
-      {model.subdoelen.map(doel => (
+      {sorteerSubdoelen(model.subdoelen, volgorde, model.detailsVanDoel).map(doel => (
         <SubdoelCard key={doel.uuid} doel={doel} model={model} producttypen={data.producttypen}
           verzoeken={data.verzoeken} handlers={handlers} />
       ))}

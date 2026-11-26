@@ -2,6 +2,7 @@ package com.ritense.pdca.plugin
 
 import com.ritense.pdca.service.DocumentAanvraagService
 import com.ritense.pdca.service.InstrumentActionService
+import com.ritense.pdca.service.ActieTaakService
 import com.ritense.pdca.service.PluginActionException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -38,7 +39,8 @@ import org.springframework.web.server.ResponseStatusException
 class PluginActionController(
     private val instrumentActionService: InstrumentActionService,
     private val gzacAccess: GzacAccess,
-    private val documentAanvraagService: DocumentAanvraagService
+    private val documentAanvraagService: DocumentAanvraagService,
+    private val actieTaakService: ActieTaakService
 ) {
 
     private val logger = LoggerFactory.getLogger(PluginActionController::class.java)
@@ -86,6 +88,22 @@ class PluginActionController(
             "document-gereed" -> {
                 {
                     documentAanvraagService.recordOutcome(documentId, body["processInstanceId"]?.toString(), properties)
+                    emptyMap()
+                }
+            }
+
+            // The building block pdca-taak, the GZAC task of an actie,
+            // reports that it carries the actie and, once done, its resultaat.
+            "actie-taak-gestart" -> {
+                {
+                    actieTaakService.taakGestart(properties, body["processInstanceId"]?.toString())
+                    emptyMap()
+                }
+            }
+
+            "actie-gereed" -> {
+                {
+                    actieTaakService.gereed(properties, body["processInstanceId"]?.toString())
                     emptyMap()
                 }
             }

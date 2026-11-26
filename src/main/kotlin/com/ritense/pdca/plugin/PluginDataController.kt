@@ -25,6 +25,7 @@ import com.ritense.pdca.security.DataDispatch
 import com.ritense.pdca.security.DataRateLimiter
 import com.ritense.pdca.security.DispatchedRequest
 import com.ritense.pdca.security.PdcaUserAuthentication
+import com.ritense.pdca.security.PlanSlot
 import com.ritense.pdca.security.UserVerifier
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -72,7 +73,9 @@ data class PluginDataRequest(
  *    cannot flood GZAC or crowd out users whose token is cached; every call
  *    of the verified user then against the user's limit (429 over a limit);
  * 3. the [DataAccessPolicy] has a route for it and the user meets its
- *    requirement (plan dossier readable, admin role; 403 otherwise).
+ *    requirement (plan dossier readable, admin role; 403 otherwise);
+ * 4. it changes no locked part of a plan, unless the plan is in concept or
+ *    the user evaluates it ([PlanSlot]; 409 otherwise).
  *
  * The call is then forwarded inside the container to the REST handler of
  * its path, as the verified user ([PdcaUserAuthentication]) and marked with
@@ -85,6 +88,7 @@ class PluginDataController(
     private val gzacAccess: GzacAccess,
     private val userVerifier: UserVerifier,
     private val accessPolicy: DataAccessPolicy,
+    private val planSlot: PlanSlot,
     private val rateLimiter: DataRateLimiter,
     private val securityContextRepository: SecurityContextRepository,
     private val objectMapper: ObjectMapper
@@ -119,6 +123,7 @@ class PluginDataController(
         val call = DataCall(method, path, data.query ?: emptyMap(), data.body?.takeUnless { it.isNull }, data.context ?: emptyMap())
         val allowed = accessPolicy.resolve(call)
         userVerifier.authorize(user, allowed.requirement)
+        val recordedOn = planSlot.controleer(user.login, allowed.slot)
 
         // The forward runs inside this request's security filter pass, so the
         // verified user goes into the current context as well as the request.
@@ -129,6 +134,11 @@ class PluginDataController(
         val body = call.body?.let { objectMapper.writeValueAsBytes(it) } ?: ByteArray(0)
         request.getRequestDispatcher(call.path + queryString(call.query))
             .forward(DispatchedRequest(request, call.method, body), response)
+
+        // A locked change the handler refused changed nothing, so its record
+        // on the evaluation goes again. Any other failure may have changed
+        // part of the plan already and keeps it.
+        if (recordedOn != null && response.status in 400..499) planSlot.release(recordedOn)
     }
 
     private fun readRequest(request: HttpServletRequest): PluginDataRequest {

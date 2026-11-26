@@ -20,8 +20,11 @@ const EERSTE_EVALUATIE_WEKEN = 6;
  */
 type Rij<T> = T & { key: number; extra: Record<string, unknown> };
 
-/** `streefEinddatum`: the beoogde einddatum (yyyy-mm-dd), empty for none. */
-export type SubdoelRij = Rij<{ doelType: string; beschrijving: string; status: DoelStatus; streefEinddatum: string }>;
+/**
+ * `startdatum`: when work on the subdoel starts (yyyy-mm-dd), empty for the
+ * plan's startdatum; `streefEinddatum`: the beoogde einddatum, empty for none.
+ */
+export type SubdoelRij = Rij<{ doelType: string; beschrijving: string; status: DoelStatus; startdatum: string; streefEinddatum: string }>;
 /** An instrument to request once the plan exists: producttype code + subdoel (doeltype name; empty = the first). */
 export type InstrumentRij = Rij<{ product: string; doel: string }>;
 /** `auto`: the default first evaluation, whose date follows the startdatum until the row is edited. */
@@ -98,7 +101,7 @@ function nieuweEvaluatie(evaluatieTypen: string[], datum = '', auto = false): Ev
 }
 
 function nieuweRij(sectie: Sectie, evaluatieTypen: string[]): Lijsten[Sectie][number] {
-  if (sectie === 'subdoelen') return { key: sleutel(), extra: {}, doelType: '', beschrijving: '', status: 'gepland', streefEinddatum: '' };
+  if (sectie === 'subdoelen') return { key: sleutel(), extra: {}, doelType: '', beschrijving: '', status: 'gepland', startdatum: '', streefEinddatum: '' };
   if (sectie === 'instrumenten') return { key: sleutel(), extra: {}, product: '', doel: '' };
   if (sectie === 'evaluaties') return nieuweEvaluatie(evaluatieTypen);
   return { key: sleutel(), extra: {}, naam: '', rol: '', organisatie: '', email: '', procesbegeleider: false };
@@ -149,7 +152,7 @@ export function formReducer(state: FormState, actie: FormActie): FormState {
         poging: true,
         open: {
           ...state.open,
-          subdoelen: state.open.subdoelen || state.subdoelen.some(d => !d.doelType || subdoelEinddatumFout(d, state.streefEinddatum)),
+          subdoelen: state.open.subdoelen || state.subdoelen.some(d => !d.doelType || subdoelDatumFout(d, state.streefEinddatum)),
           instrumenten: state.open.instrumenten || state.instrumenten.some(i => !i.product),
         },
       };
@@ -172,6 +175,16 @@ export function subdoelEinddatumFout(d: SubdoelRij, planEinddatum: string): stri
   return null;
 }
 
+/** Why a subdoel's startdatum is not allowed (same rule as the backend), or null: not after its beoogde einddatum. */
+export function subdoelStartdatumFout(d: SubdoelRij): string | null {
+  return d.startdatum && d.streefEinddatum && d.startdatum > d.streefEinddatum ? 'Na de beoogde einddatum' : null;
+}
+
+/** Whether either date of a subdoel is not allowed. */
+function subdoelDatumFout(d: SubdoelRij, planEinddatum: string): boolean {
+  return !!subdoelStartdatumFout(d) || !!subdoelEinddatumFout(d, planEinddatum);
+}
+
 /** What is still missing before the plan can be created; empty when nothing is. */
 export function ontbreekt(state: FormState): string[] {
   const lijst: string[] = [];
@@ -182,6 +195,8 @@ export function ontbreekt(state: FormState): string[] {
   if (zonderDoel) lijst.push(`doel bij ${aantal(zonderDoel, 'subdoel', 'subdoelen')}`);
   const ongeldigeDatum = state.subdoelen.filter(d => subdoelEinddatumFout(d, state.streefEinddatum)).length;
   if (ongeldigeDatum) lijst.push(`geldige beoogde einddatum bij ${aantal(ongeldigeDatum, 'subdoel', 'subdoelen')}`);
+  const ongeldigeStart = state.subdoelen.filter(d => subdoelStartdatumFout(d)).length;
+  if (ongeldigeStart) lijst.push(`startdatum vóór de beoogde einddatum bij ${aantal(ongeldigeStart, 'subdoel', 'subdoelen')}`);
   const zonderProduct = state.instrumenten.filter(i => !i.product).length;
   if (zonderProduct) lijst.push(`instrumenttype bij ${aantal(zonderProduct, 'instrument', 'instrumenten')}`);
   return lijst;
@@ -244,11 +259,12 @@ export function vulVoor(p: PlanPrefill, registers: Registers, cfg: CaseConfig):
   const bekend = registers.doeltypen.map(t => t.doelType);
   state.subdoelen = prefillRijen(p.doelen).map(d => ({
     key: sleutel(),
-    extra: overige(d, ['doelType', 'beschrijving', 'status', 'voortgang', 'streefEinddatum']),
+    extra: overige(d, ['doelType', 'beschrijving', 'status', 'voortgang', 'startdatum', 'streefEinddatum']),
     doelType: tekst(d.doelType),
     beschrijving: tekst(d.beschrijving),
     status: doelStatusUit(d.status),
     // A form.io date value carries time and offset; the date part is the day picked.
+    startdatum: d.startdatum ? datumDeel(tekst(d.startdatum)) : '',
     streefEinddatum: d.streefEinddatum ? datumDeel(tekst(d.streefEinddatum)) : '',
   }));
   state.subdoelen.forEach(d => { if (d.doelType && !bekend.includes(d.doelType)) nietGezet.push(`subdoel "${d.doelType}"`); });
@@ -282,7 +298,7 @@ export function vulVoor(p: PlanPrefill, registers: Registers, cfg: CaseConfig):
   });
   velden += state.subdoelen.length + state.instrumenten.length + evaluaties.length + state.betrokkenen.length;
   state.open = {
-    subdoelen: state.subdoelen.length === 0 || state.subdoelen.some(d => !d.doelType || subdoelEinddatumFout(d, state.streefEinddatum)),
+    subdoelen: state.subdoelen.length === 0 || state.subdoelen.some(d => !d.doelType || subdoelDatumFout(d, state.streefEinddatum)),
     instrumenten: state.instrumenten.length === 0,
     evaluaties: state.evaluaties.length === 0,
     betrokkenen: state.betrokkenen.length === 0,
@@ -315,7 +331,8 @@ export function maakRequest(state: FormState, documentId: string, subjectNaam: s
     startdatum: state.startdatum || null,
     streefEinddatum: state.streefEinddatum || null,
     doelen: state.subdoelen.map(d => ({
-      ...d.extra, doelType: d.doelType, beschrijving: d.beschrijving, status: d.status, streefEinddatum: d.streefEinddatum || null,
+      ...d.extra, doelType: d.doelType, beschrijving: d.beschrijving, status: d.status,
+      startdatum: d.startdatum || null, streefEinddatum: d.streefEinddatum || null,
     })),
     instrumenten: state.instrumenten.map(i => ({ product: i.product, doel: i.doel })),
     contactmomenten: state.evaluaties.filter(c => c.datum).map(c => ({

@@ -6,17 +6,18 @@ tabs show the dossier's plan as soon as the app has created the dossier.
 
 | Zip | Version | Case | Subject | Role |
 |---|---|---|---|---|
-| `inwonerplan.zip` | 1.6.0 | Inwonerplan (PDCA) | Persoon (bsn) | Plan case type |
-| `binnenhof-renovatie.zip` | 1.6.0 | Binnenhof-renovatie (PDCA) | Object | Plan case type |
-| `intake-werk-participatie.zip` | 1.2.0 | Intake werk en participatie | Persoon (bsn) | Realistic W&P intake incl. DVKM decision table (see below) |
-| `renovatie-intake.zip` | 1.4.0 | Intake renovatie (PDCA) | Object | Minimal intake (start form → plan task) |
+| `inwonerplan.zip` | 1.7.0 | Inwonerplan (PDCA) | Persoon (bsn) | Plan case type |
+| `binnenhof-renovatie.zip` | 1.7.0 | Binnenhof-renovatie (PDCA) | Object | Plan case type |
+| `intake-werk-participatie.zip` | 1.3.0 | Intake werk en participatie | Persoon (bsn) | Realistic W&P intake incl. DVKM decision table (see below) |
+| `renovatie-intake.zip` | 1.5.0 | Intake renovatie (PDCA) | Object | Minimal intake (start form → plan task) |
 | `instrument-verzoek.zip` | 1.2.0 | Instrumentaanvraag | — | Instrument dossier for every product requested for a plan, started by GZAC's Verzoek plugin (see below) |
 
 Each zip contains everything the case needs: document definition (JSON
 schema), BPMN process, process-document link, case list columns, search
 fields and case tabs. The intake zips add their start and task forms
-(form.io) with process links; the plan-dossier zips carry no forms at all
-(see "Plan dossiers"). `binnenhof-renovatie` and the intake
+(form.io) with process links; the plan-dossier zips carry no forms at all,
+only the link to the task building block `pdca-taak` (see "Plan dossiers"
+and "The task building block"). `binnenhof-renovatie` and the intake
 case types carry the default tabs (Samenvatting/Voortgang/Audit); in
 `intake-werk-participatie` the Samenvatting tab is a **widget tab** driven by
 per-phase internal case statuses (see below); `inwonerplan` carries **only
@@ -47,6 +48,54 @@ Next to the case definitions the app needs two artefacts for its documents
 `./gradlew buildGzacZips` also builds the system process zip
 (`../system-processes/build-zips.sh` on its own). For the local stack the
 dev setup ([`../dev-setup/`](../dev-setup/README.md)) puts both in place.
+
+## The task building block: `pdca-taak`
+
+Every actie added to a plan — on the Doelen tab, or from an actiepunt of an
+evaluation — becomes a task in the plan dossier's task list (ARCHITECTURE
+§6.8). The task is the GZAC **building block**
+`../bouwblokken/pdca-taak.zip` (version 1.0.0, final), a generic task that
+the plan case types link:
+
+- **The building block** — its own document (`titel`, `omschrijving`,
+  `deadline`, and for the task of an actie `actieId`, `planUuid`,
+  `doelUuid`; then `uitkomst` and `resultaat` from its form) and the
+  process `pdca-taak` (`BB:pdca-taak:1.0.0`): start form `pdca-taak-start`
+  (title, description and deadline, hidden fields for the actie, all under
+  `bouwblokStart.*`) → when the document names an actie, service task
+  **actie-taak-gestart** (synchronous: it tells the app which process
+  carries the actie) → one user task, named after `/titel` and due on
+  `/deadline` (form `pdca-taak-afronden`: uitkomst *uitgevoerd* or
+  *vervallen* and a required `resultaat`) → for an actie, service task
+  **actie-gereed** (asynchronous, retried every minute five times; it ends
+  the actie as afgerond or vervallen with the resultaat) → end. Without an
+  actie it is a task like any other, with a title given at its start. Its
+  PDCA process links name the plugin (`pdca` 0.2.0) but no configuration:
+  GZAC resolves that through the case type's building-block link.
+- **The link on the plan case types**
+  (`building-block-link/<key>.case-building-block-links.json`) copies the
+  start data from the plan dossier's `/bouwblokStart` into the building
+  block document; `startableByUser` is `false`, so the building block is
+  not in the dossier's start menu and is always the task of an actie
+  there. The plan case types' schemas declare `/bouwblokStart`, where the
+  start form writes. Another case type can link the building block the
+  same way to offer a plain task, with `startableByUser` `true`.
+- **Starting** is up to the app: it submits the building block's start
+  form on the plan dossier, the way GZAC's own UI starts a building block,
+  with every start field (empty ones too, so nothing of the previous start
+  stays behind). GZAC's import does not map placeholder configuration ids
+  inside a building-block link, so the link ships with empty
+  `pluginConfigurationMappings` and the app sets the mapping
+  `external-plugin:pdca@0.2.0` → its configuration before a start when it
+  is missing (also after a re-import, which resets it).
+
+Import the building block before the plan case types that link it (Admin →
+Building blocks → **Import**, or `POST
+/api/management/v1/building-block/import` with the zip as `file`). The app
+needs the grants of its manifest for this (ARCHITECTURE §3.4): accept the
+changed manifest in GZAC, or the app's start of a task is refused and the
+actie is not added. `./gradlew buildGzacZips` builds the zip
+(`../bouwblokken/build-zips.sh` on its own); the dev setup imports it.
 
 ## Importing
 
@@ -144,9 +193,10 @@ so the case has no entry in the Start menu.
 The plan-dossier process has **no user tasks**: `start-event` →
 `einde` ("Plandossier aangemaakt"). There are no start form, task forms or
 process links. The plan is kept up to date in the PDCA tabs (Planoverzicht,
-Doelen, Evaluaties); acties live in that tab, and a product
-requested there — or by the intake when the plan was created — gets an
-instrument dossier of its own (see "The instrument dossier").
+Doelen, Evaluaties); every actie added there runs as the task building block
+`pdca-taak` on the plan dossier (see "The task building block"), and a
+product requested there — or by the intake when the plan was created — gets
+an instrument dossier of its own (see "The instrument dossier").
 
 The app fills the dossier document on creation:
 
@@ -155,6 +205,7 @@ The app fills the dossier document on creation:
 | `onderwerp` | Subject line: name of the inwoner or the object (as entered in the intake, otherwise from the register, otherwise the plan titel) |
 | `bsn` + `naam` / `objectId` + `objectNaam` | Subject of the plan, from `plan.domeinregister` |
 | `planId`, `planTitel` | Reference to the plan in Open Plan |
+| `bouwblokStart` | Start data of the most recently started task building block — actie, title, description, deadline — (written by its start form, read by the building-block link) |
 
 The case list shows **Onderwerp** (`doc:onderwerp`) as its first column,
 followed by BSN (`inwonerplan`) or Object-id (`binnenhof-renovatie`),
@@ -162,7 +213,7 @@ followed by BSN (`inwonerplan`) or Object-id (`binnenhof-renovatie`),
 
 ## The realistic intake: `intake-werk-participatie` with the DVKM decision table
 
-`intake-werk-participatie.zip` (1.2.0, "Intake werk en participatie")
+`intake-werk-participatie.zip` (1.3.0, "Intake werk en participatie")
 demonstrates a realistic W&P intake: a small start form and a user task per
 conversation instead of one big start form, and a first mock of the DVKM
 'algorithm' as a **DMN decision requirements graph** — inwonergegevens in,
@@ -257,7 +308,7 @@ intake gives them no status. The row shapes are the input of the
 
 | Grid | Row fields |
 |---|---|
-| `doelen` | `doelType`, `beschrijving`, `status`, `streefEinddatum` |
+| `doelen` | `doelType`, `beschrijving`, `status`, `startdatum`, `streefEinddatum` |
 | `instrumenten` | `product` (producttype code; the select shows the product name), `doel` (the subdoel it is requested under) |
 | `betrokkenen` | `naam`, `rol`, `organisatie`, `email`, `procesbegeleider` |
 | `contactmomenten` (renovatie-intake only) | `datum`, `evaluatieType`, `status`, `notitie`, `deelnemers` |
@@ -269,8 +320,14 @@ intake gives them no status. The row shapes are the input of the
   the app reads the date part). Custom validation on the field applies the
   app's rules for a subdoel: not in the past and, in `renovatie-intake`,
   not after the plan's `streefEinddatum`; an afgerond doel is not checked.
-  The intake-werk-participatie Samenvatting tab shows it as a column in the
-  Doelen table.
+- **Startdatum** (`startdatum`) of a doel: an optional date picker per row
+  like the beoogde einddatum, not after it; without one the subdoel starts
+  on the plan's startdatum. The intake-werk-participatie Samenvatting tab
+  shows both dates as columns in the Doelen table.
+- **Demo defaults**: every subdoel gepland, with a startdatum and beoogde
+  einddatum in the second half of 2027 that follow the order the subdoelen
+  come up in, so sorting them on the Doelen tab shows a difference;
+  `renovatie-intake` runs its plan from 1 July to 31 December 2027.
 - **Products** in the selects are producttypen seeded in Open Product, all
   with a `StartInstrument` actie (`renovatie-intake` offers only the
   objectdomein ones); the demo defaults put each under a subdoel with a
