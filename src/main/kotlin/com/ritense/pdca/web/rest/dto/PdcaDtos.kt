@@ -44,10 +44,11 @@ data class PlanDetailsRequest(
 data class DoelDetailsRequest(
     val planUuid: UUID? = null,
     val uitvoeringsStatus: UitvoeringsStatus? = null,
-    val voortgangToelichting: Optional<String>? = null,
     /** Code of one of the plan's voortgangsstatussen; only for a doel that is actief in Open Plan. */
     val voortgangStatus: Optional<String>? = null,
+    /** Interne toelichting of the voortgang. */
     val interneNotitie: Optional<String>? = null,
+    /** Externe toelichting of the voortgang. */
     val externeNotitie: Optional<String>? = null,
     val sortering: Int? = null,
     /** Beoogde einddatum of a subdoel: not before today, not after the plan's streefEinddatum. */

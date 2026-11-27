@@ -136,8 +136,9 @@ export function ConfigModal({ open, bewerk, configs, gzacDossiertypes, doeltypen
           <h5 style={sectionTitleStyle}>Voortgangsstatussen (hoofddoel en subdoelen)</h5>
           <p style={hintStyle}>
             Hoe het gaat met een lopend hoofddoel of subdoel. De fase (Gepland, Gestart, Afgerond,
-            Afgebroken) komt uit het register en is geen voortgangsstatus; na afronden of afbreken
-            toont een doel weer die fase. Een naam wijzigen werkt door op bestaande doelen; een
+            Afgebroken) komt uit het register en is geen voortgangsstatus; een voortgangsstatus als
+            Behaald of Gestopt rondt het doel niet af, en na afronden of afbreken toont een doel weer
+            die fase. Een naam wijzigen werkt door op bestaande doelen; een
             verwijderde status blijft grijs zichtbaar op doelen die hem nog hebben. Sleep voor de volgorde.
           </p>
           <VoortgangStatussenEditor rijen={form.voortgang} onChange={voortgang => wijzig({ voortgang })}

@@ -128,15 +128,20 @@ class DocumentGegevensServiceTest {
     }
 
     @Test
-    fun `internal notes never reach the document`() {
+    fun `internal notes and toelichtingen never reach the document`() {
         `when`(openPlan.findPlan(planUuid)).thenReturn(null)
+        val subdoel = UUID.randomUUID()
         val gegevens = service.evaluatieverslag(
             session,
-            listOf(change(EvaluationSubjectType.PLAN, planUuid, "Plan", "INTERNE_NOTITIE", naar = "Vertrouwelijk"))
+            listOf(
+                change(EvaluationSubjectType.PLAN, planUuid, "Plan", "INTERNE_NOTITIE", naar = "Vertrouwelijk"),
+                change(EvaluationSubjectType.SUBDOEL, subdoel, "Werk", "INTERNE_TOELICHTING", naar = "Intern overleg")
+            )
         )
 
         assertEquals(emptyList<Any>(), gegevens["wijzigingen"])
         assertTrue("Vertrouwelijk" !in gegevens.toString())
+        assertTrue("Intern overleg" !in gegevens.toString())
     }
 
     @Test
@@ -166,6 +171,7 @@ class DocumentGegevensServiceTest {
         assertEquals("Planstatus: Vastgesteld", omschrijving("WEERGAVESTATUS", "Vastgesteld", "Vastgesteld"))
         assertEquals("Toelichting bij hoofddoel: Nieuw", omschrijving("HOOFDDOEL_TOELICHTING", "Oud", "Nieuw"))
         assertEquals("Externe notitie verwijderd", omschrijving("EXTERNE_NOTITIE", "Oud", null))
+        assertEquals("Externe toelichting: Nieuw", omschrijving("EXTERNE_TOELICHTING", "Oud", "Nieuw"))
         assertEquals("Subdoel afgerond", omschrijving("SUBDOEL_AFGEROND", null, null))
         assertEquals("ONBEKEND: x", omschrijving("ONBEKEND", null, "x"))
     }

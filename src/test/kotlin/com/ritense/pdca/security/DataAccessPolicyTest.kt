@@ -191,7 +191,7 @@ class DataAccessPolicyTest {
             slot(call("PUT", "/api/v1/pdca/plandetails/$planUuid", body = """{"weergaveStatus":"Concept"}"""))
         )
 
-        assertEquals(emptyList(), slot(call("PUT", "/api/v1/pdca/doeldetails/$doelUuid", body = """{"voortgangStatus":"OP_KOERS"}""")))
+        assertEquals(emptyList(), slot(call("PUT", "/api/v1/pdca/doeldetails/$doelUuid", body = """{"voortgangStatus":"MEE_BEZIG"}""")))
         assertEquals(emptyList(), slot(call("PUT", "/api/v1/pdca/doeldetails/$doelUuid", body = """{"uitvoeringsStatus":"GESTART"}""")))
         assertEquals(emptyList(), slot(call("POST", "/api/v1/pdca/acties", body = """{"doelUuid":"$doelUuid","title":"Bellen"}""")))
         assertEquals(emptyList(), slot(call("POST", "/api/v1/pdca/plannen/$planUuid/afbreken", body = """{"reden":"r"}""")))
