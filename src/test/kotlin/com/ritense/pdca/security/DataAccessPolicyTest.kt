@@ -193,6 +193,7 @@ class DataAccessPolicyTest {
         assertEquals(vast, slot(call("PUT", "/api/v1/pdca/plannen/$planUuid/hoofddoel", body = """{"doeltypeUuid":"x"}""")))
         assertEquals(vast, slot(call("PUT", "/api/v1/pdca/doeldetails/$doelUuid", body = """{"streefEinddatum":null}""")))
         assertEquals(vast, slot(call("PUT", "/api/v1/pdca/plandetails/$planUuid", body = """{"streefEinddatum":"2027-01-01"}""")))
+        assertEquals(vast, slot(call("PUT", "/api/v1/pdca/plandetails/$planUuid", body = """{"weergaveStatus":null}""")))
         assertEquals(
             listOf(SlotWijziging(planUuid, weergaveStatus = "Concept")),
             slot(call("PUT", "/api/v1/pdca/plandetails/$planUuid", body = """{"weergaveStatus":"Concept"}"""))

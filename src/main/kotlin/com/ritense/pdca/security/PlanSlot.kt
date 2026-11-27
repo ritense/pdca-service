@@ -48,7 +48,8 @@ data class SlotWijziging(val planUuid: UUID, val weergaveStatus: String? = null)
  *
  * An evaluation that lets such a change through records that it did; it
  * can then only be completed, so the change is not left without the
- * conversation that informs the inwoner.
+ * conversation that informs the inwoner. A change that is refused (4xx)
+ * takes its record back.
  */
 @Component
 class PlanSlot(
@@ -59,10 +60,17 @@ class PlanSlot(
     /**
      * Throws 409 unless [login] may make every one of [wijzigingen] now. A
      * change the user's evaluation unlocks is recorded on that evaluation
-     * first; when it has just ended, the change is refused after all.
+     * before it is made, so cancelling the evaluation and making the change
+     * cannot both succeed; when the evaluation has just ended, the change is
+     * refused after all.
+     *
+     * Returns the evaluation this call recorded the change on, which the
+     * caller hands to [release] when the change is then refused; null when
+     * it recorded nothing (no locked change, or the evaluation had one
+     * recorded already).
      */
-    fun controleer(login: String, wijzigingen: List<SlotWijziging>) {
-        if (wijzigingen.isEmpty()) return
+    fun controleer(login: String, wijzigingen: List<SlotWijziging>): UUID? {
+        if (wijzigingen.isEmpty()) return null
         val evaluatie by lazy { evaluationSessionRepository.findByUserLoginAndStatus(login, EvaluationSessionStatus.RUNNING) }
         var ontgrendeldDoor: UUID? = null
         wijzigingen.forEach { wijziging ->
@@ -73,11 +81,23 @@ class PlanSlot(
                 ?: throw ResponseStatusException(HttpStatus.CONFLICT, VERGRENDELD)
             ontgrendeldDoor = sessie.id
         }
-        ontgrendeldDoor?.let { sessieId ->
-            if (evaluationSessionRepository.markeerVastgesteldGewijzigd(sessieId) == 0) {
-                throw ResponseStatusException(HttpStatus.CONFLICT, VERGRENDELD)
-            }
+        val sessieId = ontgrendeldDoor ?: return null
+        if (evaluationSessionRepository.markVastgesteldGewijzigd(sessieId) == 1) return sessieId
+        val sessie = evaluationSessionRepository.findById(sessieId).orElse(null)
+        if (sessie?.status != EvaluationSessionStatus.RUNNING || !sessie.vastgesteldGewijzigd) {
+            throw ResponseStatusException(HttpStatus.CONFLICT, VERGRENDELD)
         }
+        return null
+    }
+
+    /**
+     * Takes back the record [controleer] made on evaluation [sessionId]: the
+     * change it let through was refused (4xx), so nothing changed and the
+     * evaluation may be cancelled again. If another locked change of the
+     * same evaluation succeeded at the same moment, its record goes as well.
+     */
+    fun release(sessionId: UUID) {
+        evaluationSessionRepository.unmarkVastgesteldGewijzigd(sessionId)
     }
 
     companion object {

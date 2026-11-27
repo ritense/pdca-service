@@ -15,8 +15,8 @@ export type SubdoelVolgorde =
   | 'titel-op' | 'titel-af';
 
 export const SUBDOEL_VOLGORDES: { key: SubdoelVolgorde; label: string }[] = [
-  { key: 'startdatum-op', label: 'Startdatum (oudste eerst)' },
-  { key: 'startdatum-af', label: 'Startdatum (nieuwste eerst)' },
+  { key: 'startdatum-op', label: 'Startdatum (vroegste eerst)' },
+  { key: 'startdatum-af', label: 'Startdatum (laatste eerst)' },
   { key: 'einddatum-op', label: 'Beoogde einddatum (vroegste eerst)' },
   { key: 'einddatum-af', label: 'Beoogde einddatum (laatste eerst)' },
   { key: 'titel-op', label: 'Alfabetisch (A–Z)' },

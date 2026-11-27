@@ -238,9 +238,11 @@ class GzacClient(
      * Submits the start form [processLinkId] on dossier [documentId], the
      * way GZAC's own UI starts a building block on a dossier: the form data
      * goes into the dossier document, then the process starts. GZAC answers
-     * no process instance. A refusal (an error answer, or errors in the
-     * answer) means nothing started ([StartGeweigerdException]); any other
-     * failure leaves that unknown (502).
+     * no process instance. A refusal (an error answer from GZAC itself, or
+     * errors in the answer) means GZAC rolled the start back and nothing
+     * started ([StartGeweigerdException]). Any other failure leaves that
+     * unknown (502), a gateway status (502, 503, 504) included: a proxy in
+     * front of GZAC answers those, also while GZAC is still starting.
      */
     fun startformulierIndienen(processLinkId: String, documentId: String, data: Map<String, Any?>) {
         val (baseUrl, token) = resolveAccess()
@@ -253,6 +255,10 @@ class GzacClient(
                 .retrieve()
                 .body(Map::class.java)
         } catch (e: HttpStatusCodeException) {
+            if (e.statusCode.value() in GATEWAY_STATUSES) {
+                log.warn("No answer from GZAC on start form {} on dossier {} ({})", processLinkId, documentId, e.statusCode.value())
+                throw ResponseStatusException(HttpStatus.BAD_GATEWAY, "GZAC gaf geen antwoord op de start van de taak")
+            }
             val errors = runCatching { e.getResponseBodyAs(Map::class.java)?.get("errors") }.getOrNull()
             log.warn("GZAC refused the start form {} on dossier {} ({}): {}", processLinkId, documentId, e.statusCode.value(), errors ?: "(no reasons)")
             throw StartGeweigerdException("GZAC weigerde de taak op dossier $documentId te starten")
@@ -598,6 +604,9 @@ class GzacClient(
 
         /** The startable items (building blocks among them) of a case definition version. */
         const val STARTABLE_ITEMS = "/api/management/v1/case-definition/{key}/version/{versionTag}/startable-item"
+
+        /** The statuses a gateway in front of GZAC answers with; they say nothing about what GZAC did. */
+        val GATEWAY_STATUSES = setOf(502, 503, 504)
 
         /** Matches a dossier search reads; more than a few means duplicates, and the oldest is what counts. */
         const val DOSSIER_SEARCH_SIZE = 10

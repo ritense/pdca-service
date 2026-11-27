@@ -38,4 +38,14 @@ interface ActionRepository : JpaRepository<Action, UUID> {
     @Modifying(clearAutomatically = true)
     @Query("UPDATE Action a SET a.taakProcessInstanceId = :processInstanceId WHERE a.id = :id AND a.taakProcessInstanceId IS NULL")
     fun recordTaak(@Param("id") id: UUID, @Param("processInstanceId") processInstanceId: String): Int
+
+    /**
+     * Removes actie [id] unless a process was recorded as carrying its task
+     * ([recordTaak]); 1 when removed. Of a removal and a recording at the
+     * same moment, exactly one succeeds.
+     */
+    @Transactional
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM Action a WHERE a.id = :id AND a.taakProcessInstanceId IS NULL")
+    fun deleteIfTaakUnrecorded(@Param("id") id: UUID): Int
 }

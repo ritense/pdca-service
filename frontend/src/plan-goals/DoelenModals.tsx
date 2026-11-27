@@ -29,7 +29,7 @@ export type StartdatumTarget =
 function LopendWerk({ items }: { items: string[] }) {
   return (
     <InlineNotification kind="warning" title="Sluit eerst af wat nog loopt"
-      subtitle={`Onder dit subdoel loopt nog: ${items.join(', ')}. Rond een instrument af of breek het af (een instrumentdossier in het dossier zelf), wacht tot een aanvraag een instrument is geworden en rond een taak af in de takenlijst: uitgevoerd, of vervallen als ze niet meer nodig is.`}
+      subtitle={`Onder dit subdoel loopt nog: ${items.join(', ')}. Rond een instrument af of breek het af (een instrumentdossier in het dossier zelf) en rond een taak af in de takenlijst: uitgevoerd, of vervallen als ze niet meer nodig is.`}
       lowContrast hideCloseButton />
   );
 }

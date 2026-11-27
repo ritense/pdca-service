@@ -177,6 +177,9 @@ class DataAccessPolicy(private val scope: PlanScope) {
             val plan = uuid(v[0])
             when {
                 c.body?.has("streefEinddatum") == true -> vast(listOf(plan))
+                // Clearing the display status puts the plan back in concept
+                // as much as choosing the concept status does.
+                c.body?.get("weergaveStatus")?.isNull == true -> vast(listOf(plan))
                 else -> listOfNotNull(c.body.optionalText("weergaveStatus")?.let { SlotWijziging(plan, weergaveStatus = it) })
             }
         }, requirement = planInPath)

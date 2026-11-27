@@ -155,11 +155,16 @@ html, body {
   align-items: center;
 }
 
-/* Page-level notification (errors, the evaluation banner): full width with
-   space below, instead of Carbon's capped inline width. */
-.pdca-notification {
+/* A notification spans its container. Carbon caps its width per breakpoint
+   of the viewport, which for a bundle is its iframe: in a narrow tab or the
+   evaluation panel that cap is far narrower than the space it sits in. */
+.cds--inline-notification {
   max-inline-size: none;
   min-inline-size: 0;
+}
+
+/* Page-level notification (errors, the evaluation banner): space below. */
+.pdca-notification {
   margin-bottom: var(--pdca-spacing-05);
 }
 
@@ -195,8 +200,6 @@ html, body {
 }
 
 .pdca-laadfout .cds--inline-notification {
-  max-inline-size: none;
-  min-inline-size: 0;
   inline-size: 100%;
 }
 
