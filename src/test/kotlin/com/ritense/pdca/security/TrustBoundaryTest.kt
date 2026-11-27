@@ -34,6 +34,7 @@ import com.ritense.pdca.registers.openplan.OpenPlanGateway
 import com.ritense.pdca.repository.ActionRepository
 import com.ritense.pdca.repository.ContactmomentDetailsRepository
 import com.ritense.pdca.repository.DocumentAanvraagRepository
+import com.ritense.pdca.repository.IngeplandInstrumentRepository
 import com.ritense.pdca.repository.DoelDetailsRepository
 import com.ritense.pdca.repository.EvaluationSessionRepository
 import com.ritense.pdca.repository.InstrumentDetailsRepository
@@ -44,6 +45,7 @@ import com.ritense.pdca.service.DocumentAanvraagService
 import com.ritense.pdca.service.GzacClient
 import com.ritense.pdca.service.InstrumentActionService
 import com.ritense.pdca.service.PhaseConfigService
+import com.ritense.pdca.service.PlanConcept
 import com.ritense.pdca.web.rest.ErrorResponseAdvice
 import jakarta.servlet.http.HttpServletRequest
 import org.junit.jupiter.api.BeforeEach
@@ -117,7 +119,7 @@ class TrustBoundaryTest {
     )
     @EnableConfigurationProperties(PdcaProperties::class)
     @Import(
-        SecurityConfig::class, GzacInstances::class, UserVerifier::class, DataAccessPolicy::class, PlanScope::class, PlanSlot::class, DataRateLimiter::class,
+        SecurityConfig::class, GzacInstances::class, UserVerifier::class, DataAccessPolicy::class, PlanScope::class, PlanSlot::class, PlanConcept::class, DataRateLimiter::class,
         PluginDataController::class, PluginHostController::class, PluginActionController::class,
         RegisterProxyController::class, ErrorResponseAdvice::class, TestHandlers::class
     )
@@ -167,6 +169,7 @@ class TrustBoundaryTest {
     @MockitoBean private lateinit var involvedPartyRepository: InvolvedPartyRepository
     @MockitoBean private lateinit var evaluationSessionRepository: EvaluationSessionRepository
     @MockitoBean private lateinit var documentAanvraagRepository: DocumentAanvraagRepository
+    @MockitoBean private lateinit var ingeplandInstrumentRepository: IngeplandInstrumentRepository
     @MockitoBean private lateinit var openPlanGateway: OpenPlanGateway
     @MockitoBean(name = "openPlanRestClient") private lateinit var openPlanRestClient: RestClient
     @MockitoBean(name = "openProductRestClient") private lateinit var openProductRestClient: RestClient

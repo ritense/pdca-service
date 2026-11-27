@@ -10,7 +10,7 @@ tabs show the dossier's plan as soon as the app has created the dossier.
 | `binnenhof-renovatie.zip` | 1.7.0 | Binnenhof-renovatie (PDCA) | Object | Plan case type |
 | `intake-werk-participatie.zip` | 1.3.0 | Intake werk en participatie | Persoon (bsn) | Realistic W&P intake incl. DVKM decision table (see below) |
 | `renovatie-intake.zip` | 1.5.0 | Intake renovatie (PDCA) | Object | Minimal intake (start form → plan task) |
-| `instrument-verzoek.zip` | 1.2.0 | Instrumentaanvraag | — | Instrument dossier for every product requested for a plan, started by GZAC's Verzoek plugin (see below) |
+| `instrument-verzoek.zip` | 1.3.0 | Instrumentaanvraag | — | Instrument dossier for every product requested for a plan, started by GZAC's Verzoek plugin (see below) |
 
 Each zip contains everything the case needs: document definition (JSON
 schema), BPMN process, process-document link, case list columns, search
@@ -43,7 +43,7 @@ Next to the case definitions the app needs two artefacts for its documents
   configuration.
 - **`../epistola/catalogs/pdca-documenten/`** — the Epistola catalog with
   the template `evaluatieverslag` the process renders; import it into the
-  tenant of that Epistola configuration and release it.
+  tenant of that Epistola configuration, which installs its release.
 
 `./gradlew buildGzacZips` also builds the system process zip
 (`../system-processes/build-zips.sh` on its own). For the local stack the
@@ -300,16 +300,17 @@ The intake forms of both intake case types (`intake-werk-participatie`,
 (about 750px wide), so their data grids stay narrow: help texts sit once on
 the grid instead of on every row and the "add" buttons carry Dutch labels.
 They record what is agreed at intake time; progress (voortgang, uren,
-effectiviteit) is recorded later in the plan. The instruments are the ones
-to **request once the plan exists**: plan creation files a verzoek per row,
-so each gets its own instrument dossier (see "The instrument dossier"); the
-intake gives them no status. The row shapes are the input of the
-`create-plan` prefill:
+effectiviteit) is recorded later in the plan. The instruments are
+**gepland** by plan creation: each row is requested from its startdatum —
+the startdatum of its subdoel, since the intake forms give an instrument no
+date of its own — once the plan is past concept, and then gets its own
+instrument dossier (see "The instrument dossier"). The row shapes are the
+input of the `create-plan` prefill:
 
 | Grid | Row fields |
 |---|---|
 | `doelen` | `doelType`, `beschrijving`, `status`, `startdatum`, `streefEinddatum` |
-| `instrumenten` | `product` (producttype code; the select shows the product name), `doel` (the subdoel it is requested under) |
+| `instrumenten` | `product` (producttype code; the select shows the product name), `doel` (the subdoel it is requested under); an optional `startdatum` is taken over when a document carries one |
 | `betrokkenen` | `naam`, `rol`, `organisatie`, `email`, `procesbegeleider` |
 | `contactmomenten` (renovatie-intake only) | `datum`, `status`, `notitie`, `deelnemers` |
 
@@ -384,8 +385,9 @@ via `./gradlew caseZip-inwonerplan`), or `./build-zips.sh` here.
 Every product requested for a PDCA plan becomes a dossier of this one type,
 whatever the product — and every instrument in a plan is such a product:
 the plan page's "Instrument aanvragen" and the plan creation from an intake
-(one request per instrument of the intake) are the only ways in. Neither
-starts the dossier itself: they file a **verzoek** — an object in the
+(which plans every instrument of the intake) are the only ways in. Neither
+starts the dossier itself: once a plan is past concept and an instrument's
+startdatum has come, the app files a **verzoek** — an object in the
 Objecten API — and GZAC's **Verzoek plugin** turns that object into the
 dossier (ARCHITECTURE §6.2). Which products can be requested
 is knowledge of Open Product (the actie `StartInstrument` on the producttype,
@@ -394,8 +396,8 @@ see "Making a product requestable"); this dossier knows no product.
 The flow: verzoek object created → Open Notificaties notifies GZAC → the
 Verzoek plugin creates the dossier with the verzoek data as its document and
 starts `instrument-verzoek` → **aanmaak-instrument** puts the instrument in
-the plan at once (titel, product URN and start status from the document; the
-dossier's own URN lands in the instrument's `zaak` field in Open Plan, which
+the plan at once (titel, product URN, start status and startdatum from the
+document; the dossier's own URN lands in the instrument's `zaak` field in Open Plan, which
 gives the plan page its **Dossier** button; result mapping →
 `doc:/instrumentUuid`) → user task **Instrument uitvoeren en beëindigen**
 (form `instrument-afronden`: the afloop `instrumentAfloop`, *Afronden* or
@@ -423,7 +425,9 @@ once the job has run.
 
 The document schema is the verzoek data (copy strategy *full*): `planUuid`,
 `doelUuid`, `subjectId`, `productTypeUuid`, `productTypeCode`, `productTitel`,
-`productUrn`, `startStatus`, `instrumenttype` and `aangevraagdOp`, plus
+`productUrn`, `startStatus`, `instrumenttype`, `startdatum` (the planned
+start, which `aanmaak-instrument` gives the instrument), `aangevraagdOp`
+and `ingeplandInstrumentId` (empty for a direct request), plus
 `instrumentUuid`, `instrumentAfloop`, `productResultaat`,
 `productToelichting` and `annuleringsReden`, written during the process.
 

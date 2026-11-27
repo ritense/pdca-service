@@ -59,6 +59,7 @@ import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.util.UUID
@@ -73,6 +74,7 @@ class PlanIntakeServiceTest {
     private val phaseConfigService = mock(PhaseConfigService::class.java)
     private val dossierLinkService = mock(DossierLinkService::class.java)
     private val instrumentAanvraagService = mock(InstrumentAanvraagService::class.java)
+    private val ingeplandInstrumentService = mock(IngeplandInstrumentService::class.java)
     private val planOverlayService = mock(PlanOverlayService::class.java)
     private val openPlan = mock(OpenPlanGateway::class.java)
 
@@ -90,6 +92,7 @@ class PlanIntakeServiceTest {
     private val plannen = linkedMapOf<UUID, Plan>()
     private val doelen = mutableListOf<Doel>()
     private val verzoeken = mutableListOf<InstrumentAanvraagService.VerzoekRecord>()
+    private val ingeplande = mutableListOf<IngeplandInstrumentService.Ingepland>()
 
     /** Step names that fail (once) with an unavailable register. */
     private val falen = mutableSetOf<String>()
@@ -151,6 +154,7 @@ class PlanIntakeServiceTest {
             involvedPartyRepository = involvedParties.proxy(InvolvedPartyRepository::class),
             klantcontactService = klantcontactService,
             instrumentAanvraagService = instrumentAanvraagService,
+            ingeplandInstrumentService = ingeplandInstrumentService,
             planOverlayService = planOverlayService,
             openPlanGateway = openPlan,
             transactionTemplate = noOpTransactions(),
@@ -209,14 +213,16 @@ class PlanIntakeServiceTest {
             klantcontacten.last().uuid
         }
         `when`(instrumentAanvraagService.verzoekenVoor(anyValue())).thenAnswer { inv -> verzoeken.filter { it.doelUuid == inv.arguments[0] } }
-        `when`(instrumentAanvraagService.startByCode(anyValue(), anyValue())).thenAnswer {
-            val doelUuid = it.arguments[0] as UUID
-            val code = it.arguments[1] as String
-            faal("verzoek-$code")
-            verzoeken += InstrumentAanvraagService.VerzoekRecord(
-                null, null, doelUuid, PdcaUrn.producttype(code).toString(), code, OffsetDateTime.now()
-            )
-            InstrumentAanvraagService.Verzoek("http://objecten/${verzoeken.size}", code)
+        `when`(ingeplandInstrumentService.isIngepland(anyValue(), anyValue())).thenAnswer { inv ->
+            ingeplande.any { it.doelUuid == inv.arguments[0] && it.productUrn == inv.arguments[1] }
+        }
+        `when`(ingeplandInstrumentService.planIn(anyValue(), anyValue(), anyValue(), anyValue())).thenAnswer {
+            val code = it.arguments[2] as String
+            faal("ingepland-$code")
+            IngeplandInstrumentService.Ingepland(
+                UUID.randomUUID(), it.arguments[0] as UUID, it.arguments[1] as UUID, UUID.randomUUID(),
+                PdcaUrn.producttype(code).toString(), (it.arguments[3] as LocalDate).toString(), null
+            ).also { rij -> ingeplande += rij }
         }
     }
 
@@ -227,7 +233,7 @@ class PlanIntakeServiceTest {
         assertEquals(1, plannen.size)
         assertEquals("plan-dossier", response.planDossierId)
         assertEquals(2, response.doelen)
-        assertEquals(2, response.instrumentenAangevraagd)
+        assertEquals(2, response.instrumentenIngepland)
         assertFalse(response.bestaand)
         assertFalse(response.hervat)
         assertTrue(response.warnings.isEmpty())
@@ -248,7 +254,7 @@ class PlanIntakeServiceTest {
         assertFailsWith<ResponseStatusException> { service.createPlanFromIntake(request(IntakeInstrument("JOBCOACH", "Werk"))) }
         assertEquals(PlanIntakeStatus.IN_AANMAAK, intakes.rows[INTAKE]!!.status)
         assertEquals(null, intakes.rows[INTAKE]!!.claimedUntil, "a failed attempt releases its claim")
-        verify(instrumentAanvraagService, never()).startByCode(anyValue(), anyValue())
+        verify(ingeplandInstrumentService, never()).planIn(anyValue(), anyValue(), anyValue(), anyValue())
 
         val response = service.createPlanFromIntake(request(IntakeInstrument("JOBCOACH", "Werk")))
 
@@ -257,7 +263,7 @@ class PlanIntakeServiceTest {
         assertEquals(1, plannen.size)
         assertEquals(3, doelen.size)
         assertEquals(1, involvedParties.rows.size)
-        assertEquals(1, response.instrumentenAangevraagd)
+        assertEquals(1, response.instrumentenIngepland)
         assertEquals(PlanIntakeStatus.GEREED, intakes.rows[INTAKE]!!.status)
     }
 
@@ -275,8 +281,8 @@ class PlanIntakeServiceTest {
     }
 
     @Test
-    fun `a retry after a failed verzoek files only the missing one`() {
-        falen += "verzoek-JOBCOACH"
+    fun `a retry after a failed instrument plans only the missing one`() {
+        falen += "ingepland-JOBCOACH"
         assertFailsWith<ResponseStatusException> {
             service.createPlanFromIntake(request(IntakeInstrument("TAALCOACH", "Taal"), IntakeInstrument("JOBCOACH", "Werk")))
         }
@@ -284,9 +290,10 @@ class PlanIntakeServiceTest {
 
         val response = service.createPlanFromIntake(request(IntakeInstrument("TAALCOACH", "Taal"), IntakeInstrument("JOBCOACH", "Werk")))
 
-        assertEquals(2, response.instrumentenAangevraagd)
-        verify(instrumentAanvraagService, times(1)).startByCode(anyValue(), eqValue("TAALCOACH"))
-        assertEquals(2, verzoeken.size)
+        assertEquals(2, response.instrumentenIngepland)
+        verify(ingeplandInstrumentService, times(1)).planIn(anyValue(), anyValue(), eqValue("TAALCOACH"), anyValue())
+        assertEquals(2, ingeplande.size)
+        verify(instrumentAanvraagService, never()).start(anyValue(), anyValue(), anyValue(), anyValue())
     }
 
     @Test
@@ -409,11 +416,11 @@ class PlanIntakeServiceTest {
             )
         )
 
-        assertEquals(1, response.instrumentenAangevraagd)
+        assertEquals(1, response.instrumentenIngepland)
         assertEquals(
             listOf(
-                "Instrument 'JOBCOACH': het plan heeft 2 subdoelen 'Werk'; aangevraagd onder het eerste",
-                "Instrument 'TAALCOACH' niet aangevraagd: subdoel 'Rekenen' komt niet voor in het plan"
+                "Instrument 'JOBCOACH': het plan heeft 2 subdoelen 'Werk'; gepland onder het eerste",
+                "Instrument 'TAALCOACH' niet gepland: subdoel 'Rekenen' komt niet voor in het plan"
             ),
             response.warnings
         )
@@ -421,23 +428,64 @@ class PlanIntakeServiceTest {
     }
 
     @Test
-    fun `a refused verzoek is a warning and the plan is still GEREED`() {
+    fun `a product the registers refuse is a warning and the plan is still GEREED`() {
         doThrow(ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "Producttype 'Zonder actie' kan niet worden aangevraagd"))
-            .`when`(instrumentAanvraagService).startByCode(anyValue(), eqValue("ZONDERACTIE"))
+            .`when`(ingeplandInstrumentService).planIn(anyValue(), anyValue(), eqValue("ZONDERACTIE"), anyValue())
 
         val response = service.createPlanFromIntake(request(IntakeInstrument("ZONDERACTIE", "Werk")))
 
-        assertEquals(listOf("Instrument 'ZONDERACTIE' niet aangevraagd: Producttype 'Zonder actie' kan niet worden aangevraagd"), response.warnings)
+        assertEquals(listOf("Instrument 'ZONDERACTIE' niet gepland: Producttype 'Zonder actie' kan niet worden aangevraagd"), response.warnings)
         assertEquals(PlanIntakeStatus.GEREED, intakes.rows[INTAKE]!!.status)
     }
 
     @Test
-    fun `two rows for the same subdoel and product are requested once, with a warning`() {
+    fun `two rows for the same subdoel and product are planned once, with a warning`() {
         val response = service.createPlanFromIntake(request(IntakeInstrument("JOBCOACH", "Werk"), IntakeInstrument("JOBCOACH", "Werk")))
 
-        assertEquals(1, response.instrumentenAangevraagd)
-        assertEquals(listOf("Instrument 'JOBCOACH' staat meer dan eens onder subdoel 'Werk'; één keer aangevraagd"), response.warnings)
-        verify(instrumentAanvraagService, times(1)).startByCode(anyValue(), eqValue("JOBCOACH"))
+        assertEquals(1, response.instrumentenIngepland)
+        assertEquals(listOf("Instrument 'JOBCOACH' staat meer dan eens onder subdoel 'Werk'; één keer gepland"), response.warnings)
+        verify(ingeplandInstrumentService, times(1)).planIn(anyValue(), anyValue(), eqValue("JOBCOACH"), anyValue())
+    }
+
+    @Test
+    fun `intake instruments are ingepland from their own startdatum, else their subdoel's, else the plan's`() {
+        val response = service.createPlanFromIntake(
+            request(
+                IntakeInstrument("JOBCOACH", "Werk", startdatum = "2027-03-01T00:00:00+01:00"),
+                IntakeInstrument("TAALCOACH", "Taal"),
+                IntakeInstrument("CV", "Werk")
+            ).copy(
+                startdatum = "2027-01-04",
+                doelen = listOf(IntakeDoel(doelType = "Werk"), IntakeDoel(doelType = "Taal", startdatum = "2027-02-01"))
+            )
+        )
+
+        assertEquals(3, response.instrumentenIngepland)
+        assertEquals(
+            mapOf("JOBCOACH" to "2027-03-01", "TAALCOACH" to "2027-02-01", "CV" to "2027-01-04"),
+            ingeplande.associate { it.productUrn.substringAfterLast(':') to it.startdatum }
+        )
+        verify(instrumentAanvraagService, never()).start(anyValue(), anyValue(), anyValue(), anyValue())
+    }
+
+    @Test
+    fun `an instrument under an afgerond subdoel is not ingepland, and one requested since is not planned again`() {
+        val eerste = service.createPlanFromIntake(
+            request(IntakeInstrument("JOBCOACH", "Werk"), IntakeInstrument("TAALCOACH", "Taal")).copy(
+                doelen = listOf(IntakeDoel(doelType = "Werk"), IntakeDoel(doelType = "Taal", status = "afgerond"))
+            )
+        )
+
+        assertEquals(1, eerste.instrumentenIngepland)
+        assertEquals(listOf("Instrument 'TAALCOACH' niet gepland: subdoel 'Taal' is afgerond"), eerste.warnings)
+
+        // The plan was past concept: the job requested it and dropped the row before a retry.
+        val rij = ingeplande.removeAt(0)
+        verzoeken += InstrumentAanvraagService.VerzoekRecord(null, null, rij.doelUuid, rij.productUrn, "JOBCOACH", OffsetDateTime.now())
+        intakes.rows[INTAKE] = intakes.rows[INTAKE]!!.copy(status = PlanIntakeStatus.IN_AANMAAK)
+        service.createPlanFromIntake(request(IntakeInstrument("JOBCOACH", "Werk")))
+
+        assertTrue(ingeplande.isEmpty())
     }
 
     @Test
@@ -468,7 +516,7 @@ class PlanIntakeServiceTest {
         val reservering = intakes.rows[INTAKE]!!
         assertEquals(PlanIntakeStatus.IN_AANMAAK, reservering.status)
         assertEquals("ander", reservering.claimToken, "the new holder keeps its claim")
-        verify(instrumentAanvraagService, never()).startByCode(anyValue(), anyValue())
+        verify(ingeplandInstrumentService, never()).planIn(anyValue(), anyValue(), anyValue(), anyValue())
     }
 
     /** The row [id] when it matches [condition] (the WHERE of a conditional UPDATE); null when it does not. */

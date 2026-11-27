@@ -25,8 +25,13 @@ type Rij<T> = T & { key: number; extra: Record<string, unknown> };
  * plan's startdatum; `streefEinddatum`: the beoogde einddatum, empty for none.
  */
 export type SubdoelRij = Rij<{ doelType: string; beschrijving: string; status: DoelStatus; startdatum: string; streefEinddatum: string }>;
-/** An instrument to request once the plan exists: producttype code + subdoel (doeltype name; empty = the first). */
-export type InstrumentRij = Rij<{ product: string; doel: string }>;
+/**
+ * An instrument the plan gets as gepland: producttype code + subdoel
+ * (doeltype name; empty = the first) + `startdatum` (yyyy-mm-dd, empty for
+ * the subdoel's), the day from which it is requested once the plan is
+ * vastgesteld.
+ */
+export type InstrumentRij = Rij<{ product: string; doel: string; startdatum: string }>;
 /** `auto`: the default first evaluation, whose date follows the startdatum until the row is edited. */
 export type EvaluatieRij = Rij<{ datum: string; status: EvaluatieStatus; notitie: string; auto: boolean }>;
 export type BetrokkeneRij = Rij<{ naam: string; rol: string; organisatie: string; email: string; procesbegeleider: boolean }>;
@@ -99,7 +104,7 @@ function nieuweEvaluatie(datum = '', auto = false): EvaluatieRij {
 
 function nieuweRij(sectie: Sectie): Lijsten[Sectie][number] {
   if (sectie === 'subdoelen') return { key: sleutel(), extra: {}, doelType: '', beschrijving: '', status: 'gepland', startdatum: '', streefEinddatum: '' };
-  if (sectie === 'instrumenten') return { key: sleutel(), extra: {}, product: '', doel: '' };
+  if (sectie === 'instrumenten') return { key: sleutel(), extra: {}, product: '', doel: '', startdatum: '' };
   if (sectie === 'evaluaties') return nieuweEvaluatie();
   return { key: sleutel(), extra: {}, naam: '', rol: '', organisatie: '', email: '', procesbegeleider: false };
 }
@@ -265,9 +270,12 @@ export function vulVoor(p: PlanPrefill, registers: Registers, cfg: CaseConfig):
     streefEinddatum: d.streefEinddatum ? datumDeel(tekst(d.streefEinddatum)) : '',
   }));
   state.subdoelen.forEach(d => { if (d.doelType && !bekend.includes(d.doelType)) nietGezet.push(`subdoel "${d.doelType}"`); });
-  // Only producttype + subdoel matter for a request; anything else an
-  // intake records about an instrument is not carried over.
-  state.instrumenten = prefillRijen(p.instrumenten).map(i => ({ key: sleutel(), extra: {}, product: tekst(i.product), doel: tekst(i.doel) }));
+  // Only producttype, subdoel and startdatum matter for a gepland
+  // instrument; anything else an intake records about it is not carried over.
+  state.instrumenten = prefillRijen(p.instrumenten).map(i => ({
+    key: sleutel(), extra: {}, product: tekst(i.product), doel: tekst(i.doel),
+    startdatum: i.startdatum ? datumDeel(tekst(i.startdatum)) : '',
+  }));
   state.instrumenten.forEach(i => {
     if (i.product && !registers.producttypen.some(pt => pt.code === i.product)) nietGezet.push(`instrument "${i.product}"`);
   });
@@ -330,7 +338,7 @@ export function maakRequest(state: FormState, documentId: string, subjectNaam: s
       ...d.extra, doelType: d.doelType, beschrijving: d.beschrijving, status: d.status,
       startdatum: d.startdatum || null, streefEinddatum: d.streefEinddatum || null,
     })),
-    instrumenten: state.instrumenten.map(i => ({ product: i.product, doel: i.doel })),
+    instrumenten: state.instrumenten.map(i => ({ product: i.product, doel: i.doel, startdatum: i.startdatum || null })),
     contactmomenten: state.evaluaties.filter(c => c.datum).map(c => ({
       ...c.extra, datum: c.datum, status: c.status, notitie: c.notitie,
     })),

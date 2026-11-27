@@ -26,6 +26,7 @@ import com.ritense.pdca.registers.openplan.OpenPlanGateway
 import com.ritense.pdca.repository.ActionRepository
 import com.ritense.pdca.repository.ContactmomentDetailsRepository
 import com.ritense.pdca.repository.DocumentAanvraagRepository
+import com.ritense.pdca.repository.IngeplandInstrumentRepository
 import com.ritense.pdca.repository.DoelDetailsRepository
 import com.ritense.pdca.repository.EvaluationSessionRepository
 import com.ritense.pdca.repository.InstrumentDetailsRepository
@@ -52,11 +53,12 @@ class DataAccessPolicyTest {
     private val openPlan = mock(OpenPlanGateway::class.java)
     private val sessions = mock(EvaluationSessionRepository::class.java)
     private val documenten = mock(DocumentAanvraagRepository::class.java)
+    private val ingepland = mock(IngeplandInstrumentRepository::class.java)
     private val policy = DataAccessPolicy(
         PlanScope(
             planDetails, doelDetails, mock(InstrumentDetailsRepository::class.java),
             mock(ContactmomentDetailsRepository::class.java), mock(ActionRepository::class.java),
-            mock(InvolvedPartyRepository::class.java), sessions, documenten, openPlan
+            mock(InvolvedPartyRepository::class.java), sessions, documenten, ingepland, openPlan
         )
     )
     private val json = ObjectMapper()
@@ -182,6 +184,12 @@ class DataAccessPolicyTest {
         assertEquals(vast, slot(call("DELETE", "/api/v1/pdca/doelen/$doelUuid")))
         assertEquals(vast, slot(call("POST", "/api/v1/pdca/doelen/$doelUuid/afbreken", body = """{"reden":"r"}""")))
         assertEquals(vast, slot(call("POST", "/api/v1/pdca/instrumenten/start", body = """{"doelUuid":"$doelUuid","producttypeUuid":"x"}""")))
+        val ingeplandId = UUID.randomUUID()
+        `when`(ingepland.findPlanUuidById(ingeplandId)).thenReturn(planUuid)
+        assertEquals(vast, slot(call("PATCH", "/api/v1/pdca/instrumenten/ingepland/$ingeplandId", body = """{"startdatum":"2027-07-01"}""")))
+        assertEquals(vast, slot(call("POST", "/api/v1/pdca/instrumenten/ingepland/$ingeplandId/aanvragen")))
+        assertEquals(vast, slot(call("DELETE", "/api/v1/pdca/instrumenten/ingepland/$ingeplandId")))
+        assertEquals(emptyList(), slot(call("GET", "/api/v1/pdca/instrumenten/ingepland", query = mapOf("planUuid" to "$planUuid"))))
         assertEquals(vast, slot(call("PUT", "/api/v1/pdca/plannen/$planUuid/hoofddoel", body = """{"doeltypeUuid":"x"}""")))
         assertEquals(vast, slot(call("PUT", "/api/v1/pdca/doeldetails/$doelUuid", body = """{"streefEinddatum":null}""")))
         assertEquals(vast, slot(call("PUT", "/api/v1/pdca/plandetails/$planUuid", body = """{"streefEinddatum":"2027-01-01"}""")))

@@ -40,6 +40,14 @@
             "type": "string",
             "description": "Instrumenttype in Open Plan (naam of uuid) waaronder het instrument valt (producttype-parameter instrumenttype, uit het verzoek); zonder het eerste instrumenttype van het register"
         },
+        "startdatum": {
+            "type": "string",
+            "description": "Geplande startdatum van het instrument (ISO-datum, uit het verzoek); wordt de startdatum van het instrument in Open Plan"
+        },
+        "ingeplandInstrumentId": {
+            "type": "string",
+            "description": "Id van het ingeplande instrument in PDCA waaruit het verzoek is ontstaan (uit het verzoek); leeg bij een directe aanvraag"
+        },
         "aangevraagdOp": {
             "type": "string",
             "description": "Moment waarop het verzoek is ingediend (ISO-datum en -tijd, uit het verzoek)"

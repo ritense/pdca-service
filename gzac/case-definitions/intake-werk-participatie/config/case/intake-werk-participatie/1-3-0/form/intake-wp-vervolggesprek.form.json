@@ -538,7 +538,7 @@
         }
       ],
       "addAnother": "Instrument toevoegen",
-      "description": "Kies per regel een product uit de catalogus en het subdoel waar het bij hoort. Deze instrumenten worden aangevraagd zodra het plan is aangemaakt; elk instrument krijgt een eigen instrumentdossier."
+      "description": "Kies per regel een product uit de catalogus en het subdoel waar het bij hoort. Deze instrumenten worden gepland: ze worden aangevraagd vanaf de startdatum van hun subdoel, zodra het plan is vastgesteld; elk instrument krijgt dan een eigen instrumentdossier."
     },
     {
       "type": "button",

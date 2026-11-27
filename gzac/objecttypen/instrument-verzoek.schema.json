@@ -27,7 +27,9 @@
                 "productUrn": { "type": "string" },
                 "startStatus": { "type": "string" },
                 "instrumenttype": { "type": "string" },
-                "aangevraagdOp": { "type": "string" }
+                "startdatum": { "type": "string", "description": "Geplande startdatum van het instrument (ISO-datum)" },
+                "aangevraagdOp": { "type": "string" },
+                "ingeplandInstrumentId": { "type": "string", "description": "Id van het ingeplande instrument in PDCA waaruit het verzoek is ontstaan" }
             },
             "additionalProperties": true
         }

@@ -1,22 +1,25 @@
 import React, { useState } from 'react';
 import { Button, InlineNotification, Select, SelectItem, Tag } from '@carbon/react';
 import { Add } from '@carbon/react/icons';
-import { Doel } from '../shared/api';
+import { Doel, InstrumentAanvraag } from '../shared/api';
+import { formatDate, vandaag } from '../shared/dates';
 import { EvaluatieBanner } from '../shared/EvaluatieBanner';
 import { foutmelding } from '../shared/http';
 import { doelStatus } from '../shared/labels';
 import { LaadFout, NietGeladen } from '../shared/Meldingen';
 import { PlanDossierPagina, PlanPaginaProps } from '../shared/PlanDossierPagina';
-import { isVergrendeld, PlanSlotMelding, VERGRENDELD_HINT } from '../shared/planSlot';
+import { inConcept, isVergrendeld, PlanSlotMelding, VERGRENDELD_HINT } from '../shared/planSlot';
 import { DoelenSkeleton } from '../shared/Skeletons';
 import { useEvaluatieSessie } from '../shared/useEvaluatieSessie';
 import { eersteFout } from '../shared/useResource';
 import { formatUrn } from '../shared/urn';
 import { ActieContext, doelenActies } from './doelenActies';
-import { ActieModal, AfbreekModal, AfbreekTarget, DoelModal, VerwijderModal, VerwijderTarget } from './DoelenModals';
+import {
+  ActieModal, AfbreekModal, AfbreekTarget, DoelModal, StartdatumModal, StartdatumTarget, VerwijderModal, VerwijderTarget,
+} from './DoelenModals';
 import { DoelenHandlers, HoofddoelCard, SubdoelCard } from './SubdoelCard';
 import { sorteerSubdoelen, STANDAARD_VOLGORDE, SUBDOEL_VOLGORDES, SubdoelVolgorde } from './subdoelVolgorde';
-import { useDoelenData } from './useDoelenModel';
+import { ingeplandVan, useDoelenData } from './useDoelenModel';
 
 /** The "Doelen" case tab. */
 export function PlanGoals() {
@@ -28,9 +31,10 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
   /** The user's running evaluation; while it is on this plan, every change here is recorded in it. */
   const evaluatie = useEvaluatieSessie(documentId);
   const [error, setError] = useState<string | null>(null);
-  /** Confirmation after filing a product request. */
-  const [productStarted, setProductStarted] = useState<string | null>(null);
-  const [aanvraag, setAanvraag] = useState<DoelenHandlers['aanvraag']>(null);
+  /** Confirmation after requesting or planning a product. */
+  const [productStarted, setProductStarted] = useState<{ titel: string; tekst: string } | null>(null);
+  /** The startdatum modal: a product to request, or a gepland instrument to move. */
+  const [startdatumTarget, setStartdatumTarget] = useState<StartdatumTarget>(null);
   /** The subdoel modal: closed, a new subdoel (null) or the subdoel being edited. */
   const [doelModal, setDoelModal] = useState<{ doel: Doel | null } | null>(null);
   const [actieModal, setActieModal] = useState<ActieContext | null>(null);
@@ -51,6 +55,7 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
 
   const acties = doelenActies(model);
   const vergrendeld = isVergrendeld(plan.uuid, details, model.caseConfig.planStatussen, evaluatie.session);
+  const planInConcept = inConcept(details, model.caseConfig.planStatussen);
 
   /** Runs a state action from a button, one at a time, then reloads; a failure shows as the page error. */
   const run = (key: string, melding: string, action: () => Promise<unknown>) => async () => {
@@ -73,10 +78,33 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
     await data.herlaad();
   };
 
+  /**
+   * After a product request: a filed verzoek shows as "Aangevraagd" under its
+   * subdoel and the page follows it until GZAC's instrument dossier created
+   * the instrument; a gepland one just says when it will be requested.
+   */
+  const naAanvraag = async (aanvraag: InstrumentAanvraag, naam: string, doelUuid: string, productUrn: string) => {
+    if (aanvraag.verzoek) {
+      setProductStarted({
+        titel: 'Instrument aangevraagd',
+        tekst: `Verzoek voor "${aanvraag.verzoek.productTitel}" ingediend — het instrument verschijnt zodra GZAC het instrumentdossier heeft aangemaakt.`,
+      });
+      await data.herlaad();
+      data.volgVerzoek(v => v.doelUuid === doelUuid && v.productUrn === productUrn);
+    } else if (aanvraag.ingepland) {
+      setProductStarted({
+        titel: 'Instrument gepland',
+        tekst: `"${naam}" wordt aangevraagd vanaf ${formatDate(aanvraag.ingepland.startdatum)}`
+          + (planInConcept ? ', zodra het plan is vastgesteld.' : '.'),
+      });
+      await data.herlaad();
+    }
+  };
+
   const handlers: DoelenHandlers = {
     busy: !!busy,
     vergrendeld,
-    aanvraag,
+    planInConcept,
     startDoel: doel => run(`doel-${doel.uuid}`, 'Subdoel starten mislukt', () => acties.startDoel(doel))(),
     rondDoelAf: doel => run(`doel-${doel.uuid}`, 'Subdoel afronden mislukt', () => acties.rondDoelAf(doel))(),
     bewerkDoel: doel => setDoelModal({ doel }),
@@ -86,6 +114,7 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
       titel: doel.titel,
       // Removing a doel takes only the instruments that belong to this doel alone.
       instrumenten: model.instrumentenVan(doel.uuid).filter(i => i.doelen.every(d => d.uuid === doel.uuid)).length,
+      gepland: ingeplandVan(data.ingepland.data, doel.uuid).length,
       acties: model.alleActiesVan(doel.uuid).length,
       lopendWerk: model.lopendWerkVan(doel.uuid, data.verzoeken.data, 'verwijderen'),
     }),
@@ -93,22 +122,16 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
     actieStatus: (id, actie) => run(`actie-${id}`, 'Actiestatus wijzigen mislukt', () => acties.wijzigActieStatus(id, actie))(),
     startInstrument: inst => run(`instrument-${inst.uuid}`, 'Instrument starten mislukt', () => acties.startInstrument(inst))(),
     rondInstrumentAf: inst => run(`instrument-${inst.uuid}`, 'Instrument afronden mislukt', () => acties.rondInstrumentAf(inst))(),
-    // The app only files a verzoek; the subdoel shows it as "Aangevraagd" and
-    // the page follows it until GZAC's instrument dossier created the instrument.
-    vraagProductAan: async (producttype, doelUuid) => {
-      setAanvraag({ producttypeUuid: producttype.uuid, doelUuid });
-      try {
-        const verzoek = await acties.vraagProductAan(producttype, doelUuid);
-        setProductStarted(`Verzoek voor "${verzoek.productTitel}" ingediend — het instrument verschijnt zodra GZAC het instrumentdossier heeft aangemaakt.`);
-        await data.herlaad();
-        const productUrn = formatUrn('producttype', producttype.code || producttype.uuid);
-        data.volgVerzoek(v => v.doelUuid === doelUuid && v.productUrn === productUrn);
-      } catch (e) {
-        setError(`Instrument "${producttype.naam}" aanvragen mislukt: ${foutmelding(e)}`);
-      } finally {
-        setAanvraag(null);
-      }
-    },
+    kiesProduct: (producttype, doelUuid) => setStartdatumTarget({ soort: 'aanvragen', producttype, doelUuid }),
+    wijzigIngepland: (rij, naam) => setStartdatumTarget({ soort: 'wijzigen', rij, naam }),
+    vraagIngeplandAan: (rij, naam) => run(`ingepland-${rij.id}`, `Instrument "${naam}" aanvragen mislukt`, async () => {
+      const aanvraag = await acties.vraagIngeplandAan(rij, naam);
+      await naAanvraag(aanvraag, naam, rij.doelUuid, rij.productUrn);
+    })(),
+    verwijderIngepland: (rij, naam) =>
+      run(`ingepland-${rij.id}`, `Gepland instrument "${naam}" verwijderen mislukt`, () => acties.verwijderIngepland(rij, naam))(),
+    probeerIngeplandOpnieuw: (rij, naam) => run(`ingepland-${rij.id}`, `Instrument "${naam}" opnieuw proberen mislukt`,
+      () => acties.wijzigIngepland(rij, naam, rij.startdatum > vandaag() ? rij.startdatum : vandaag()))(),
     bewaarDoelBijwerken: (kind, doel) => async invoer => {
       await acties.bewaarDoelBijwerken(kind, doel, invoer);
       await data.herlaad();
@@ -127,7 +150,7 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
       {evaluatie.fout != null && <NietGeladen wat="Je lopende evaluatie" error={evaluatie.fout} onRetry={evaluatie.opnieuw} />}
       {vergrendeld && plan.status === 'actief' && <PlanSlotMelding wat="Subdoelen en instrumentaanvragen" />}
       {productStarted && (
-        <InlineNotification className="pdca-notification" kind="success" title="Instrument aangevraagd" subtitle={productStarted}
+        <InlineNotification className="pdca-notification" kind="success" title={productStarted.titel} subtitle={productStarted.tekst}
           lowContrast onCloseButtonClick={() => setProductStarted(null)} />
       )}
       {model.actiefHoofddoel && <HoofddoelCard doel={model.actiefHoofddoel} model={model} handlers={handlers} />}
@@ -156,7 +179,7 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
       {model.subdoelen.length === 0 && <div className="pdca-empty"><p>Geen subdoelen gevonden</p></div>}
       {sorteerSubdoelen(model.subdoelen, volgorde, model.detailsVanDoel).map(doel => (
         <SubdoelCard key={doel.uuid} doel={doel} model={model} producttypen={data.producttypen}
-          verzoeken={data.verzoeken} handlers={handlers} />
+          verzoeken={data.verzoeken} ingepland={data.ingepland} handlers={handlers} />
       ))}
 
       <DoelModal open={!!doelModal} doel={doelModal?.doel ?? null} doeltypen={model.doeltypen}
@@ -165,6 +188,18 @@ function DoelenPagina({ documentId, plan, details }: PlanPaginaProps) {
         planEinddatum={details.streefEinddatum}
         onClose={() => setDoelModal(null)}
         onSave={invoer => opslaan(() => acties.bewaarDoel(doelModal?.doel ?? null, invoer), () => setDoelModal(null))()} />
+      <StartdatumModal target={startdatumTarget} planInConcept={planInConcept} onClose={() => setStartdatumTarget(null)}
+        onSubmit={async startdatum => {
+          const target = startdatumTarget!;
+          if (target.soort === 'wijzigen') {
+            await opslaan(() => acties.wijzigIngepland(target.rij, target.naam, startdatum), () => setStartdatumTarget(null))();
+            return;
+          }
+          const { producttype, doelUuid } = target;
+          const aanvraag = await acties.vraagProductAan(producttype, doelUuid, startdatum);
+          setStartdatumTarget(null);
+          await naAanvraag(aanvraag, producttype.naam, doelUuid, formatUrn('producttype', producttype.code || producttype.uuid));
+        }} />
       <ActieModal open={!!actieModal} ctx={actieModal} onClose={() => setActieModal(null)}
         onSave={(ctx, invoer) => opslaan(() => acties.voegActieToe(ctx, invoer), () => setActieModal(null))()} />
       <AfbreekModal target={afbreekTarget} onClose={() => setAfbreekTarget(null)}

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Ingeplande instrumenten (ingepland_instrument): a product chosen for a
+  subdoel that is not requested yet. The verzoek is filed once the
+  startdatum has come and the plan is past concept; the row is deleted then.
+  One per doel and product; geclaimd_tot is the lease of the job that files
+  it, fout the reason the registers last refused it.
+-->
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="025-01-create-ingepland-instrument" author="pdca">
+        <createTable tableName="ingepland_instrument">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="plan_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="doel_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="producttype_uuid" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="product_urn" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="startdatum" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="fout" type="VARCHAR(1000)"/>
+            <column name="geclaimd_tot" type="TIMESTAMP"/>
+            <column name="aangemaakt_op" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="ingepland_instrument" columnNames="doel_uuid, product_urn"
+            constraintName="uk_ingepland_instrument_doel_product"/>
+        <createIndex tableName="ingepland_instrument" indexName="idx_ingepland_instrument_plan_uuid">
+            <column name="plan_uuid"/>
+        </createIndex>
+        <createIndex tableName="ingepland_instrument" indexName="idx_ingepland_instrument_startdatum">
+            <column name="startdatum"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

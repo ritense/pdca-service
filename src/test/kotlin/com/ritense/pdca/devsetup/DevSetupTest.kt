@@ -58,10 +58,16 @@ class DevSetupTest {
     fun `an Epistola catalog is missing until the Suite has its release`() {
         val list = ApiResponse(
             200,
-            """{"items": [{"slug": "a", "releasedVersion": "1.0.0"}, {"slug": "b", "releasedVersion": null}], "page": {}}""",
+            """{"items": [
+                {"registry": "local", "namespace": "ab0", "catalogKey": "a", "highestVersion": "1.0.0"},
+                {"registry": "local", "namespace": "ab0", "catalogKey": "b", "highestVersion": null},
+                {"registry": "local", "namespace": "xyz", "catalogKey": "c", "highestVersion": "1.0.0"},
+                {"registry": "exchange.epistola.app", "namespace": "ab0", "catalogKey": "d", "highestVersion": "1.0.0"}
+            ], "page": {}}""",
         )
-        val released = EpistolaCatalogs.releasedVersions(list)
+        val released = EpistolaCatalogs.releasedVersions(list, EpistolaCatalogs.namespace("ab"))
         assertEquals(mapOf("a" to "1.0.0", "b" to null), released)
+        assertEquals("demo", EpistolaCatalogs.namespace("demo"))
         assertEquals(null, EpistolaCatalogs.releaseState(released["a"], "1.0.0"))
         assertEquals("not released", EpistolaCatalogs.releaseState(released["a"], "1.1.0"))
         assertEquals("not released", EpistolaCatalogs.releaseState(released["b"], "1.0.0"))

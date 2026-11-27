@@ -255,6 +255,28 @@ export interface InstrumentVerzoek {
   productTitel: string;
 }
 
+/**
+ * A product chosen for a subdoel that is not requested yet: the verzoek is
+ * filed from its startdatum (yyyy-mm-dd) once the plan is past concept.
+ * `fout` is why the registers refused it when it came up; it then waits for
+ * a retry.
+ */
+export interface IngeplandInstrument {
+  id: string;
+  planUuid: string;
+  doelUuid: string;
+  producttypeUuid: string;
+  productUrn: string;
+  startdatum: string;
+  fout: string | null;
+}
+
+/** Outcome of requesting a product: the verzoek filed now, or the instrument ingepland. */
+export interface InstrumentAanvraag {
+  verzoek: InstrumentVerzoek | null;
+  ingepland: IngeplandInstrument | null;
+}
+
 /** A verzoek whose instrument has not appeared in the plan yet ("Aangevraagd"). */
 export interface OpenVerzoek {
   objectUrl: string | null;
@@ -321,6 +343,8 @@ export interface AfsluitCheck {
   openVerzoeken: number | null;
   /** Acties whose GZAC task is still open. */
   openTaken: number;
+  /** Ingeplande instrumenten, not requested yet; closing drops them. */
+  ingeplandeInstrumenten: number;
 }
 
 export interface Betrokkene {

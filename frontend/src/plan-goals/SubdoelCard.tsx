@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import { Button, InlineNotification, Layer, OverflowMenu, OverflowMenuItem, Tag } from '@carbon/react';
 import { Add, Checkmark, ChevronRight } from '@carbon/react/icons';
-import type { Doel, Instrument, OpenVerzoek, ProductType } from '../shared/api';
+import type { Doel, IngeplandInstrument, Instrument, OpenVerzoek, ProductType } from '../shared/api';
 import { formatDate, isVerlopen } from '../shared/dates';
-import { aantal, doelBalkKleur, doelStatus } from '../shared/labels';
+import { aantal, doelBalkKleur, doelStatus, instrumentenTelling, instrumentStatus } from '../shared/labels';
 import { NietGeladen } from '../shared/Meldingen';
 import { VERGRENDELD_HINT } from '../shared/planSlot';
 import type { Resource } from '../shared/useResource';
 import type { ActieContext, Notities, RegistratieInvoer, VoortgangInvoer } from './doelenActies';
 import type { AfbreekTarget } from './DoelenModals';
-import { ActieRow, InstrumentRij, ProductMenu, VerzoekRij } from './InstrumentRij';
-import { aanvraagbareProducttypen, DoelenModel, verzoekenVan } from './useDoelenModel';
+import { ActieRow, GeplandRij, ingeplandNaam, InstrumentRij, ProductMenu, VerzoekRij } from './InstrumentRij';
+import { aanvraagbareProducttypen, DoelenModel, ingeplandVan, verzoekenVan } from './useDoelenModel';
 import { DoelVoortgangNotities, VoortgangTag } from './VoortgangNotities';
 
 /** What the cards of the Doelen tab can ask the page to do. */
@@ -19,6 +19,8 @@ export interface DoelenHandlers {
   busy: boolean;
   /** The plan is past concept and not in the user's evaluation: subdoelen and instrument requests cannot change. */
   vergrendeld: boolean;
+  /** The plan is still in concept: nothing is requested yet, every chosen instrument is gepland. */
+  planInConcept: boolean;
   startDoel: (doel: Doel) => void;
   rondDoelAf: (doel: Doel) => void;
   bewerkDoel: (doel: Doel) => void;
@@ -28,9 +30,13 @@ export interface DoelenHandlers {
   actieStatus: (id: string, actie: string) => void;
   startInstrument: (inst: Instrument) => void;
   rondInstrumentAf: (inst: Instrument) => void;
-  vraagProductAan: (producttype: ProductType, doelUuid: string) => void;
-  /** The product request under way. */
-  aanvraag: { producttypeUuid: string; doelUuid: string } | null;
+  /** A product chosen under "Instrument aanvragen"; its startdatum is asked next. */
+  kiesProduct: (producttype: ProductType, doelUuid: string) => void;
+  wijzigIngepland: (rij: IngeplandInstrument, naam: string) => void;
+  vraagIngeplandAan: (rij: IngeplandInstrument, naam: string) => void;
+  verwijderIngepland: (rij: IngeplandInstrument, naam: string) => void;
+  /** Retries a gepland instrument the registers refused: from today, or its later date. */
+  probeerIngeplandOpnieuw: (rij: IngeplandInstrument, naam: string) => void;
   bewaarDoelBijwerken: (kind: 'SUBDOEL' | 'HOOFDDOEL', doel: Doel) => (invoer: VoortgangInvoer) => Promise<void>;
   bewaarInstrumentBijwerken: (inst: Instrument) =>
     (registratie: RegistratieInvoer | null, notities: Notities | null) => Promise<void>;
@@ -83,12 +89,13 @@ export function HoofddoelCard({ doel, model, handlers }: { doel: Doel; model: Do
   );
 }
 
-/** One subdoel: its state actions, acties, instruments with their open requests, and voortgang & notes. */
-export function SubdoelCard({ doel, model, producttypen, verzoeken, handlers }: {
+/** One subdoel: its state actions, acties, instruments with their open requests and geplande ones, and voortgang & notes. */
+export function SubdoelCard({ doel, model, producttypen, verzoeken, ingepland, handlers }: {
   doel: Doel;
   model: DoelenModel;
   producttypen: Resource<ProductType[]>;
   verzoeken: Resource<OpenVerzoek[]>;
+  ingepland: Resource<IngeplandInstrument[]>;
   handlers: DoelenHandlers;
 }) {
   const [open, setOpen] = useState(false);
@@ -96,6 +103,7 @@ export function SubdoelCard({ doel, model, producttypen, verzoeken, handlers }: 
   const acties = model.actiesVan(doel.uuid);
   const instrumenten = model.instrumentenVan(doel.uuid);
   const openVerzoeken = verzoekenVan(verzoeken.data, doel.uuid);
+  const geplande = ingeplandVan(ingepland.data, doel.uuid);
   const status = doelStatus(doel, details);
   const actief = doel.status === 'actief';
   const gestart = details?.uitvoeringsStatus === 'GESTART';
@@ -117,6 +125,7 @@ export function SubdoelCard({ doel, model, producttypen, verzoeken, handlers }: 
             </span>
           )}
           {openVerzoeken.length > 0 && <Tag size="sm" type="blue">{aantal(openVerzoeken.length, 'aanvraag', 'aanvragen')} loopt</Tag>}
+          {geplande.length > 0 && <Tag size="sm" type="purple">{geplande.length} gepland</Tag>}
           {doel.startdatum && <span className="pdca-muted-count">Start: {formatDate(doel.startdatum)}</span>}
           <BeoogdDatum datum={details?.streefEinddatum} lopend={model.plan.status === 'actief' && actief} />
           {actief && details?.voortgangStatus && <VoortgangTag code={details.voortgangStatus} opties={model.voortgangOpties} />}
@@ -146,6 +155,7 @@ export function SubdoelCard({ doel, model, producttypen, verzoeken, handlers }: 
                 <OverflowMenuItem itemText="Afbreken" isDelete hasDivider disabled={handlers.vergrendeld}
                   onClick={() => handlers.breekAf({
                     kind: 'doel', uuid: doel.uuid, titel: doel.titel, lopendWerk: model.lopendWerkVan(doel.uuid, verzoeken.data, 'afbreken'),
+                    vervalt: geplande.map(rij => ingeplandNaam(rij, producttypen.data)),
                   })} />
               )}
               <OverflowMenuItem itemText="Verwijderen" isDelete hasDivider={!actief} disabled={handlers.vergrendeld}
@@ -166,16 +176,22 @@ export function SubdoelCard({ doel, model, producttypen, verzoeken, handlers }: 
 
           <div className="pdca-section-block">
             <div className="pdca-section-title">
-              <span>Instrumenten ({instrumenten.length}{openVerzoeken.length > 0 ? ` + ${openVerzoeken.length} aangevraagd` : ''})</span>
+              <span>
+                Instrumenten ({instrumentenTelling([
+                  ...instrumenten.map(i => instrumentStatus(i, model.detailsVanInstrument(i.uuid)).label),
+                  ...openVerzoeken.map(() => 'Aangevraagd'),
+                  ...geplande.map(() => 'Gepland'),
+                ])})
+              </span>
               <div className="pdca-row-actions">
                 {/* Producttypen with a StartInstrument actie in Open Product that fit
-                    this subdoel: choosing one files a verzoek. The instrument appears
-                    in the plan once GZAC's instrument dossier has created it. */}
+                    this subdoel: choosing one asks its startdatum. For today on a plan
+                    past concept a verzoek is filed and the instrument appears once
+                    GZAC's instrument dossier has created it; otherwise it is gepland. */}
                 {aanvraagbaar && aanvraagbaar.length > 0 && (
                   <ProductMenu producttypen={aanvraagbaar}
                     disabled={!actief ? 'Alleen bij een actief doel' : handlers.vergrendeld ? VERGRENDELD_HINT : null}
-                    bezigMet={handlers.aanvraag?.doelUuid === doel.uuid ? handlers.aanvraag.producttypeUuid : null}
-                    onKies={p => handlers.vraagProductAan(p, doel.uuid)} />
+                    onKies={p => handlers.kiesProduct(p, doel.uuid)} />
                 )}
               </div>
             </div>
@@ -185,11 +201,15 @@ export function SubdoelCard({ doel, model, producttypen, verzoeken, handlers }: 
             {openVerzoeken.map(v => (
               <VerzoekRij key={v.objectUrl ?? `${v.productUrn}-${v.aangevraagdOp}`} verzoek={v} producttypen={producttypen.data} />
             ))}
+            {geplande.map(rij => (
+              <GeplandRij key={rij.id} rij={rij} producttypen={producttypen.data} planInConcept={handlers.planInConcept} handlers={handlers} />
+            ))}
             {verzoeken.error != null && <NietGeladen wat="Lopende aanvragen" error={verzoeken.error} onRetry={verzoeken.reload} />}
+            {ingepland.error != null && <NietGeladen wat="Geplande instrumenten" error={ingepland.error} onRetry={ingepland.reload} />}
             {producttypen.error != null && !producttypen.data && (
               <NietGeladen wat="Wat hier aan te vragen is" error={producttypen.error} onRetry={producttypen.reload} />
             )}
-            {instrumenten.length === 0 && openVerzoeken.length === 0 && aanvraagbaar && (
+            {instrumenten.length === 0 && openVerzoeken.length === 0 && geplande.length === 0 && aanvraagbaar && (
               <p className="pdca-empty-inline">
                 {aanvraagbaar.length > 0
                   ? 'Geen instrumenten; vraag er een aan via "Instrument aanvragen"'

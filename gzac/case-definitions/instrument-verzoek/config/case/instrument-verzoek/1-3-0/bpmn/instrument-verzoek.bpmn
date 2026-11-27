@@ -30,7 +30,7 @@
       the task completes, and the instrument's status in the plan follows
       once the job has run.
     -->
-    <bpmn:process camunda:versionTag="CD:instrument-verzoek:1.2.0" id="instrument-verzoek"
+    <bpmn:process camunda:versionTag="CD:instrument-verzoek:1.3.0" id="instrument-verzoek"
                   isExecutable="true" name="Instrumentaanvraag">
         <bpmn:startEvent id="start-event" name="Verzoek ontvangen vanuit het plan">
             <bpmn:outgoing>flow-start-aanmaken</bpmn:outgoing>

@@ -85,8 +85,9 @@ class InstrumentActionService(
      * the default, or `gepland` — actief in the register with the overlay
      * refinement GEPLAND), instrumenttype (optional: name or uuid of an Open
      * Plan instrumenttype, from the producttype parameter `instrumenttype`;
-     * without a match the first instrumenttype, with a WARN), planUuid
-     * (optional; otherwise the doel's plan). The calling dossier
+     * without a match the first instrumenttype, with a WARN), startdatum
+     * (optional ISO date, the planned start from the verzoek; today when
+     * absent), planUuid (optional; otherwise the doel's plan). The calling dossier
      * ([documentId] of the action call) becomes the instrument's `zaak`: its
      * dossier URN ([PdcaUrn.dossier]), the dossiertype being the document's
      * definition name. Refused when the doel or its plan is not actief.
@@ -102,6 +103,10 @@ class InstrumentActionService(
             throw PluginActionException("STATUS_ONGELDIG", "Onbekende startstatus '$gewensteStatus' (verwacht: actief of gepland)")
         }
         val gepland = gewensteStatus == STATUS_GEPLAND
+        val startdatum = (properties["startdatum"] as? String)?.trim()?.takeIf { it.isNotBlank() }?.let { tekst ->
+            runCatching { LocalDate.parse(tekst.take(10)) }.getOrNull()
+                ?: throw PluginActionException("STARTDATUM_ONGELDIG", "Startdatum '$tekst' is geen geldige datum (jjjj-mm-dd)")
+        } ?: LocalDate.now()
         val zaak = documentId?.takeIf { it.isNotBlank() }?.let(::dossierUrn)
 
         val doel = registerCall { openPlanGateway.findDoel(doelUuid) }
@@ -121,7 +126,7 @@ class InstrumentActionService(
                 openPlanGateway.createInstrument(
                     NewInstrument(
                         titel = titel,
-                        startdatum = "${LocalDate.now()}T00:00:00Z",
+                        startdatum = "${startdatum}T00:00:00Z",
                         doelenUuids = listOf(doelUuid),
                         instrumenttypeUuid = instrumenttypeUuid,
                         product = product,

@@ -74,8 +74,10 @@ class LifecycleServicesTest {
     @Nested
     inner class Doelen {
         private val aanvragen = mock(InstrumentAanvraagService::class.java)
+        private val ingepland = mock(IngeplandInstrumentService::class.java)
         private val service = DoelLifecycleService(
-            openPlan, instrumentDetails.proxy(InstrumentDetailsRepository::class), aanvragen, acties.proxy(ActionRepository::class), planOverlayService
+            openPlan, instrumentDetails.proxy(InstrumentDetailsRepository::class), aanvragen, ingepland,
+            acties.proxy(ActionRepository::class), planOverlayService
         )
 
         init {
@@ -124,6 +126,7 @@ class LifecycleServicesTest {
             volgorde.verify(openPlan).deleteDoel(doelUuid)
             volgorde.verify(planOverlayService).deleteDoelDetails(doelUuid)
             verify(openPlan, never()).deleteInstrument(gedeeld.uuid)
+            verify(ingepland).verwijderVanDoel(doelUuid)
         }
 
         @Test
@@ -167,7 +170,9 @@ class LifecycleServicesTest {
 
             service.afbreken(doelUuid, " Niet meer nodig ")
 
-            verify(openPlan).updateDoelStatus(eq(doelUuid) ?: doelUuid, anyValue())
+            val volgorde = inOrder(openPlan, ingepland)
+            volgorde.verify(openPlan).updateDoelStatus(eq(doelUuid) ?: doelUuid, anyValue())
+            volgorde.verify(ingepland).verwijderVanDoel(doelUuid)
             verify(openPlan, never()).closeInstrument(anyValue(), anyValue())
         }
 
@@ -228,9 +233,10 @@ class LifecycleServicesTest {
     @Nested
     inner class Plannen {
         private val instrumentAanvraagService = mock(InstrumentAanvraagService::class.java)
+        private val ingepland = mock(IngeplandInstrumentService::class.java)
         private val service = PlanLifecycleService(
             openPlan, planDetails.proxy(PlanDetailsRepository::class), doelDetails.proxy(DoelDetailsRepository::class), instrumentAanvraagService,
-            acties.proxy(ActionRepository::class)
+            ingepland, acties.proxy(ActionRepository::class)
         )
         private val persoonUuid = UUID.randomUUID()
         private val werken = DoelType(UUID.randomUUID(), "Werken", listOf(DoelCategorie(naam = "Hoofddoel")))
@@ -320,6 +326,30 @@ class LifecycleServicesTest {
             assertEquals(0, check.openVerzoeken)
             assertEquals("Sluit eerst de instrumentdossiers af: Jobcoaching", fout.reason)
             verify(openPlan, never()).updatePlanStatus(anyValue(), anyValue())
+            verify(ingepland, never()).verwijderVanPlan(anyValue())
+        }
+
+        @Test
+        fun `closing a plan warns about its ingeplande instrumenten and drops them`() {
+            `when`(openPlan.getPlan(planUuid)).thenReturn(Plan(uuid = planUuid, status = "actief"))
+            `when`(openPlan.listDoelen(planUuid)).thenReturn(emptyList())
+            `when`(openPlan.listInstrumentenVanDoelen(emptyList())).thenReturn(emptyList())
+            `when`(instrumentAanvraagService.openVerzoeken(planUuid)).thenReturn(emptyList())
+            `when`(ingepland.vanPlan(planUuid)).thenReturn(
+                listOf(
+                    IngeplandInstrumentService.Ingepland(
+                        UUID.randomUUID(), planUuid, doelUuid, UUID.randomUUID(), "urn:pdca:openproduct:producttype:CV", "2027-01-04", null
+                    )
+                )
+            )
+
+            val check = service.afsluitCheck(planUuid)
+            service.afsluiten(planUuid, "afgerond", null)
+
+            assertEquals(1, check.ingeplandeInstrumenten)
+            val volgorde = inOrder(openPlan, ingepland)
+            volgorde.verify(openPlan).updatePlanStatus(eq(planUuid) ?: planUuid, anyValue())
+            volgorde.verify(ingepland).verwijderVanPlan(planUuid)
         }
     }
 }

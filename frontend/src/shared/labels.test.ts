@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { VoortgangStatusOptie } from './types';
 import {
-  actieAfgesloten, actieStatus, GERESERVEERDE_STATUSNAMEN, heeftOpenTaak, voortgangStatus, wijzigingHeeftReden,
+  actieAfgesloten, actieStatus, GERESERVEERDE_STATUSNAMEN, heeftOpenTaak, ingeplandStatus, instrumentenTelling, voortgangStatus,
+  wijzigingHeeftReden,
   wijzigingOmschrijving,
 } from './labels';
 
@@ -20,6 +21,22 @@ describe('actie status', () => {
     expect(heeftOpenTaak({ status: 'COMPLETED', taakProcessInstanceId: 'p1' })).toBe(false);
     expect(heeftOpenTaak({ status: 'CANCELLED', taakProcessInstanceId: 'p1' })).toBe(false);
     expect(heeftOpenTaak({ status: 'PLANNED' })).toBe(false);
+  });
+});
+
+describe('gepland instrument', () => {
+  it('is Gepland, marked concept while nothing can be requested yet', () => {
+    expect(ingeplandStatus(true)).toEqual({ label: 'Gepland (concept)', tag: 'purple' });
+    expect(ingeplandStatus(false)).toEqual({ label: 'Gepland', tag: 'purple' });
+  });
+});
+
+describe('instrumenten telling', () => {
+  it('counts only the statuses that occur, running ones first', () => {
+    expect(instrumentenTelling(['Gepland'])).toBe('1 gepland');
+    expect(instrumentenTelling(['Gepland', 'Gestart', 'Gepland', 'Afgerond', 'Aangevraagd']))
+      .toBe('1 gestart, 1 aangevraagd, 2 gepland, 1 afgerond');
+    expect(instrumentenTelling([])).toBe('0');
   });
 });
 

@@ -22,6 +22,7 @@ import com.ritense.pdca.domain.PlanDetails
 import com.ritense.pdca.repository.EvaluationSessionRepository
 import com.ritense.pdca.repository.PlanDetailsRepository
 import com.ritense.pdca.service.PhaseConfigService
+import com.ritense.pdca.service.PlanConcept
 import com.ritense.pdca.service.anyValue
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.mock
@@ -42,7 +43,7 @@ class PlanSlotTest {
     private val planDetails = mock(PlanDetailsRepository::class.java)
     private val sessions = mock(EvaluationSessionRepository::class.java)
     private val phaseConfig = mock(PhaseConfigService::class.java)
-    private val slot = PlanSlot(planDetails, sessions, phaseConfig)
+    private val slot = PlanSlot(PlanConcept(planDetails, phaseConfig), sessions)
     private val wijziging = listOf(SlotWijziging(planUuid))
 
     init {

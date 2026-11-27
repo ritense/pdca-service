@@ -139,7 +139,8 @@ export function InstrumentenSectie(props: SectieProps) {
         || 'Nog geen instrumenten'}
       waarschuwing={state.poging && state.instrumenten.some(i => !i.product) ? 'Instrumenttype ontbreekt' : undefined}>
       <p className="cp-uitleg">
-        Deze instrumenten worden aangevraagd zodra het plan is aangemaakt; elk instrument krijgt een eigen instrumentdossier.
+        Deze instrumenten worden gepland. Ze worden aangevraagd vanaf hun startdatum, zodra het plan is vastgesteld;
+        elk instrument krijgt dan een eigen instrumentdossier. Zonder startdatum geldt die van het subdoel.
       </p>
       {state.instrumenten.length === 0 && <p className="cp-leeg">Nog geen instrumenten.</p>}
       {state.instrumenten.map(it => {
@@ -164,6 +165,10 @@ export function InstrumentenSectie(props: SectieProps) {
                 {nietAanvraagbaar && <SelectItem value={it.product} text={productNaam(it.product)} />}
                 {opties.map(p => <SelectItem key={p.code} value={p.code} text={p.naam} />)}
               </Select>
+            </div>
+            <div className="cp-veld cp-veld--smal">
+              <TextInput id={`cp-instrument-${it.key}-startdatum`} size="sm" type="date" labelText="Startdatum (optioneel)"
+                value={it.startdatum} onChange={e => wijzig(it.key, { startdatum: e.target.value })} />
             </div>
           </Rij>
         );

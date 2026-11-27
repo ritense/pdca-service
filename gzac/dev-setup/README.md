@@ -81,7 +81,7 @@ step.
 | Verzoek objecttype | `registers/setup-registers.sh`: the objecttype `InstrumentVerzoek` (fixed uuid `00000000-0000-4000-8000-0000dca00001`, published version 1 with `../objecttypen/instrument-verzoek.schema.json`) in the stack's Objecttypen API, registered in its Objecten API with read/write for the stack's API token; Django shells in the containers through `docker exec` | — |
 | Register plugins | uploads `plugins/<name>/dist/<name>-<version>.zip` of `openplan`, `openproduct`, `openklant` and `objecten` to the stack's plugin host (a package with other content replaces the one of the same version), waits for their discovery and creates or updates their configurations | `POST …/external-plugin/host/{id}/upload`, `GET …/definition`, `POST`/`PUT …/configuration` |
 | Verzoek route | an Objecttypen API configuration at `host.docker.internal:8011` and an Objecten API configuration at `host.docker.internal:8010` (below), the object management `InstrumentVerzoek`, the Verzoek plugin configuration (type `instrument` → case and process `instrument-verzoek`, copy strategy full) and the callback URL of the dev app's Notificaties API configuration | `/api/v1/plugin/configuration`, `/api/v1/object/management/configuration` |
-| Epistola templates | imports each catalog of `../epistola/catalogs/` (`pdca-documenten`, zipped from its `catalog.json` and `resources/`) into the Epistola Suite tenant as authored catalog (mode merge) and releases it with the version of its `catalog.json`; a catalog whose release the Suite has is left alone | Epistola Suite: `GET /tenants/{tenant}/catalogs`, `POST …/catalogs/import`, `POST …/catalogs/{slug}/release` |
+| Epistola templates | imports each catalog of `../epistola/catalogs/` (`pdca-documenten`, zipped from its `catalog.json` and `resources/`) into the Epistola Suite tenant as `local/<namespace>/<slug>`, the namespace being the tenant key padded with `0` to 3 characters; the import installs the release of its `catalog.json`; a catalog whose release the Suite has is left alone | Epistola Suite (API v2, `application/vnd.epistola.v2+json`): `GET /tenants/{tenant}/catalogs`, `POST …/catalogs/import` |
 | PDCA app | registers the app as external app (URL app) with its secret, callback URL and frontend origin, or re-applies them | `POST …/host`, `PATCH …/host/{id}/connection` |
 | Building blocks | imports the task building block `../bouwblokken/pdca-taak.zip` when GZAC does not hold its version yet, before the case definitions that link it; its PDCA links name no configuration (the app maps the plan case types' links itself) | `POST …/building-block/import`, `GET …/building-block/{key}/version/{tag}` |
 | PDCA configuration *(needs the app)* | waits until GZAC has discovered the app's manifest (accepting a changed manifest of the same version), then creates or updates the configuration with exactly the manifest's grants and the four contract bindings | `GET …/definition`, `POST`/`PUT …/configuration` |
@@ -199,9 +199,10 @@ on the plugin host creates verzoeken at `host.docker.internal:8010`). Hence:
   process links with the imported ones, so a run only re-links them; a
   changed BPMN becomes a new version.
 - **Epistola catalogs** are imported only when the Suite lacks the release
-  of their `catalog.json` (every import makes new template versions). A
-  changed catalog needs a higher `release.version`; when the Suite already
-  has a newer release than `catalog.json`, the step fails and says so.
+  of their `catalog.json`. A changed catalog needs a higher
+  `release.version`: the Suite refuses a release version it already has with
+  other content, and when it has a newer release than `catalog.json`, the
+  step fails and says so.
 
 ## The zaak type link
 

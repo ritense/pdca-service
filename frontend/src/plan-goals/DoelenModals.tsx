@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { InlineNotification, Modal, Select, SelectItem, TextArea, TextInput } from '@carbon/react';
-import type { Doel, DoelType } from '../shared/api';
+import type { Doel, DoelType, IngeplandInstrument, ProductType } from '../shared/api';
 import { datumDeel, formatDate, vandaag } from '../shared/dates';
 import { aantal, doelTypeNaam, subdoelTypen, subdoelTypenVoorHoofddoel } from '../shared/labels';
 import { useSubmit } from '../shared/useSubmit';
@@ -9,10 +9,21 @@ import type { ActieContext, ActieInvoer, DoelInvoer } from './doelenActies';
 /** An actie's title is the name of its GZAC task, which holds at most 255 characters. */
 const ACTIE_TITEL_MAX = 255;
 
-/** Doel or instrument awaiting its abort reason; `lopendWerk` names what still runs under a doel and blocks it. */
-export type AfbreekTarget = { kind: 'doel' | 'instrument'; uuid: string; titel: string; lopendWerk?: string[] } | null;
+/**
+ * Doel or instrument awaiting its abort reason; `lopendWerk` names what
+ * still runs under a doel and blocks it, `vervalt` its geplande instrumenten,
+ * which are dropped along with it.
+ */
+export type AfbreekTarget = { kind: 'doel' | 'instrument'; uuid: string; titel: string; lopendWerk?: string[]; vervalt?: string[] } | null;
 /** Subdoel awaiting confirmation of its removal, with what goes with it and what still runs under it and blocks it. */
-export type VerwijderTarget = { uuid: string; titel: string; instrumenten: number; acties: number; lopendWerk: string[] } | null;
+export type VerwijderTarget = {
+  uuid: string; titel: string; instrumenten: number; gepland: number; acties: number; lopendWerk: string[];
+} | null;
+/** A product to request under a subdoel from a startdatum, or a gepland instrument whose startdatum changes. */
+export type StartdatumTarget =
+  | { soort: 'aanvragen'; producttype: ProductType; doelUuid: string }
+  | { soort: 'wijzigen'; rij: IngeplandInstrument; naam: string }
+  | null;
 
 /** Why a subdoel cannot be aborted or removed yet: what still runs under it, and how to end each kind. */
 function LopendWerk({ items }: { items: string[] }) {
@@ -40,6 +51,9 @@ export function AfbreekModal({ target, onClose, onSubmit }: {
         {fout && <InlineNotification kind="error" title="Afbreken mislukt" subtitle={fout} lowContrast hideCloseButton />}
         {geblokkeerd && <LopendWerk items={target!.lopendWerk!} />}
         <p>Je staat op het punt <strong>{target?.titel}</strong> af te breken.</p>
+        {(target?.vervalt?.length ?? 0) > 0 && (
+          <p>De geplande instrumenten vervallen, ze zijn nog niet aangevraagd: {target!.vervalt!.join(', ')}.</p>
+        )}
         <TextArea id="afbreek-reden" labelText="Reden (verplicht)" value={reden}
           onChange={e => setReden(e.target.value)} placeholder="Waarom wordt dit afgebroken?" />
       </div>
@@ -57,8 +71,9 @@ export function VerwijderModal({ target, onClose, onSubmit }: {
   const mee = target
     ? [
         target.instrumenten > 0 ? aantal(target.instrumenten, 'instrument', 'instrumenten') : null,
+        target.gepland > 0 ? aantal(target.gepland, 'gepland instrument', 'geplande instrumenten') : null,
         target.acties > 0 ? aantal(target.acties, 'actie', 'acties') : null,
-      ].filter(Boolean).join(' en ')
+      ].filter(Boolean).join(', ').replace(/, ([^,]*)$/, ' en $1')
     : '';
   return (
     <Modal open={!!target} danger modalHeading="Subdoel verwijderen"
@@ -167,6 +182,48 @@ export function DoelModal({ open, doel, doeltypen, hoofddoelNaam, subdoelMapping
           min={vandaag()} max={planEinddatum?.slice(0, 10) || undefined}
           value={streefEinddatum} onChange={e => setStreefEinddatum(e.target.value)}
           invalid={!!datumFout} invalidText={datumFout || undefined} />
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * The startdatum of an instrument: when a product is requested, or to move a
+ * gepland one. Nothing is requested before the plan is vastgesteld; a later
+ * date plans the instrument, which is requested on that date.
+ */
+export function StartdatumModal({ target, planInConcept, onClose, onSubmit }: {
+  target: StartdatumTarget; planInConcept: boolean; onClose: () => void; onSubmit: (startdatum: string) => Promise<void>;
+}) {
+  const [startdatum, setStartdatum] = useState('');
+  const { saving, fout, submit, reset } = useSubmit();
+  useEffect(() => {
+    if (!target) return;
+    setStartdatum(target.soort === 'wijzigen' && target.rij.startdatum > vandaag() ? target.rij.startdatum : vandaag());
+    reset();
+  }, [target, reset]);
+  const datumFout = !startdatum ? 'Vul een startdatum in' : startdatum < vandaag() ? 'Ligt in het verleden' : null;
+  const nu = !planInConcept && startdatum === vandaag();
+  const naam = target?.soort === 'aanvragen' ? target.producttype.naam : target?.naam;
+  const uitleg = planInConcept
+    ? 'Het plan is nog een concept: het instrument wordt aangevraagd vanaf deze datum, zodra het plan is vastgesteld.'
+    : !nu ? `Het instrument wordt op ${formatDate(startdatum)} aangevraagd.`
+      : target?.soort === 'aanvragen'
+        ? 'Het instrument wordt nu aangevraagd en verschijnt zodra GZAC het instrumentdossier heeft aangemaakt.'
+        : 'Het instrument wordt binnen een minuut aangevraagd.';
+  const knop = target?.soort === 'wijzigen' ? 'Opslaan' : nu ? 'Nu aanvragen' : 'Plannen';
+  return (
+    <Modal open={!!target} modalHeading={target?.soort === 'wijzigen' ? `Startdatum van ${naam}` : `${naam} aanvragen`}
+      primaryButtonText={saving ? `${knop}…` : knop} secondaryButtonText="Annuleren"
+      primaryButtonDisabled={saving || !!datumFout}
+      onRequestClose={onClose} onRequestSubmit={() => !datumFout && submit(() => onSubmit(startdatum))}>
+      <div className="pdca-modal-form">
+        {fout && <InlineNotification kind="error" title="Opslaan mislukt" subtitle={fout} lowContrast hideCloseButton />}
+        <TextInput id="instrument-startdatum" type="date" labelText="Startdatum"
+          helperText="Wanneer het instrument start; zo lopen niet alle instrumenten tegelijk"
+          min={vandaag()} value={startdatum} onChange={e => setStartdatum(e.target.value)}
+          invalid={!!datumFout} invalidText={datumFout || undefined} />
+        <p>{uitleg}</p>
       </div>
     </Modal>
   );

@@ -2,9 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Button, Layer, OverflowMenu, OverflowMenuItem, Tag } from '@carbon/react';
 import { Checkmark, ChevronDown, Close, Launch } from '@carbon/react/icons';
 import { navigateHost } from '../shared/bridge';
-import { Actie, Doel, Instrument, OpenVerzoek, ProductType, productTypeByUrn } from '../shared/api';
+import { Actie, Doel, IngeplandInstrument, Instrument, OpenVerzoek, ProductType, productTypeByUrn } from '../shared/api';
 import { formatDate } from '../shared/dates';
-import { actieAfgesloten, actieStatus, heeftOpenTaak, instrumentStatus, priorityLabel } from '../shared/labels';
+import { actieAfgesloten, actieStatus, heeftOpenTaak, ingeplandStatus, instrumentStatus, priorityLabel } from '../shared/labels';
+import { VERGRENDELD_HINT } from '../shared/planSlot';
 import { parseDossierUrn } from '../shared/urn';
 import type { DoelenHandlers } from './SubdoelCard';
 import type { DoelenModel } from './useDoelenModel';
@@ -37,6 +38,7 @@ export function InstrumentRij({ inst, doel, model, producttypen, handlers }: {
         <div className="pdca-row-main">
           <span className="pdca-text-wrap">{inst.titel}</span>
           {pt && <span className="pdca-meta-text">— {pt.organisaties[0]?.naam || pt.code}{pt.themas[0] ? ` · ${pt.themas[0].naam}` : ''}</span>}
+          {inst.startdatum && <span className="pdca-meta-text">· start {formatDate(inst.startdatum)}</span>}
           {idet?.urenBesteed != null && <Tag size="sm" type="cool-gray">{idet.urenBesteed} uur</Tag>}
           {idet?.effectiviteitScore != null && <Tag size="sm" type="teal">effectiviteit {idet.effectiviteitScore}/5</Tag>}
         </div>
@@ -109,6 +111,54 @@ export function VerzoekRij({ verzoek, producttypen }: { verzoek: OpenVerzoek; pr
   );
 }
 
+/** The name a gepland instrument shows: its producttype's, else its code. */
+export function ingeplandNaam(rij: IngeplandInstrument, producttypen: ProductType[] | undefined): string {
+  return (producttypen ? productTypeByUrn(producttypen, rij.productUrn)?.naam : undefined)
+    ?? rij.productUrn.split(':').pop() ?? 'Instrument';
+}
+
+/**
+ * A product gepland under a subdoel and not requested yet: it is requested
+ * from its startdatum once the plan is past concept. Its date, early request
+ * and removal are locked like the instrument requests; a refusal of the
+ * registers shows with its reason and a retry.
+ */
+export function GeplandRij({ rij, producttypen, planInConcept, handlers }: {
+  rij: IngeplandInstrument; producttypen: ProductType[] | undefined; planInConcept: boolean; handlers: DoelenHandlers;
+}) {
+  const naam = ingeplandNaam(rij, producttypen);
+  const status = ingeplandStatus(planInConcept);
+  const slot = handlers.vergrendeld;
+  return (
+    <div className="pdca-instrument">
+      <div className="pdca-action-row">
+        <div className="pdca-row-main">
+          <span className="pdca-text-wrap">{naam}</span>
+          <span className="pdca-meta-text">
+            — start {formatDate(rij.startdatum)}{planInConcept ? ', zodra het plan is vastgesteld' : ''}
+          </span>
+        </div>
+        <div className="pdca-row-actions">
+          <Tag size="sm" type={status.tag} title="Nog niet aangevraagd">{status.label}</Tag>
+          {rij.fout && (
+            <Button size="sm" kind="ghost" disabled={handlers.busy || slot} title={slot ? VERGRENDELD_HINT : undefined}
+              onClick={() => handlers.probeerIngeplandOpnieuw(rij, naam)}>Opnieuw proberen</Button>
+          )}
+          <OverflowMenu size="sm" flipped aria-label={`Meer acties voor ${naam}`} iconDescription="Meer acties">
+            <OverflowMenuItem itemText="Startdatum wijzigen" disabled={slot} onClick={() => handlers.wijzigIngepland(rij, naam)} />
+            {!planInConcept && (
+              <OverflowMenuItem itemText="Nu aanvragen" disabled={slot || handlers.busy} onClick={() => handlers.vraagIngeplandAan(rij, naam)} />
+            )}
+            <OverflowMenuItem itemText="Verwijderen" isDelete hasDivider disabled={slot || handlers.busy}
+              onClick={() => handlers.verwijderIngepland(rij, naam)} />
+          </OverflowMenu>
+        </div>
+      </div>
+      {rij.fout && <p className="pdca-afbreekreden">Niet aangevraagd: {rij.fout}</p>}
+    </div>
+  );
+}
+
 /**
  * One actie, under a doel or under an instrument. An actie with a GZAC task
  * is ended by completing that task in the dossier's task list, so it shows
@@ -145,13 +195,11 @@ export function ActieRow({ actie, busy, onStatus }: { actie: Actie; busy: boolea
   );
 }
 
-/** "Instrument aanvragen": a dropdown of the producttypen that can be requested under a doel. */
-export function ProductMenu({ producttypen, disabled, bezigMet, onKies }: {
+/** "Instrument aanvragen": a dropdown of the producttypen that can be requested under a doel; the startdatum is asked next. */
+export function ProductMenu({ producttypen, disabled, onKies }: {
   producttypen: ProductType[];
   /** Why nothing can be requested now, shown on the button; null when it can. */
   disabled: string | null;
-  /** The producttype whose request is under way. */
-  bezigMet: string | null;
   onKies: (producttype: ProductType) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -164,9 +212,9 @@ export function ProductMenu({ producttypen, disabled, bezigMet, onKies }: {
       {open && !disabled && (
         <div className="pdca-menu">
           {producttypen.map(p => (
-            <button key={p.uuid} type="button" disabled={bezigMet === p.uuid} className="pdca-menu-item"
+            <button key={p.uuid} type="button" className="pdca-menu-item"
               onClick={() => { setOpen(false); onKies(p); }}>
-              <span className="pdca-menu-item-naam">{bezigMet === p.uuid ? 'Aanvragen…' : p.naam}</span>
+              <span className="pdca-menu-item-naam">{p.naam}</span>
               {(p.organisaties[0] || p.samenvatting) && (
                 <span className="pdca-menu-item-sub">{[p.organisaties[0]?.naam, p.samenvatting].filter(Boolean).join(' · ')}</span>
               )}

@@ -38,6 +38,7 @@ import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
+import java.time.LocalDate
 import java.time.OffsetDateTime
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
@@ -55,10 +56,12 @@ class InstrumentAanvraagServiceTest {
     private val openPlan = mock(OpenPlanGateway::class.java)
     private val openProduct = mock(OpenProductGateway::class.java)
     private val objecten = mock(ObjectenGateway::class.java)
+    private val planConcept = mock(PlanConcept::class.java)
     private val service = InstrumentAanvraagService(
         openPlanGateway = openPlan,
         openProductGateway = openProduct,
         objectenGateway = objecten,
+        planConcept = planConcept,
         objectMapper = objectMapper
     )
 
@@ -163,6 +166,52 @@ class InstrumentAanvraagServiceTest {
 
         assertEquals(listOf(200, 409), outcomes.sorted())
         assertEquals(1, registered.size)
+    }
+
+    @Test
+    fun `no verzoek is filed while the plan is in concept`() {
+        `when`(openPlan.getDoel(doelUuid)).thenReturn(Doel(uuid = doelUuid, status = "actief", plannen = listOf(PlanRef(planUuid, "actief"))))
+        `when`(openPlan.getPlan(planUuid)).thenReturn(Plan(uuid = planUuid, status = "actief"))
+        `when`(planConcept.inConcept(planUuid)).thenReturn(true)
+
+        val fout = assertFailsWith<ResponseStatusException> { service.start(doelUuid, UUID.randomUUID()) }
+
+        assertEquals(HttpStatus.CONFLICT, fout.statusCode)
+        assertTrue(fout.reason!!.startsWith("Het plan is nog een concept"), fout.reason)
+        verify(objecten, never()).createObject(anyValue())
+    }
+
+    @Test
+    fun `the verzoek carries the planned startdatum, never one before today, and the ingepland instrument it comes from`() {
+        val producttypeUuid = UUID.randomUUID()
+        `when`(openPlan.getDoel(doelUuid)).thenReturn(Doel(uuid = doelUuid, status = "actief", plannen = listOf(PlanRef(planUuid, "actief"))))
+        `when`(openPlan.getPlan(planUuid)).thenReturn(Plan(uuid = planUuid, status = "actief"))
+        `when`(openPlan.listInstrumenten(doelUuid)).thenReturn(emptyList())
+        `when`(openProduct.getProducttype(producttypeUuid)).thenReturn(ProductType(producttypeUuid, "JOBCOACHING", "Jobcoaching"))
+        `when`(openProduct.listActies(producttypeUuid)).thenReturn(
+            listOf(
+                Actie(
+                    naam = InstrumentAanvraagService.START_ACTIE,
+                    mapping = tree(mapOf("static" to listOf(mapOf("name" to "type", "value" to "http://objecttypen/api/v2/objecttypes/verzoek"))))
+                )
+            )
+        )
+        val filed = CopyOnWriteArrayList<NewObject>()
+        `when`(objecten.createObject(anyValue())).thenAnswer {
+            filed += it.arguments[0] as NewObject
+            ObjectRef(url = "http://objecten/${filed.size}")
+        }
+        val ingeplandId = UUID.randomUUID()
+        val volgendeWeek = LocalDate.now().plusDays(7)
+
+        service.start(doelUuid, producttypeUuid, volgendeWeek, ingeplandId)
+        service.start(doelUuid, producttypeUuid, LocalDate.now().minusDays(3))
+
+        val data = filed.map { tree(it.record.data).path("data") }
+        assertEquals(volgendeWeek.toString(), data[0].path("startdatum").asText())
+        assertEquals(ingeplandId.toString(), data[0].path("ingeplandInstrumentId").asText())
+        assertEquals(LocalDate.now().toString(), data[1].path("startdatum").asText())
+        assertTrue(data[1].path("ingeplandInstrumentId").isMissingNode)
     }
 
     private fun verzoek(productUrn: String, op: OffsetDateTime) =

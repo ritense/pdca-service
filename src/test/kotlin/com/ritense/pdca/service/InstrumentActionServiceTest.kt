@@ -36,8 +36,10 @@ import org.junit.jupiter.api.Test
 import org.mockito.ArgumentCaptor
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
+import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import java.time.LocalDate
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -102,6 +104,21 @@ class InstrumentActionServiceTest {
         assertEquals(coaching.uuid, captor.value.instrumenttypeUuid)
         assertTrue((result["instrumentUuid"] as String).isNotBlank())
         assertEquals(UitvoeringsStatus.GESTART, doelDetails.rows[doelUuid]!!.uitvoeringsStatus)
+    }
+
+    @Test
+    fun `aanmaak-instrument starts the instrument on the startdatum of the verzoek, today without one`() {
+        service.handleAanmaakInstrument(properties() + ("startdatum" to "2027-02-15"), "dossier-1")
+        service.handleAanmaakInstrument(properties(), "dossier-1")
+        val ongeldig = assertFailsWith<PluginActionException> {
+            service.handleAanmaakInstrument(properties() + ("startdatum" to "volgende week"), "dossier-1")
+        }
+
+        val captor = ArgumentCaptor.forClass(NewInstrument::class.java)
+        verify(openPlan, times(2)).createInstrument(captor.capture() ?: NewInstrument("", "", emptyList(), status = ""))
+        assertEquals("2027-02-15T00:00:00Z", captor.allValues[0].startdatum)
+        assertEquals("${LocalDate.now()}T00:00:00Z", captor.allValues[1].startdatum)
+        assertEquals("STARTDATUM_ONGELDIG", ongeldig.errorCode)
     }
 
     @Test

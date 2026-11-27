@@ -210,7 +210,7 @@ describe('vulVoor', () => {
     expect(state.subdoelen).toEqual([expect.objectContaining({
       doelType: 'Cv maken', beschrijving: 'Cv af', status: 'gestart', extra: { toelichting: 'blijft' },
     })]);
-    expect(state.instrumenten).toEqual([expect.objectContaining({ product: 'TAAL', doel: 'Cv maken', extra: {} })]);
+    expect(state.instrumenten).toEqual([expect.objectContaining({ product: 'TAAL', doel: 'Cv maken', startdatum: '', extra: {} })]);
     expect(state.evaluaties).toEqual([expect.objectContaining({
       datum: '2026-02-10', status: 'afgerond', notitie: 'Gesprek', auto: false, extra: { kanaal: 'telefoon' },
     })]);
@@ -222,6 +222,19 @@ describe('vulVoor', () => {
       soort: 'info',
       tekst: 'Voorgevuld vanuit de intake van dit dossier (13 velden). Controleer en vul aan waar nodig.',
     });
+  });
+
+  it('takes over the startdatum of an intake instrument and sends an empty one as the subdoel\'s', () => {
+    const { state } = vulVoor({
+      subjectId: '999993653', titel: 'Plan', hoofddoel: 'Werk vinden', doelen: [{ doelType: 'Cv maken' }],
+      instrumenten: [{ product: 'TAAL', doel: 'Cv maken', startdatum: '2027-03-01T00:00:00+01:00' }, { product: 'SCHULDHULP' }],
+    }, REGISTERS, CONFIG);
+
+    expect(state.instrumenten.map(i => i.startdatum)).toEqual(['2027-03-01', '']);
+    expect(maakRequest(state, 'doc-1', null, null).instrumenten).toEqual([
+      { product: 'TAAL', doel: 'Cv maken', startdatum: '2027-03-01' },
+      { product: 'SCHULDHULP', doel: '', startdatum: null },
+    ]);
   });
 
   it('does not take over values outside the registers and names them in a warning', () => {
